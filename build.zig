@@ -1103,7 +1103,7 @@ pub fn build(b: *std.Build) void {
     const frontend_index_tests = b.addTest(.{
         .name = "frontend-indexes",
         .root_module = compiler_module,
-        .filters = &.{ "compiler module inventory", "dependency mask", "semantic fingerprints skip importers", "source graph", "semantic revision", "semantic child", "semantic overlay", "selective", "invalidation" },
+        .filters = &.{ "compiler module inventory", "CFG function-flow index", "dependency mask", "semantic fingerprints skip importers", "source graph", "semantic revision", "semantic child", "semantic overlay", "selective", "invalidation" },
     });
     b.step("test-frontend-indexes", "Test frontend indexes and semantic dependency invalidation").dependOn(&b.addRunArtifact(frontend_index_tests).step);
 

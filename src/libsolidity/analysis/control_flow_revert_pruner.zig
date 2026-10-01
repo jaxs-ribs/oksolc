@@ -93,10 +93,8 @@ pub const ControlFlowRevertPruner = struct {
         calling_contract: ?*const AST.Node,
     ) ?RevertState {
         const contract = findScopeContract(function, calling_contract) catch return null;
-        for (self.cfg.function_flows.items, 0..) |entry, index|
-            if (entry.key.function == function and entry.key.contract == contract)
-                return self.states.items[index];
-        return null;
+        const index = self.cfg.functionFlowIndex(function, contract) orelse return null;
+        return self.states.items[index];
     }
 
     fn modifyFlows(self: *ControlFlowRevertPruner) PruneError!void {
