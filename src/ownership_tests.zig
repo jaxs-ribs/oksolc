@@ -19,6 +19,7 @@ test "ownership test inventory" {
     _ = @import("libyul/backends/evm/evm_code_transform.zig");
     _ = @import("libyul/backends/evm/evm_object_compiler.zig");
     _ = @import("libyul/backends/evm/optimized_evm_code_transform.zig");
+    _ = @import("libyul/backends/evm/stack_helpers.zig");
     _ = @import("libyul/optimiser/function_grouper.zig");
     _ = @import("libyul/optimiser/label_id_dispenser.zig");
     _ = @import("libyul/optimiser/function_specializer.zig");

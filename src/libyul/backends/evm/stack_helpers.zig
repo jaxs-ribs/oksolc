@@ -9,6 +9,7 @@ const std = @import("std");
 const CFG = @import("control_flow_graph.zig");
 const Numeric = @import("../../../libsolutil/numeric.zig");
 const Utilities = @import("../../utilities.zig");
+const StackMultiplicity = @import("stack_multiplicity.zig").StackMultiplicity;
 
 pub fn stackSlotToStringAlloc(
     allocator: std.mem.Allocator,
@@ -58,6 +59,7 @@ fn Operations(comptime CallbackType: type) type {
         target_stack: []const CFG.StackSlot,
         callbacks: CallbackType,
         reachable_stack_depth: usize,
+        multiplicities: ?*StackMultiplicity = null,
 
         const Self = @This();
 
@@ -88,10 +90,22 @@ fn Operations(comptime CallbackType: type) type {
         }
 
         fn sourceMultiplicity(self: *const Self, offset: usize) i32 {
+            if (self.multiplicities) |counts| {
+                const value = counts.sourceMultiplicity(offset);
+                if (comptime @import("builtin").is_test)
+                    if (value != self.multiplicity(self.current_stack.items[offset])) @panic("incorrect cached source multiplicity");
+                return value;
+            }
             return self.multiplicity(self.current_stack.items[offset]);
         }
 
         fn targetMultiplicity(self: *const Self, offset: usize) i32 {
+            if (self.multiplicities) |counts| {
+                const value = counts.targetMultiplicity(offset);
+                if (comptime @import("builtin").is_test)
+                    if (value != self.multiplicity(self.target_stack[offset])) @panic("incorrect cached target multiplicity");
+                return value;
+            }
             return self.multiplicity(self.target_stack[offset]);
         }
 
@@ -109,6 +123,7 @@ fn Operations(comptime CallbackType: type) type {
 
         fn swap(self: *Self, depth: usize) !void {
             try self.callbacks.swap(depth);
+            if (self.multiplicities) |counts| counts.swap(depth);
             const top = self.current_stack.items.len - 1;
             std.mem.swap(
                 CFG.StackSlot,
@@ -119,6 +134,7 @@ fn Operations(comptime CallbackType: type) type {
 
         fn pop(self: *Self) !void {
             try self.callbacks.pop();
+            if (self.multiplicities) |counts| counts.pop();
             _ = self.current_stack.pop();
         }
 
@@ -126,6 +142,7 @@ fn Operations(comptime CallbackType: type) type {
             const target = self.target_stack[offset];
             try self.callbacks.pushOrDup(target);
             try self.current_stack.append(self.allocator, target);
+            if (self.multiplicities) |counts| counts.push(offset);
         }
     };
 }
@@ -339,6 +356,17 @@ pub fn createStackLayout(
     callbacks: anytype,
     reachable_stack_depth: usize,
 ) !void {
+    return createStackLayoutImpl(true, allocator, current_stack, target_stack, callbacks, reachable_stack_depth);
+}
+
+fn createStackLayoutImpl(
+    comptime cache_counts: bool,
+    allocator: std.mem.Allocator,
+    current_stack: *CFG.Stack,
+    target_stack: []const CFG.StackSlot,
+    callbacks: anytype,
+    reachable_stack_depth: usize,
+) !void {
     if (reachable_stack_depth == 0) return error.InvalidReachableStackDepth;
     var ops = Operations(@TypeOf(callbacks)){
         .allocator = allocator,
@@ -347,7 +375,24 @@ pub fn createStackLayout(
         .callbacks = callbacks,
         .reachable_stack_depth = reachable_stack_depth,
     };
+    // Already-final layouts need no count table and invoke no callbacks.
+    if (cache_counts and current_stack.items.len == target_stack.len) final: {
+        for (0..current_stack.items.len) |index|
+            if (!ops.isCompatible(index, index)) break :final;
+        return finishLayout(current_stack, target_stack);
+    }
+    var scratch = std.heap.stackFallback(8192, allocator);
+    var counts: ?StackMultiplicity = null;
+    defer if (counts) |*value| value.deinit();
+    if (cache_counts) {
+        counts = try StackMultiplicity.init(scratch.get(), current_stack.items, target_stack);
+        ops.multiplicities = &counts.?;
+    }
     try shuffleWithOperations(&ops);
+    try finishLayout(current_stack, target_stack);
+}
+
+fn finishLayout(current_stack: *CFG.Stack, target_stack: []const CFG.StackSlot) !void {
     if (current_stack.items.len != target_stack.len) return error.InvalidStackLayout;
     for (current_stack.items, target_stack) |*current, target| {
         if (target == .junk)
@@ -402,4 +447,144 @@ test "stack shuffler creates exact layouts with duplication, swaps, pops, and ju
     try std.testing.expectEqual(target.len, current.items.len);
     for (current.items, target) |actual, expected| try std.testing.expect(actual.eql(expected));
     try std.testing.expect(operations.items.len != 0);
+}
+
+const ShuffleEvent = union(enum) { swap: usize, push: CFG.StackSlot, pop };
+const ShuffleRecorder = struct {
+    allocator: std.mem.Allocator,
+    events: *std.ArrayList(ShuffleEvent),
+    fail_after: ?usize = null,
+
+    fn record(self: @This(), event: ShuffleEvent) !void {
+        if (self.fail_after == self.events.items.len) return error.TestCallbackFailure;
+        try self.events.append(self.allocator, event);
+    }
+    pub fn swap(self: @This(), depth: usize) !void {
+        try self.record(.{ .swap = depth });
+    }
+    pub fn pushOrDup(self: @This(), slot: CFG.StackSlot) !void {
+        try self.record(.{ .push = slot });
+    }
+    pub fn pop(self: @This()) !void {
+        try self.record(.pop);
+    }
+};
+
+fn expectSameSlot(actual: CFG.StackSlot, expected: CFG.StackSlot) !void {
+    try std.testing.expect(actual.eql(expected));
+    // Identity intentionally omits debug data; callback equality must not.
+    try std.testing.expectEqualDeep(expected.debugData(), actual.debugData());
+}
+
+fn compareShuffles(source: []const CFG.StackSlot, target: []const CFG.StackSlot, depth: usize, fail_after: ?usize) !void {
+    const allocator = std.testing.allocator;
+    var stacks = [_]CFG.Stack{ .empty, .empty };
+    defer for (&stacks) |*stack| stack.deinit(allocator);
+    var events = [_]std.ArrayList(ShuffleEvent){ .empty, .empty };
+    defer for (&events) |*list| list.deinit(allocator);
+    var failures: [2]?anyerror = .{ null, null };
+    inline for (.{ false, true }, 0..) |cached, index| {
+        try stacks[index].appendSlice(allocator, source);
+        createStackLayoutImpl(cached, allocator, &stacks[index], target, ShuffleRecorder{
+            .allocator = allocator,
+            .events = &events[index],
+            .fail_after = fail_after,
+        }, depth) catch |err| {
+            failures[index] = err;
+        };
+    }
+    try std.testing.expectEqual(failures[0], failures[1]);
+    try std.testing.expectEqual(events[0].items.len, events[1].items.len);
+    for (events[0].items, events[1].items) |expected, actual| {
+        try std.testing.expectEqual(std.meta.activeTag(expected), std.meta.activeTag(actual));
+        switch (expected) {
+            .swap => |value| try std.testing.expectEqual(value, actual.swap),
+            .push => |value| try expectSameSlot(actual.push, value),
+            .pop => {},
+        }
+    }
+    try std.testing.expectEqual(stacks[0].items.len, stacks[1].items.len);
+    for (stacks[0].items, stacks[1].items) |expected, actual| try expectSameSlot(actual, expected);
+}
+
+fn ternaryStack(number: usize, buffer: *[4]CFG.StackSlot) []const CFG.StackSlot {
+    const alphabet = [_]CFG.StackSlot{ .{ .literal = .{ .value = 1 } }, .{ .literal = .{ .value = 2 } }, .{ .junk = .{} } };
+    var first: usize = 0;
+    var count: usize = 1;
+    for (0..5) |len| {
+        if (number < first + count) {
+            var code = number - first;
+            for (buffer[0..len]) |*slot| {
+                slot.* = alphabet[code % 3];
+                code /= 3;
+            }
+            return buffer[0..len];
+        }
+        first += count;
+        count *= 3;
+    }
+    unreachable;
+}
+
+test "stack multiplicity cache preserves every shuffle operation on all short stacks" {
+    var source_buffer: [4]CFG.StackSlot = undefined;
+    var target_buffer: [4]CFG.StackSlot = undefined;
+    // All 121 stacks of length 0..4 over two literals and junk, at four depths.
+    for (0..121) |source| for (0..121) |target| {
+        for ([_]usize{ 0, 1, 2, 16 }) |depth|
+            try compareShuffles(ternaryStack(source, &source_buffer), ternaryStack(target, &target_buffer), depth, null);
+    };
+}
+
+test "stack multiplicity cache preserves slot identities debug data and callback failures" {
+    const AST = @import("../../ast.zig");
+    const Scope = @import("../../scope.zig");
+    var calls: [2]AST.FunctionCall = undefined;
+    var functions: [2]Scope.Function = undefined;
+    var variables: [2]Scope.Variable = undefined;
+    const source = [_]CFG.StackSlot{
+        .{ .function_call_return_label = .{ .call = &calls[0] } },
+        .{ .function_call_return_label = .{ .call = &calls[1] } },
+        .{ .function_return_label = .{ .function = &functions[0] } },
+        .{ .function_return_label = .{ .function = &functions[1] } },
+        .{ .variable = .{ .variable = &variables[0] } },
+        .{ .variable = .{ .variable = &variables[1] } },
+        .{ .temporary = .{ .call = &calls[0], .index = 0 } },
+        .{ .temporary = .{ .call = &calls[0], .index = 1 } },
+        .{ .temporary = .{ .call = &calls[1], .index = 0 } },
+        .{ .literal = .{ .value = std.math.maxInt(u256) } },
+        .{ .literal = .{ .value = std.math.maxInt(u256), .debug_data = .{ .ast_id = 17 } } },
+        .{ .junk = .{} },
+    };
+    var target = source;
+    std.mem.reverse(CFG.StackSlot, &target);
+    target[3] = source[9];
+    target[6] = .{ .junk = .{} };
+    for ([_]usize{ 1, 2, 16 }) |depth| {
+        try compareShuffles(&source, &target, depth, null);
+        for (0..8) |fail_after| try compareShuffles(&source, &target, depth, fail_after);
+    }
+}
+
+test "stack multiplicity cache releases fallback storage and partial shuffles on OOM" {
+    const Check = struct {
+        fn run(allocator: std.mem.Allocator) !void {
+            var target: [256]CFG.StackSlot = undefined;
+            for (&target, 0..) |*slot, index| slot.* = .{ .literal = .{ .value = index } };
+            var current: CFG.Stack = .empty;
+            defer current.deinit(allocator);
+            try current.appendSlice(allocator, &target);
+            std.mem.swap(CFG.StackSlot, &target[0], &target[255]);
+            var events: std.ArrayList(ShuffleEvent) = .empty;
+            defer events.deinit(allocator);
+            const callbacks: ShuffleRecorder = .{ .allocator = allocator, .events = &events };
+            try createStackLayout(allocator, &current, &target, callbacks, 256);
+            // Force stack growth and callback allocations as well as cache setup.
+            var short = try CFG.Stack.initCapacity(allocator, 1);
+            defer short.deinit(allocator);
+            short.appendAssumeCapacity(target[0]);
+            try createStackLayout(allocator, &short, target[0..16], callbacks, 16);
+        }
+    };
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Check.run, .{});
 }
