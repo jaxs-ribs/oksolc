@@ -21,6 +21,7 @@ const LinkerObject = LinkerObjectModule.LinkerObject;
 pub const SubAssemblyID = @import("sub_assembly_id.zig").SubAssemblyID;
 const BlockDeduplicator = @import("block_deduplicator.zig");
 const CommonSubexpressionEliminator = @import("common_subexpression_eliminator.zig");
+const CSEChunkCache = @import("cse_chunk_cache.zig");
 const ConstantOptimiser = @import("constant_optimiser.zig");
 const Inliner = @import("inliner.zig");
 const JumpdestRemover = @import("jumpdest_remover.zig");
@@ -492,6 +493,8 @@ pub const Assembly = struct {
 
         var replacements: std.ArrayList(BlockDeduplicator.TagReplacement) = .empty;
         errdefer replacements.deinit(self.allocator);
+        var cse_cache = CSEChunkCache.Cache.init(scratch_backing_allocator orelse self.allocator);
+        defer cse_cache.deinit();
         var iteration_count: u32 = 1;
         while (iteration_count != 0) {
             iteration_count = 0;
@@ -537,7 +540,7 @@ pub const Assembly = struct {
             }
 
             if (settings.run_cse) {
-                try self.optimiseCSE(&iteration_count, scratch_backing_allocator);
+                try self.optimiseCSE(&iteration_count, scratch_backing_allocator, &cse_cache);
             }
         }
 
@@ -555,7 +558,7 @@ pub const Assembly = struct {
         return self.tag_replacements.?.items;
     }
 
-    fn optimiseCSE(self: *Assembly, iteration_count: *u32, scratch_backing_allocator: ?std.mem.Allocator) AssemblyError!void {
+    fn optimiseCSE(self: *Assembly, iteration_count: *u32, scratch_backing_allocator: ?std.mem.Allocator, cache: *CSEChunkCache.Cache) AssemblyError!void {
         var scratch_arena = if (scratch_backing_allocator) |backing|
             std.heap.ArenaAllocator.init(backing)
         else
@@ -579,6 +582,16 @@ pub const Assembly = struct {
                 if (!arena.reset(.{ .retain_with_limit = 8 * 1024 * 1024 }))
                     _ = arena.reset(.free_all);
             };
+            const tail = self.assembly_items.items[index..];
+            const length = CommonSubexpressionEliminator.CommonSubexpressionEliminator.chunkLength(tail, uses_msize);
+            const query = cache.request(tail[0..length], self.evm_version, uses_msize);
+            if (cache.lookup(query)) |entry| {
+                const selected = if (entry.outcome == .replacement) entry.output else query.input;
+                if (entry.outcome == .replacement) iteration_count.* += 1;
+                for (selected) |*item| try appendClone(self.allocator, &optimized, item);
+                index += query.input.len;
+                continue;
+            }
             var state = try KnownState.init(scratch_allocator);
             defer state.deinit();
             var eliminator = try CommonSubexpressionEliminator.CommonSubexpressionEliminator.init(
@@ -594,6 +607,8 @@ pub const Assembly = struct {
             // owned output survives until copied into the assembly allocator.
             var chunk = eliminator.finish() catch |err| switch (err) {
                 error.StackTooDeep, error.ItemNotAvailable => {
+                    std.debug.assert(consumed == query.input.len);
+                    try cache.record(query, &.{}, if (err == error.StackTooDeep) .stack_too_deep else .item_not_available);
                     for (self.assembly_items.items[index .. index + consumed]) |*item|
                         try appendClone(self.allocator, &optimized, item);
                     index += consumed;
@@ -602,6 +617,9 @@ pub const Assembly = struct {
                 else => return err,
             };
             defer deinitItems(scratch_allocator, &chunk);
+            std.debug.assert(consumed == query.input.len);
+            const changed = chunk.items.len < consumed;
+            try cache.record(query, if (changed) chunk.items else &.{}, if (changed) .replacement else .unchanged);
             if (chunk.items.len < consumed) {
                 iteration_count.* += 1;
                 for (chunk.items) |*item| try appendClone(self.allocator, &optimized, item);
@@ -2289,6 +2307,58 @@ test "assembly immutable references preserve child owners across allocation fail
     for (cases) |case| try Check.run(std.testing.allocator, case);
     for (cases) |case|
         try std.testing.checkAllAllocationFailures(std.testing.allocator, Check.run, .{case});
+}
+
+test "assembly CSE cached rounds preserve complete items and change counters" {
+    const Fixture = struct {
+        fn make(allocator: std.mem.Allocator) !Assembly {
+            var assembly = try Assembly.init(allocator, .current(), false, "Cache");
+            errdefer assembly.deinit();
+            _ = try assembly.append(try assembly.newTag());
+            for (0..12) |_| {
+                _ = try assembly.append(AssemblyItem.initPush(3, .{ .ast_id = 1 }));
+                _ = try assembly.append(AssemblyItem.initPush(4, .{ .ast_id = 2 }));
+                _ = try assembly.append(AssemblyItem.initInstruction(.ADD, .{ .ast_id = 3 }));
+                _ = try assembly.append(AssemblyItem.initPush(0, .{}));
+                _ = try assembly.append(AssemblyItem.initInstruction(.MSTORE, .{}));
+            }
+            _ = try assembly.append(AssemblyItem.initInstruction(.STOP, .{}));
+            return assembly;
+        }
+
+        fn run(allocator: std.mem.Allocator) !void {
+            var cache = CSEChunkCache.Cache.init(allocator);
+            defer cache.deinit();
+            cache.min_items = 1;
+            // A full cache must still execute the original analysis. Use its
+            // admission boundary as the differential oracle for every round.
+            var full_cache = CSEChunkCache.Cache.init(allocator);
+            defer full_cache.deinit();
+            full_cache.max_entries = 0;
+            // Two fresh inputs exercise positive replay; later rounds exercise
+            // unchanged results after the first round's replacement.
+            for (0..2) |_| {
+                var plain = try make(allocator);
+                defer plain.deinit();
+                var cached = try make(allocator);
+                defer cached.deinit();
+                for (0..3) |_| {
+                    var plain_changes: u32 = 0;
+                    var cached_changes: u32 = 0;
+                    try plain.optimiseCSE(&plain_changes, allocator, &full_cache);
+                    try cached.optimiseCSE(&cached_changes, allocator, &cache);
+                    try std.testing.expectEqual(plain_changes, cached_changes);
+                    try std.testing.expect(CSEChunkCache.equalItems(plain.assembly_items.items, cached.assembly_items.items));
+                }
+            }
+            try std.testing.expect(cache.hits > 0);
+            try std.testing.expect(cache.replacement_hits > 0);
+            try std.testing.expectEqual(@as(usize, 0), full_cache.hits);
+            try std.testing.expectEqual(@as(usize, 0), full_cache.entries.items.len);
+        }
+    };
+    try Fixture.run(std.testing.allocator);
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Fixture.run, .{});
 }
 
 test "assembly CSE scratch releases nested analyses before output use" {

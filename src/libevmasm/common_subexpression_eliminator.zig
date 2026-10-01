@@ -47,6 +47,7 @@ pub const CSEError = KnownStateModule.KnownStateError || std.mem.Allocator.Error
 };
 
 pub const CommonSubexpressionEliminator = struct {
+    const max_chunk_items = 2000;
     allocator: std.mem.Allocator,
     initial_state: KnownState,
     state: KnownState,
@@ -79,8 +80,8 @@ pub const CommonSubexpressionEliminator = struct {
         self.* = undefined;
     }
 
-    /// Returns the number of consumed input items. At most 2000 ordinary
-    /// items plus one breaking item are consumed per block, matching C++.
+    /// Returns the number of consumed items, including a breaking item only
+    /// before the 2000-item cap.
     pub fn feedItems(
         self: *CommonSubexpressionEliminator,
         items: []const AssemblyItem,
@@ -88,13 +89,23 @@ pub const CommonSubexpressionEliminator = struct {
     ) CSEError!usize {
         if (self.breaking_item != null) return error.InvalidUse;
         var consumed: usize = 0;
-        while (consumed < items.len and consumed < 2000 and
+        while (consumed < items.len and consumed < max_chunk_items and
             !SemanticInformation.breaksCSEAnalysisBlock(&items[consumed], msize_important)) : (consumed += 1)
             try self.feedItem(&items[consumed], false);
-        if (consumed < items.len and consumed < 2000) {
+        if (consumed < items.len and consumed < max_chunk_items) {
             self.breaking_item = try items[consumed].clone(self.allocator);
             consumed += 1;
         }
+        return consumed;
+    }
+
+    /// Include the breaking item only before the cap, exactly as feedItems does.
+    pub fn chunkLength(items: []const AssemblyItem, msize_important: bool) usize {
+        var consumed: usize = 0;
+        while (consumed < items.len and consumed < max_chunk_items and
+            !SemanticInformation.breaksCSEAnalysisBlock(&items[consumed], msize_important)) : (consumed += 1)
+        {}
+        if (consumed < items.len and consumed < max_chunk_items) consumed += 1;
         return consumed;
     }
 
@@ -219,6 +230,24 @@ pub const CommonSubexpressionEliminator = struct {
         }
     }
 };
+
+test "assembly CSE chunk boundaries match fresh feeding at the cap and MSIZE changes" {
+    const allocator = std.testing.allocator;
+    const items = try allocator.alloc(AssemblyItem, 2002);
+    defer allocator.free(items);
+    for ([_]usize{ 0, 1, 1999, 2000, 2001, 2002 }) |length| {
+        for ([_]bool{ false, true }) |msize| {
+            for (items) |*item| item.* = AssemblyItem.initPush(1, .{});
+            if (length > 7) items[7] = AssemblyItem.initInstruction(.MLOAD, .{});
+            items[2000] = AssemblyItem.initInstruction(.STOP, .{});
+            var state = try KnownState.init(allocator);
+            defer state.deinit();
+            var cse = try CommonSubexpressionEliminator.init(allocator, &state, .current());
+            defer cse.deinit();
+            try std.testing.expectEqual(CommonSubexpressionEliminator.chunkLength(items[0..length], msize), try cse.feedItems(items[0..length], msize));
+        }
+    }
+}
 
 const NeededBy = struct { dependency: Id, result: Id };
 
