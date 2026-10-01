@@ -1100,6 +1100,13 @@ pub fn build(b: *std.Build) void {
     }) });
     b.step("test-evm", "Run shared EVM semantics tests").dependOn(&b.addRunArtifact(evm_tests).step);
 
+    const frontend_index_tests = b.addTest(.{
+        .name = "frontend-indexes",
+        .root_module = compiler_module,
+        .filters = &.{ "compiler module inventory", "dependency mask", "semantic fingerprints skip importers", "source graph", "semantic revision", "semantic child", "semantic overlay", "selective", "invalidation" },
+    });
+    b.step("test-frontend-indexes", "Test frontend indexes and semantic dependency invalidation").dependOn(&b.addRunArtifact(frontend_index_tests).step);
+
     const ownership_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/ownership_tests.zig"),

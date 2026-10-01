@@ -86,6 +86,7 @@ const SyntaxRevisionModule = @import("../../incremental/syntax_revision.zig");
 const SyntaxRevision = SyntaxRevisionModule.SyntaxRevision;
 const SyntaxSource = SyntaxRevisionModule.SyntaxSource;
 const SemanticRevisionModule = @import("../../incremental/semantic_revision.zig");
+const DependencyMaskMarker = @import("../../incremental/dependency_mask_marker.zig").DependencyMaskMarker;
 const SemanticRevision = SemanticRevisionModule.SemanticRevision;
 const SemanticDiagnosticPhase = SemanticRevisionModule.DiagnosticPhase;
 const SemanticFingerprint = @import("../../incremental/semantic_fingerprint.zig");
@@ -1389,121 +1390,106 @@ fn collectSemanticDependencyMasks(
     source_graph: *const SourceGraph,
     parsed_sources: []const SolidityParser.ParseResult,
 ) !void {
-    try semantic.initializeDependencyMasks(source_graph);
+    var marker = try semantic.initializeDependencyMasks(source_graph);
+    defer marker.deinit();
     for (parsed_sources) |*parsed| {
         const importer = parsed.tree.source_id;
         for (parsed.tree.nodesInCreationOrder()) |node| {
             const annotation = SolidityAnnotations.annotationConst(node) orelse continue;
             switch (annotation.*) {
                 .struct_declaration => |value| markDocumentedDependency(
-                    semantic,
-                    source_graph,
+                    &marker,
                     importer,
                     &value.type_declaration.declaration,
                     null,
                 ),
                 .contract_definition => |value| {
                     markDocumentedDependency(
-                        semantic,
-                        source_graph,
+                        &marker,
                         importer,
                         &value.type_declaration.declaration,
                         &value.documented,
                     );
                     markNodeListDependencies(
-                        semantic,
-                        source_graph,
+                        &marker,
                         importer,
                         value.linearized_base_contracts,
                     );
                     if (value.unimplemented_declarations) |declarations|
                         markNodeListDependencies(
-                            semantic,
-                            source_graph,
+                            &marker,
                             importer,
                             declarations,
                         );
                     for (value.base_constructor_arguments.items) |argument| {
                         markSemanticDependency(
-                            semantic,
-                            source_graph,
+                            &marker,
                             importer,
                             argument.function,
                         );
                         markSemanticDependency(
-                            semantic,
-                            source_graph,
+                            &marker,
                             importer,
                             argument.argument_node,
                         );
                     }
                     for (value.contract_dependencies.items) |dependency| {
                         markSemanticDependency(
-                            semantic,
-                            source_graph,
+                            &marker,
                             importer,
                             dependency.contract,
                         );
                         markSemanticDependency(
-                            semantic,
-                            source_graph,
+                            &marker,
                             importer,
                             dependency.referencing_node,
                         );
                     }
                     markNodeListDependencies(
-                        semantic,
-                        source_graph,
+                        &marker,
                         importer,
                         value.interface_events.items,
                     );
                     markNodeListDependencies(
-                        semantic,
-                        source_graph,
+                        &marker,
                         importer,
                         value.interface_errors.items,
                     );
                     if (value.creation_call_graph.value) |graph|
                         markCallGraphDependencies(
-                            semantic,
-                            source_graph,
+                            &marker,
                             importer,
                             graph,
                         );
                     if (value.deployed_call_graph.value) |graph|
                         markCallGraphDependencies(
-                            semantic,
-                            source_graph,
+                            &marker,
                             importer,
                             graph,
                         );
                 },
                 .documented_callable => |value| {
                     markDocumentedDependency(
-                        semantic,
-                        source_graph,
+                        &marker,
                         importer,
                         &value.callable.declaration,
                         &value.documented,
                     );
                     markNodeListDependencies(
-                        semantic,
-                        source_graph,
+                        &marker,
                         importer,
                         value.callable.base_functions.items,
                     );
                 },
                 .variable_declaration => |value| {
                     markDocumentedDependency(
-                        semantic,
-                        source_graph,
+                        &marker,
                         importer,
                         &value.declaration,
                         &value.documented,
                     );
                     markNodeListDependencies(
-                        semantic,
-                        source_graph,
+                        &marker,
                         importer,
                         value.base_functions.items,
                     );
@@ -1511,23 +1497,20 @@ fn collectSemanticDependencyMasks(
                 .inline_assembly => |value| for (value.external_references.items) |reference|
                     if (reference.info.declaration) |declaration|
                         markSemanticDependency(
-                            semantic,
-                            source_graph,
+                            &marker,
                             importer,
                             declaration,
                         ),
                 .return_statement => |value| {
                     if (value.function_return_parameters) |parameters|
                         markSemanticDependency(
-                            semantic,
-                            source_graph,
+                            &marker,
                             importer,
                             parameters,
                         );
                     if (value.function) |function|
                         markSemanticDependency(
-                            semantic,
-                            source_graph,
+                            &marker,
                             importer,
                             function,
                         );
@@ -1535,14 +1518,12 @@ fn collectSemanticDependencyMasks(
                 .identifier_path => |value| {
                     if (value.referenced_declaration) |declaration|
                         markSemanticDependency(
-                            semantic,
-                            source_graph,
+                            &marker,
                             importer,
                             declaration,
                         );
                     markNodeListDependencies(
-                        semantic,
-                        source_graph,
+                        &marker,
                         importer,
                         value.path_declarations.items,
                     );
@@ -1550,42 +1531,36 @@ fn collectSemanticDependencyMasks(
                 .identifier => |value| {
                     if (value.referenced_declaration) |declaration|
                         markSemanticDependency(
-                            semantic,
-                            source_graph,
+                            &marker,
                             importer,
                             declaration,
                         );
                     markNodeListDependencies(
-                        semantic,
-                        source_graph,
+                        &marker,
                         importer,
                         value.candidate_declarations.items,
                     );
                     markNodeListDependencies(
-                        semantic,
-                        source_graph,
+                        &marker,
                         importer,
                         value.overloaded_declarations.items,
                     );
                 },
                 .member_access => |value| if (value.referenced_declaration) |declaration|
                     markSemanticDependency(
-                        semantic,
-                        source_graph,
+                        &marker,
                         importer,
                         declaration,
                     ),
                 .operation => |value| if (value.user_defined_function.value orelse null) |function|
                     markSemanticDependency(
-                        semantic,
-                        source_graph,
+                        &marker,
                         importer,
                         function,
                     ),
                 .binary_operation => |value| if (value.operation.user_defined_function.value orelse null) |function|
                     markSemanticDependency(
-                        semantic,
-                        source_graph,
+                        &marker,
                         importer,
                         function,
                     ),
@@ -1596,73 +1571,65 @@ fn collectSemanticDependencyMasks(
 }
 
 fn markDocumentedDependency(
-    semantic: *SemanticRevision,
-    source_graph: *const SourceGraph,
+    marker: *DependencyMaskMarker,
     importer: SourceId,
     declaration: *const SolidityAnnotations.DeclarationAnnotation,
     documented: ?*const SolidityAnnotations.StructurallyDocumentedAnnotation,
 ) void {
     if (declaration.scopable.contract) |contract|
-        markSemanticDependency(semantic, source_graph, importer, contract);
+        markSemanticDependency(marker, importer, contract);
     if (documented) |value|
         if (value.inheritdoc_reference) |reference|
-            markSemanticDependency(semantic, source_graph, importer, reference);
+            markSemanticDependency(marker, importer, reference);
 }
 
 fn markNodeListDependencies(
-    semantic: *SemanticRevision,
-    source_graph: *const SourceGraph,
+    marker: *DependencyMaskMarker,
     importer: SourceId,
     nodes: []const *const SolidityAST.Node,
 ) void {
     for (nodes) |node|
-        markSemanticDependency(semantic, source_graph, importer, node);
+        markSemanticDependency(marker, importer, node);
 }
 
 fn markCallGraphDependencies(
-    semantic: *SemanticRevision,
-    source_graph: *const SourceGraph,
+    marker: *DependencyMaskMarker,
     importer: SourceId,
     graph: *const SolidityCallGraph.CallGraph,
 ) void {
     for (graph.callers.items) |caller| markCallNodeDependency(
-        semantic,
-        source_graph,
+        marker,
         importer,
         caller,
     );
     for (graph.edges.items) |edge| {
-        markCallNodeDependency(semantic, source_graph, importer, edge.caller);
-        markCallNodeDependency(semantic, source_graph, importer, edge.callee);
+        markCallNodeDependency(marker, importer, edge.caller);
+        markCallNodeDependency(marker, importer, edge.callee);
     }
     for (graph.bytecode_dependencies.items) |dependency| {
-        markSemanticDependency(semantic, source_graph, importer, dependency.contract);
-        markSemanticDependency(semantic, source_graph, importer, dependency.referencing_node);
+        markSemanticDependency(marker, importer, dependency.contract);
+        markSemanticDependency(marker, importer, dependency.referencing_node);
     }
     markNodeListDependencies(
-        semantic,
-        source_graph,
+        marker,
         importer,
         graph.emitted_events.items,
     );
     markNodeListDependencies(
-        semantic,
-        source_graph,
+        marker,
         importer,
         graph.used_errors.items,
     );
 }
 
 fn markCallNodeDependency(
-    semantic: *SemanticRevision,
-    source_graph: *const SourceGraph,
+    marker: *DependencyMaskMarker,
     importer: SourceId,
     node: SolidityCallGraph.Node,
 ) void {
     switch (node) {
         .callable => |callable| markSemanticDependency(
-            semantic,
-            source_graph,
+            marker,
             importer,
             callable,
         ),
@@ -1671,16 +1638,14 @@ fn markCallNodeDependency(
 }
 
 fn markSemanticDependency(
-    semantic: *SemanticRevision,
-    source_graph: *const SourceGraph,
+    marker: *DependencyMaskMarker,
     importer: SourceId,
     declaration: *const SolidityAST.Node,
 ) void {
     if (declaration.location.source_name == null or
         declaration.nodeKind() == .magic_variable_declaration)
         return;
-    semantic.markDependencyUsed(
-        source_graph,
+    marker.mark(
         importer,
         declaration.node_ref.source,
     );
