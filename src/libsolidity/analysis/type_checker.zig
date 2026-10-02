@@ -3171,6 +3171,15 @@ pub const TypeChecker = struct {
                         "\"staticcall\" is not supported by the VM version.",
                     );
                 try self.checkFunctionGeneral(node, function_type, false);
+                if (!self.evm_version.supportsReturndata()) {
+                    const returns = try TypeBehavior.returnParameterTypesWithoutDynamicTypesAlloc(
+                        self.type_provider,
+                        self.allocator,
+                        function_type.*,
+                    );
+                    defer self.allocator.free(returns);
+                    return self.functionReturnType(returns);
+                }
                 break :blk function_type.return_parameter_types;
             },
         };
