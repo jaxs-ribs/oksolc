@@ -4756,7 +4756,10 @@ pub const TypeChecker = struct {
                 .is_pure = false,
             };
         }
-        if (std.mem.eql(u8, name, "gas") and function.kind != .Creation) {
+        if (std.mem.eql(u8, name, "gas") and switch (function.kind) {
+            .External, .BareCall, .BareCallCode, .BareDelegateCall, .BareStaticCall => true,
+            else => false,
+        }) {
             const gas_set = try self.type_provider.copyAndSetCallOptions(
                 owner_type,
                 true,
