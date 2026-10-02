@@ -2858,7 +2858,7 @@ test "Hackerbane HB-AR-2026.17 hack-24 matches solc 0.8.36" {
     }
 }
 
-test "Hackerbane HB-AR-2026.17 hack-23 matches solc 0.8.36" {
+test "Hackerbane HB-AR-2026.17 hack-23 preserves explicit IR selection in serial and parallel modes" {
     inline for (.{
         "hackerbane-hack-23",
         "hackerbane-hack-23-explicit",

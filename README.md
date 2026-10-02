@@ -35,6 +35,9 @@ Intentional exceptions:
 
 - Named custom-error arguments in `require` encode in declaration order.
 - Array bounds retain hexadecimal spelling in IR.
+- Empty dispatch omits unused helpers from unoptimized IR.
+- Hexadecimal subassembly prefixes require a following hex digit.
+- Yul `memoryguard` retains the exclusive `2^32 - 1` size limit.
 
 The `compile` command enables the optimizer with 200 runs. Use `standard-json`
 when exact control of compiler settings or output selection is required.
