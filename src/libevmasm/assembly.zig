@@ -1358,7 +1358,15 @@ fn parseAssemblyJSONNode(
             for (indexed_subs.items) |entry| if (entry.assembly) |sub_assembly| sub_assembly.destroy();
             indexed_subs.deinit(allocator);
         }
-        for (data_object.keys(), data_object.values()) |key, *value| {
+        const keys = try allocator.dupe([]const u8, data_object.keys());
+        defer allocator.free(keys);
+        std.mem.sort([]const u8, keys, {}, struct {
+            fn lessThan(_: void, left: []const u8, right: []const u8) bool {
+                return std.mem.lessThan(u8, left, right);
+            }
+        }.lessThan);
+        for (keys) |key| {
+            const value = data_object.getPtr(key).?;
             switch (value.*) {
                 .string => |encoded_data| {
                     const decoded = try CommonData.fromHexAlloc(allocator, encoded_data, .dont_throw);
@@ -2029,6 +2037,29 @@ test "assembly JSON preserves code, source names, data, and subassemblies" {
     const actual = try JSON.jsonCompactPrintAlloc(allocator, &round_trip.value);
     defer allocator.free(actual);
     try std.testing.expectEqualStrings(expected, actual);
+}
+
+test "assembly JSON data aliases use lexicographic key order" {
+    const allocator = std.testing.allocator;
+    const lower = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const upper = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    for ([_][]const u8{
+        "{\"" ++ lower ++ "\":\"11\",\"" ++ upper ++ "\":\"22\"}",
+        "{\"" ++ upper ++ "\":\"22\",\"" ++ lower ++ "\":\"11\"}",
+    }) |data| {
+        const input = try std.fmt.allocPrint(
+            allocator,
+            "{{\".code\":[{{\"name\":\"PUSH data\",\"value\":\"{s}\"}}],\".data\":{s}}}",
+            .{ lower, data },
+        );
+        defer allocator.free(input);
+        const parsed = try std.json.parseFromSlice(JSON.Json, allocator, input, .{});
+        defer parsed.deinit();
+        const assembly = try Assembly.fromJSON(allocator, &parsed.value);
+        defer assembly.destroy();
+        const object = try assembly.assemble();
+        try std.testing.expectEqualSlices(u8, &.{ 0x60, 0x03, 0xfe, 0x11 }, object.bytecode.items);
+    }
 }
 
 test "assembly printing annotations retain raw snippets and quoted names" {
