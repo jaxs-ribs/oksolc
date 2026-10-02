@@ -4018,13 +4018,19 @@ pub const TypeChecker = struct {
                         "Cannot set option \"value\" for staticcall.",
                     );
                 } else if (function_type.state_mutability != .Payable) {
+                    const constructor_message = if (function_type.kind == .Creation)
+                        try std.fmt.allocPrint(
+                            self.allocator,
+                            "Cannot set option \"value\", since the constructor of {s} is not payable.",
+                            .{try self.typeNameTemporary(function_type.return_parameter_types[0])},
+                        )
+                    else
+                        null;
+                    defer if (constructor_message) |message| self.allocator.free(message);
                     try self.reporter.typeError(
                         errorId(7006),
                         node.location,
-                        if (function_type.kind == .Creation)
-                            "Cannot set option \"value\", since the constructor is not payable."
-                        else
-                            "Cannot set option \"value\" on a non-payable function type.",
+                        constructor_message orelse "Cannot set option \"value\" on a non-payable function type.",
                     );
                 } else {
                     try self.checkDuplicateCallOption(&set_value, "value", node.location);
