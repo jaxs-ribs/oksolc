@@ -2838,3 +2838,31 @@ test "Hackerbane HB-AR-2026.17 hack-24 matches solc 0.8.36" {
         );
     }
 }
+
+test "Hackerbane HB-AR-2026.17 hack-23 matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-23",
+        "hackerbane-hack-23-explicit",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        var parallel = try compileWithParallelJobs(
+            std.testing.allocator,
+            @embedFile("standard-json/" ++ name ++ ".json"),
+            2,
+            null,
+            null,
+            null,
+        );
+        defer parallel.deinit();
+        try standard_json.compareExact(output.bytes, parallel.bytes);
+        try @import("ir_comparison.zig").compare(
+            std.testing.allocator,
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}

@@ -2041,14 +2041,14 @@ fn appendSolidityViaIRArtifacts(
                 parsed.tree.source_name,
                 contract_name,
                 "ir",
-                true,
+                false,
             );
             const wants_optimized_ir = isArtifactRequested(
                 &settings.projection.output_selection,
                 parsed.tree.source_name,
                 contract_name,
                 "irOptimized",
-                true,
+                false,
             );
             const wants_metadata = isArtifactRequested(
                 &settings.projection.output_selection,
@@ -2864,14 +2864,14 @@ fn parallelViaIRRequests(
             source_name,
             contract_name,
             "ir",
-            true,
+            false,
         ),
         .wants_optimized_ir = isArtifactRequested(
             &settings.projection.output_selection,
             source_name,
             contract_name,
             "irOptimized",
-            true,
+            false,
         ),
         .wants_metadata = isArtifactRequested(
             &settings.projection.output_selection,
