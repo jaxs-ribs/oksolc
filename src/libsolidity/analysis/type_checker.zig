@@ -3019,12 +3019,14 @@ pub const TypeChecker = struct {
             );
             return requested_type;
         }
-        if (value.names.len != 0)
+        if (value.names.len != 0) {
             try self.reporter.typeError(
                 errorId(5153),
                 node.location,
                 "Type conversion cannot allow named arguments.",
             );
+            return requested_type;
+        }
         const argument_type = (try expressionAnnotation(
             self.tree,
             value.arguments[0],
