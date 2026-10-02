@@ -2644,34 +2644,7 @@ fn validateSourcePathArguments(
         if (path.len == 0) return error.InvalidIncludePath;
 }
 
-fn openSourceFileNonblocking(
-    parent: std.Io.Dir,
-    io: std.Io,
-    component: []const u8,
-) !std.Io.File {
-    if (comptime builtin.os.tag == .windows or
-        builtin.os.tag == .wasi or
-        builtin.os.tag == .uefi)
-    {
-        return parent.openFile(io, component, .{
-            .mode = .read_only,
-            .allow_directory = false,
-            .follow_symlinks = false,
-        });
-    }
-
-    var flags: std.posix.O = .{
-        .ACCMODE = .RDONLY,
-        .NOFOLLOW = true,
-    };
-    if (@hasField(std.posix.O, "CLOEXEC")) flags.CLOEXEC = true;
-    if (@hasField(std.posix.O, "NONBLOCK")) flags.NONBLOCK = true;
-    const handle = try std.posix.openat(parent.handle, component, flags, 0);
-    return .{
-        .handle = handle,
-        .flags = .{ .nonblocking = @hasField(std.posix.O, "NONBLOCK") },
-    };
-}
+const openSourceFileNonblocking = ProjectSources.openSourceFileNonblocking;
 
 fn readInputAlloc(init: std.process.Init, path: ?[]const u8) ![]u8 {
     return readDocumentAlloc(init, path, max_input_bytes);
@@ -3005,6 +2978,35 @@ test "filesystem source loader rejects symlink escapes" {
     )) {
         .denied => {},
         else => return error.UnexpectedSourceReadResult,
+    }
+}
+
+test "compile entry points reject file and directory symlinks" {
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDirPath(io, "project/src");
+    try temporary.dir.createDirPath(io, "outside");
+    try temporary.dir.writeFile(io, .{ .sub_path = "outside/Secret.sol", .data = "contract Secret {}" });
+    try temporary.dir.writeFile(io, .{ .sub_path = "project/src/C.sol", .data = "contract C {}" });
+    try temporary.dir.symLink(io, "../../outside/Secret.sol", "project/src/link.sol", .{});
+    try temporary.dir.symLink(io, "C.sol", "project/src/local.sol", .{});
+    try temporary.dir.symLink(io, "../../outside", "project/src/linked", .{ .is_directory = true });
+    const project = try temporary.dir.realPathFileAlloc(io, "project", allocator);
+    defer allocator.free(project);
+    for ([_][]const u8{ "src/link.sol", "src/local.sol", "src/linked/Secret.sol" }) |relative| {
+        const path = try std.Io.Dir.path.join(allocator, &.{ project, relative });
+        defer allocator.free(path);
+        if (CompileInput.loadSourcesAt(allocator, io, &.{path}, project)) |result| {
+            var loaded = result;
+            loaded.deinit();
+            return error.SymlinkSourceAccepted;
+        } else |err| switch (err) {
+            error.SourceNotRegularFile, error.SymLinkLoop, error.NotDir => {},
+            else => return err,
+        }
     }
 }
 
