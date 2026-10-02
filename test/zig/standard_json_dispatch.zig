@@ -1672,7 +1672,7 @@ test "Solidity indexed reference and function events plus dynamic custom errors 
     try std.testing.expectEqual(solidity.execution.Backend.zig, output.execution.backend);
 }
 
-test "Solidity named events and custom errors match upstream argument ordering" {
+test "Solidity named events and custom errors preserve argument binding" {
     var dispatcher: libsolc.Dispatcher = .{};
     var output = try dispatcher.compiler().compile(std.testing.allocator, .{
         .input = @embedFile("standard-json/solidity-named-events-errors-bytecode.json"),
@@ -1684,6 +1684,25 @@ test "Solidity named events and custom errors match upstream argument ordering" 
         output.bytes,
     );
     try std.testing.expectEqual(solidity.execution.Backend.zig, output.execution.backend);
+}
+
+test "Solidity named require errors match positional encoding" {
+    // The reference uses positional arguments, with side effects evaluated first
+    // in source order. solc 0.8.36 miscompiles the equivalent named require calls.
+    inline for (.{
+        "solidity-require-named-errors-bytecode",
+        "solidity-require-positional-errors-bytecode",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/solidity-require-named-errors-bytecode.json"),
+            output.bytes,
+        );
+    }
 }
 
 test "Solidity creation and deployed internal-function dispatch match via-IR bytecode exactly" {

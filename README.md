@@ -9,8 +9,8 @@ purposes, allowing faster iteration on the developer experience.
 **We don’t consider `oksolc` to be production ready for deploying smart
 contracts onchain, and recommend using the original solc compiler for
 deployment. That said, we strive to be byte-compatible at this stage with
-Solidity 0.8.36. Any deviation in compiler output should be considered a bug and
-reported in Issues.**
+Solidity 0.8.36, apart from the documented exceptions below. Other deviations in
+compiler output should be considered bugs and reported in Issues.**
 
 The supported compilation path is the optimized, via-IR compilation through the
 Standard JSON interface.
@@ -30,6 +30,11 @@ and controls that we used.
 
 The compatibility target is the original Solidity `0.8.36` compiler for Standard
 JSON, creation bytecode, diagnostics, and deterministic output.
+
+Intentional exceptions:
+
+- Named custom-error arguments in `require` encode in declaration order.
+- Array bounds retain hexadecimal spelling in IR.
 
 The `compile` command enables the optimizer with 200 runs. Use `standard-json`
 when exact control of compiler settings or output selection is required.
