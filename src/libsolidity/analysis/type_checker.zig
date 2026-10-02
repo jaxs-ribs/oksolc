@@ -4567,7 +4567,16 @@ pub const TypeChecker = struct {
             };
         }
         if (!std.mem.eql(u8, name, "push")) return null;
-        const argument_count = if (arguments) |value| value.types.items.len else 0;
+        const argument_count = if (arguments) |value| value.types.items.len else {
+            const message = try std.fmt.allocPrint(
+                self.allocator,
+                "Member \"push\" not unique after argument-dependent lookup in {s}.",
+                .{try self.typeNameTemporary(owner_type)},
+            );
+            defer self.allocator.free(message);
+            try self.reporter.fatal(errorId(6675), .TypeError, node.location, null, message);
+            unreachable;
+        };
         if (argument_count == 0) {
             const returns = [_]*const Types.Type{array.base_type};
             const return_names = [_][]const u8{""};
@@ -4598,7 +4607,6 @@ pub const TypeChecker = struct {
             null,
             .{},
         );
-        _ = node;
         return .{
             .type_ref = try self.type_provider.withBoundFirstArgument(unbound),
             .is_pure = false,
