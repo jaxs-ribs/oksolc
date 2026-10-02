@@ -5000,8 +5000,6 @@ pub const TypeChecker = struct {
                     };
                 }
             },
-            .Integer => if (std.mem.eql(u8, name, "min") or std.mem.eql(u8, name, "max"))
-                return .{ .type_ref = actual_type, .is_pure = true },
             .Array => |array| if (array.kind != .Ordinary and std.mem.eql(u8, name, "concat")) {
                 const returns = [_]*const Types.Type{try self.type_provider.withLocationIfReference(
                     .Memory,
