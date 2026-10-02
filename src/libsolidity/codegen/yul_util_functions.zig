@@ -4246,7 +4246,7 @@ pub const YulUtilFunctions = struct {
         errdefer self.function_collector.abortFunction(name);
         const value_count = try TypeBehavior.sizeOnStack(from_type);
         const generator = try self.function_collector.generator(self.evm_version);
-        const values = try generator.indexedNames("value_", value_count);
+        const values = try generator.indexedNames("value", value_count);
         const panic = try self.panicFunction(.resource_error);
         defer self.allocator.free(panic);
         const extract = if (array.isByteArrayOrString())
@@ -6435,7 +6435,7 @@ test "Yul AST panic and empty-message revert helpers match stable names and payl
     try std.testing.expect(std.mem.find(u8, code, "revert(0, 0)") != null);
 }
 
-test "Yul AST storage updates accept implicitly convertible rational literal sources" {
+test "Yul AST storage updates accept rational sources and preserve push parameter names" {
     var type_provider = try TypeProviderModule.TypeProvider.init(std.testing.allocator);
     defer type_provider.deinit();
     var collector = CollectorModule.MultiUseYulFunctionCollector.init(std.testing.allocator);
@@ -6460,9 +6460,15 @@ test "Yul AST storage updates accept implicitly convertible rational literal sou
         "update_storage_value_offset_0_t_rational_7_by_1_to_t_uint256",
         update,
     );
+    const push = try utils.storageArrayPushFunction(
+        try type_provider.array(.Storage, type_provider.uint256()),
+        null,
+    );
+    defer std.testing.allocator.free(push);
 
     const code = try collector.testFunctionsAlloc();
     defer std.testing.allocator.free(code);
+    try std.testing.expect(std.mem.find(u8, code, "(array, value0)") != null);
     try std.testing.expect(std.mem.find(
         u8,
         code,
