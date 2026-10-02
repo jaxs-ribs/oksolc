@@ -541,12 +541,20 @@ pub const Parser = struct {
                 var literal: ASTModule.Literal = .{
                     .debug_data = self.createDebugData(),
                     .kind = kind,
-                    .value = try Utilities.valueOfLiteral(
+                    .value = Utilities.valueOfLiteral(
                         self.allocator,
                         self.currentLiteral(),
                         kind,
                         unlimited_literal_argument and kind == .String,
-                    ),
+                    ) catch |err| switch (err) {
+                        // Preserve oversized digits for the analyzer's range diagnostic.
+                        error.InvalidNumberLiteral => try ASTModule.LiteralValue.initNumeric(
+                            self.allocator,
+                            0,
+                            self.currentLiteral(),
+                        ),
+                        else => return err,
+                    },
                 };
                 errdefer literal.deinit(self.allocator);
                 _ = try self.advance();
@@ -958,12 +966,11 @@ fn nativeLocation(debug_data: anytype) SourceLocation {
 fn isValidNumberLiteral(literal: []const u8) bool {
     if (std.mem.startsWith(u8, literal, "0x")) {
         if (literal.len == 2) return false;
-        _ = std.fmt.parseUnsigned(u256, literal[2..], 16) catch return false;
+        for (literal[2..]) |character| if (!std.ascii.isHex(character)) return false;
         return true;
     }
     for (literal) |character| if (!std.ascii.isDigit(character)) return false;
     if (literal.len == 0) return false;
-    _ = std.fmt.parseUnsigned(u256, literal, 10) catch return false;
     return true;
 }
 
