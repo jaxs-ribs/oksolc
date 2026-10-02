@@ -1,0 +1,2037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Hackerbane Assessment Report: OKcontract oksolc</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <meta name="description" content="Compiler assessment of okcontract/oksolc at a593391 against solc 0.8.36. One Critical on assembly JSON data-key order. Fifteen High. Solidity via-IR bytecode matched on the campaign.">
+  <link rel="canonical" href="https://hackerbane.com/reports/hb-ar-2026.17-oksolc.html">
+  <link rel="alternate" hreflang="en" href="https://hackerbane.com/reports/hb-ar-2026.17-oksolc.html">
+  <link rel="alternate" hreflang="x-default" href="https://hackerbane.com/reports/hb-ar-2026.17-oksolc.html">
+  <meta name="robots" content="index, follow">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Hackerbane">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:title" content="Hackerbane Assessment Report: OKcontract oksolc">
+  <meta property="og:description" content="Compiler assessment of okcontract/oksolc at a593391 against solc 0.8.36. One Critical on assembly JSON data-key order. Fifteen High. Solidity via-IR bytecode matched on the campaign.">
+  <meta property="og:url" content="https://hackerbane.com/reports/hb-ar-2026.17-oksolc.html">
+  <meta property="og:image" content="https://hackerbane.com/og?title=Hackerbane%20Assessment%20Report%3A%20OKcontract%20oksolc">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Hackerbane Assessment Report: OKcontract oksolc">
+  <meta property="article:published_time" content="2026-09-30">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Hackerbane Assessment Report: OKcontract oksolc">
+  <meta name="twitter:description" content="Compiler assessment of okcontract/oksolc at a593391 against solc 0.8.36. One Critical on assembly JSON data-key order. Fifteen High.">
+  <meta name="twitter:image" content="https://hackerbane.com/og?title=Hackerbane%20Assessment%20Report%3A%20OKcontract%20oksolc">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","name":"Hackerbane Assessment Report: OKcontract oksolc","headline":"Hackerbane Assessment Report: OKcontract oksolc","description":"Compiler assessment of okcontract/oksolc at a593391 against solc 0.8.36.","url":"https://hackerbane.com/reports/hb-ar-2026.17-oksolc.html","datePublished":"2026-09-30","inLanguage":"en","author":{"@type":"Organization","name":"Hackerbane","url":"https://hackerbane.com"},"publisher":{"@type":"Organization","name":"Hackerbane","url":"https://hackerbane.com"},"mainEntityOfPage":"https://hackerbane.com/reports/hb-ar-2026.17-oksolc.html"}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://hackerbane.com/"},{"@type":"ListItem","position":2,"name":"Audit reports","item":"https://hackerbane.com/reports"},{"@type":"ListItem","position":3,"name":"OKcontract oksolc","item":"https://hackerbane.com/reports/hb-ar-2026.17-oksolc.html"}]}</script>
+  <style>
+/* Hackerbane assessment theme.
+   Source: hackerbane.com report chrome (HB-AR-2026.8 visual tokens).
+   Body paper is --sheet. Cover is --paper (near black).
+   Fonts: copy manrope-latin-wght.woff2, ibm-plex-mono-latin-400.woff2,
+   ibm-plex-mono-latin-500.woff2 next to the HTML as ./fonts/ and keep these urls.
+*/
+
+@font-face {
+      font-family: Manrope;
+      font-style: normal;
+      font-weight: 200 800;
+      font-display: swap;
+      src: url("./fonts/manrope-latin-wght.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "IBM Plex Mono";
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+      src: url("./fonts/ibm-plex-mono-latin-400.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "IBM Plex Mono";
+      font-style: normal;
+      font-weight: 500;
+      font-display: swap;
+      src: url("./fonts/ibm-plex-mono-latin-500.woff2") format("woff2");
+    }
+    :root {
+      --paper: #050505;
+      --ink: #f3f4f1;
+      --sheet: #f3f4f1;
+      --sheet-ink: #141714;
+      --rule: #3a3b38;
+      --brass: #d4b46a;
+      --proof: #7eb8a6;
+      --lake: #f2a3a3;
+      --vellum: #141414;
+      --muted: color-mix(in srgb, var(--sheet-ink) 56%, transparent);
+      --panel: color-mix(in srgb, var(--sheet-ink) 6%, var(--sheet));
+      --code: color-mix(in srgb, var(--sheet-ink) 8%, var(--sheet));
+    }
+
+    @page {
+      size: A4;
+      margin: 16mm 16mm 18mm 16mm;
+      background: var(--sheet);
+      @top-left {
+        content: "Hackerbane · Assessment Report";
+        font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+        font-size: 8pt;
+        color: #3a3b38;
+      }
+      @bottom-left {
+        content: "HB-AR-2026.17";
+        font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+        font-size: 8pt;
+        color: #3a3b38;
+      }
+      @bottom-right {
+        content: counter(page);
+        font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+        font-size: 8pt;
+        color: #3a3b38;
+      }
+    }
+
+    @page:first {
+      margin: 0;
+      background: #050505;
+      @top-left { content: none; }
+      @bottom-left { content: none; }
+      @bottom-right { content: none; }
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--sheet);
+      color: var(--sheet-ink);
+      font-family: Manrope, "Segoe UI", Tahoma, sans-serif;
+      font-size: 10pt;
+      line-height: 1.48;
+      font-weight: 400;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    h1, h2, .wordmark, .article-title, .cover-kicker, .finding-id {
+      font-family: Manrope, "Segoe UI", Tahoma, sans-serif;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .mono, .doc-id, .field-label, table.meta th,
+    .page-head, .cover-foot, .kicker, .sev, .loc,
+    table.grid th, .toc-num, .stat-label, .finding-tag {
+      font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    }
+
+    .seal-css {
+      position: relative;
+      width: 52px;
+      height: 52px;
+      flex: 0 0 52px;
+      border: 2px solid currentColor;
+      box-sizing: border-box;
+    }
+    .seal-css .stem {
+      position: absolute;
+      top: 8px;
+      width: 6px;
+      height: 30px;
+      background: currentColor;
+    }
+    .seal-css .stem.l { left: 10px; }
+    .seal-css .stem.r { right: 10px; }
+    .seal-css .bar {
+      position: absolute;
+      top: 24px;
+      left: 6px;
+      width: 36px;
+      height: 2px;
+      background: currentColor;
+    }
+    .seal-css .tick {
+      position: absolute;
+      top: 10px;
+      left: 18px;
+      width: 2px;
+      height: 15px;
+      background: var(--brass);
+    }
+
+    .lockup {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .wordmark {
+      font-size: 22pt;
+      line-height: 1;
+      font-weight: 600;
+    }
+    .lockup-org {
+      margin-left: auto;
+    }
+    .lockup-org svg {
+      display: block;
+      height: 22px;
+      width: auto;
+      color: currentColor;
+    }
+    .lockup-org .report-org-eye { fill: #76b900; }
+    .lockup-org-name {
+      font-size: 13pt;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: inherit;
+    }
+    .cover {
+      margin: -12mm -16mm 0;
+      padding: 16mm 18mm 14mm;
+      background: var(--paper);
+      color: var(--ink);
+      --muted: color-mix(in srgb, var(--ink) 56%, transparent);
+      min-height: 265mm;
+      display: flex;
+      flex-direction: column;
+      page-break-after: always;
+      break-after: page;
+    }
+
+    .cover-kicker {
+      font-size: 8.5pt;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin: 18mm 0 10px;
+      color: var(--brass);
+    }
+
+    .cover h1 {
+      font-size: 30pt;
+      line-height: 1.08;
+      margin: 0 0 14px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .cover-lede {
+      max-width: 62ch;
+      font-size: 11.5pt;
+      line-height: 1.4;
+      margin: 0 0 22px;
+      color: color-mix(in srgb, var(--ink) 78%, transparent);
+    }
+    .cover-lede code {
+      font-size: 10.5pt;
+      letter-spacing: 0;
+      color: inherit;
+    }
+
+    .cover code {
+      background: none;
+      padding: 0;
+      color: inherit;
+    }
+
+    /* Body `a` is --sheet-ink (#141714). That is unreadable on --paper. */
+    .cover a,
+    .cover-lede a,
+    .cover-meta a {
+      color: var(--brass);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .counts {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin: 0 0 22px;
+    }
+    .count {
+      background: var(--vellum);
+      border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+      padding: 10px 8px 8px;
+      text-align: left;
+    }
+    .count .n {
+      font-family: Manrope, "Segoe UI", Tahoma, sans-serif;
+      font-size: 22pt;
+      line-height: 1;
+      font-weight: 600;
+      display: block;
+      margin-bottom: 4px;
+      color: var(--ink);
+    }
+    .count .stat-label {
+      font-size: 7.5pt;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .count.lake { border-top: 3px solid var(--lake); }
+    .count.brass { border-top: 3px solid var(--brass); }
+    .count.muted { border-top: 3px solid var(--rule); }
+    .count.proof { border-top: 3px solid var(--proof); }
+
+    .cover-meta {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .cover-meta th,
+    .cover-meta td {
+      text-align: left;
+      vertical-align: bottom;
+      padding: 9px 0;
+      border-bottom: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+      font-weight: 400;
+      color: var(--ink);
+    }
+    .cover-meta th {
+      width: 44mm;
+      font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+      font-size: 8pt;
+      font-weight: 400;
+      color: var(--muted);
+    }
+    .cover-meta a { color: var(--brass); }
+
+    .cover-foot {
+      margin-top: auto;
+      padding-top: 14px;
+      border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 8pt;
+      color: var(--muted);
+    }
+
+    .page-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 0 0 10px;
+      font-size: 7.5pt;
+      color: var(--muted);
+    }
+    .page-head .left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .mini-seal {
+      position: relative;
+      width: 14px;
+      height: 14px;
+      flex: 0 0 14px;
+      border: 1px solid var(--sheet-ink);
+    }
+    .mini-seal .stem {
+      position: absolute;
+      top: 2px;
+      width: 2px;
+      height: 8px;
+      background: var(--sheet-ink);
+    }
+    .mini-seal .stem.l { left: 3px; }
+    .mini-seal .stem.r { right: 3px; }
+    .mini-seal .bar {
+      position: absolute;
+      top: 6px;
+      left: 2px;
+      width: 8px;
+      height: 1px;
+      background: var(--sheet-ink);
+    }
+    .hair {
+      height: 1px;
+      background: var(--rule);
+      border: 0;
+      margin: 0 0 14px;
+    }
+
+    h2 {
+      font-size: 15pt;
+      line-height: 1.2;
+      margin: 16px 0 8px;
+      page-break-after: avoid;
+      color: var(--sheet-ink);
+    }
+    h3 {
+      font-family: Manrope, "Segoe UI", Tahoma, sans-serif;
+      font-size: 10.5pt;
+      font-weight: 700;
+      margin: 12px 0 6px;
+      page-break-after: avoid;
+      color: var(--sheet-ink);
+    }
+    p { margin: 0 0 8px; }
+    a { color: var(--sheet-ink); }
+
+    .toc { list-style: none; margin: 0 0 16px; padding: 0; }
+    .toc li {
+      display: flex;
+      gap: 10px;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--rule);
+      align-items: flex-start;
+    }
+    .toc-num { width: 14mm; font-size: 8pt; color: var(--muted); flex: 0 0 14mm; }
+    .toc li span:last-child { min-width: 0; flex: 1; }
+
+    .callout {
+      background: var(--panel);
+      border: 1px solid var(--rule);
+      padding: 10px 12px;
+      margin: 8px 0 10px;
+      page-break-inside: avoid;
+    }
+    .callout.lake { border-left: 3px solid var(--lake); }
+    .callout.proof { border-left: 3px solid var(--proof); }
+    .callout.brass { border-left: 3px solid var(--brass); }
+    .callout p:last-child { margin-bottom: 0; }
+
+    .caps {
+      font-size: 8.6pt;
+      line-height: 1.42;
+      text-transform: uppercase;
+      background: var(--panel);
+      color: var(--sheet-ink);
+      border: 1px solid var(--rule);
+      border-left: 3px solid var(--brass);
+      padding: 12px 12px 10px;
+      margin: 8px 0 10px;
+    }
+    .caps p { margin: 0 0 8px; }
+    .caps p:last-child { margin: 0; }
+
+    table.grid {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 12px;
+      font-size: 9.5pt;
+    }
+    table.grid.keep { page-break-inside: avoid; }
+    table.grid th,
+    table.grid td {
+      border: 1px solid var(--rule);
+      padding: 6px 8px;
+      text-align: left;
+      vertical-align: top;
+      font-weight: 400;
+      background: var(--sheet);
+    }
+    table.grid th {
+      background: var(--panel);
+      color: var(--muted);
+      font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+      font-size: 8pt;
+    }
+    table.grid td.num { font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace; }
+    table.grid thead th { width: auto; }
+
+    pre, code {
+      font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+      letter-spacing: 0;
+    }
+    code {
+      font-size: 8.8pt;
+      background: var(--code);
+      padding: 0 3px;
+    }
+    pre {
+      background: var(--code);
+      color: var(--sheet-ink);
+      border: 1px solid var(--rule);
+      padding: 10px 12px;
+      margin: 8px 0 10px;
+      overflow-x: auto;
+      font-size: 8.2pt;
+      line-height: 1.45;
+      white-space: pre;
+      tab-size: 4;
+    }
+    pre code { background: none; padding: 0; }
+
+    table.listing {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--code);
+      border: 1px solid var(--rule);
+      margin: 0;
+      font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+      font-size: 7.8pt;
+      line-height: 1.45;
+    }
+    .listing-wrap {
+      overflow-x: auto;
+      margin: 4px 0 12px;
+      border: 1px solid var(--rule);
+      background: var(--code);
+    }
+    .listing-wrap table.listing { border: 0; }
+    table.listing td {
+      border: 0;
+      padding: 0 8px 0 0;
+      vertical-align: top;
+    }
+    table.listing td.ln {
+      width: 11mm;
+      color: var(--muted);
+      text-align: right;
+      padding: 1px 10px 1px 8px;
+      user-select: none;
+      white-space: nowrap;
+    }
+    table.listing td.src {
+      white-space: pre;
+      overflow-x: auto;
+      padding: 1px 10px 1px 0;
+    }
+    table.listing tbody tr:first-child td { padding-top: 8px; }
+    table.listing tbody tr:last-child td { padding-bottom: 8px; }
+
+    table.recs td:nth-child(1) { white-space: nowrap; width: 18mm; }
+    table.recs td:nth-child(2) { white-space: nowrap; width: 28mm; }
+    table.recs td:nth-child(4) { white-space: nowrap; width: 22mm; }
+    table.recs td:nth-child(3) { font-size: 9pt; line-height: 1.4; }
+
+    .finding {
+      border: 1px solid var(--rule);
+      background: var(--sheet);
+      padding: 12px 14px 10px;
+      margin: 0 0 14px;
+    }
+    .finding-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: baseline;
+      margin: 0 0 6px;
+    }
+    .finding-id {
+      font-size: 13pt;
+      line-height: 1.2;
+      margin: 0;
+    }
+    .finding-meta {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin: 0 0 8px;
+    }
+    .finding-tag {
+      font-size: 7.5pt;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border: 1px solid var(--rule);
+      padding: 2px 7px;
+      color: var(--muted);
+    }
+    .finding-tag.critical { color: var(--lake); border-color: var(--lake); font-weight: 500; }
+    .finding-tag.high { color: var(--lake); border-color: var(--lake); }
+    .finding-tag.medium { color: var(--brass); border-color: var(--brass); }
+    .finding-tag.low { color: var(--proof); border-color: var(--proof); }
+    .finding-tag.info { color: var(--muted); }
+    .finding-tag.proof { color: var(--proof); border-color: var(--proof); }
+    .count.critical { border-top: 3px solid var(--lake); }
+    .kicker {
+      font-size: 7.5pt;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 10px 0 4px;
+    }
+    .loc {
+      font-size: 8pt;
+      color: var(--muted);
+      margin: 0 0 8px;
+    }
+
+    .keep { page-break-inside: avoid; }
+    .section-break { page-break-before: always; break-before: page; }
+    strong { font-weight: 700; }
+
+    .body-wrap {
+      margin: 0 auto;
+      padding: 12mm 16mm 16mm;
+      max-width: 210mm;
+      background: var(--sheet);
+    }
+
+    .cover + .page-head { margin-top: 14mm; }
+
+    @media screen {
+      html, body {
+        background: var(--paper);
+        padding: 32px 16px 64px;
+      }
+      .body-wrap {
+        box-shadow: 0 28px 80px rgb(0 0 0 / 0.55);
+      }
+      .cover {
+        min-height: 0;
+      }
+    }
+
+    @media print {
+      html, body {
+        background: var(--sheet);
+        padding: 0;
+      }
+      .body-wrap {
+        box-shadow: none;
+        max-width: none;
+        padding: 0;
+      }
+      .cover {
+        margin: 0;
+        min-height: 297mm;
+        padding: 16mm 18mm 14mm;
+      }
+      .page-head,
+      hr.hair {
+        display: none;
+      }
+      .listing-wrap {
+        overflow: visible;
+      }
+      table.listing td.src {
+        white-space: pre-wrap;
+        overflow: visible;
+      }
+    }
+
+  </style>
+</head>
+<body class="body-wrap">
+<section class="cover">
+  <div class="lockup">
+    <div class="seal-css" aria-hidden="true">
+      <span class="stem l"></span><span class="stem r"></span><span class="bar"></span><span class="tick"></span>
+    </div>
+    <div class="wordmark">Hackerbane</div>
+    <div class="lockup-org"><span class="lockup-org-name">OKcontract</span></div>
+  </div>
+  <div class="cover-kicker">Assessment Report</div>
+  <h1>OKcontract<br>oksolc</h1>
+  <p class="cover-lede">
+    oksolc is a Zig rewrite of solc. It only supports a normal 0.8.36 compile:
+    <code>via_ir = true</code>, <code>optimizer = true</code>, <code>optimizer_runs = 200</code>,
+    the same JSON input Foundry and Hardhat already send.
+    <code>via_ir = false</code> is rejected.
+    Hackerbane reviewed
+    <a href="https://github.com/okcontract/oksolc">okcontract/oksolc</a>
+    at <code>a59339132a1aecc8594a34cbba6b5a1bffbeeca8</code>
+    against solc <code>0.8.36+commit.8a079791</code>.
+    Report date is 30 September 2026.
+  </p>
+  <div class="counts">
+    <div class="count lake"><span class="n">1</span><span class="stat-label">Critical</span></div>
+    <div class="count lake"><span class="n">15</span><span class="stat-label">High</span></div>
+    <div class="count brass"><span class="n">3</span><span class="stat-label">Medium</span></div>
+    <div class="count proof"><span class="n">6</span><span class="stat-label">Low</span></div>
+    <div class="count muted"><span class="n">4</span><span class="stat-label">Info</span></div>
+  </div>
+  <table class="cover-meta">
+    <tbody>
+      <tr><th>Document</th><td>HB-AR-2026.17 &nbsp;/&nbsp; Crypto review</td></tr>
+      <tr><th>System</th><td>okcontract/oksolc 0.1.4, Solidity target 0.8.36</td></tr>
+      <tr><th>Scope</th><td>via_ir compiles (optimizer runs 200), Yul optimizer, assembly JSON import, CLI paths</td></tr>
+      <tr><th>Review commit</th><td>a59339132a1aecc8594a34cbba6b5a1bffbeeca8</td></tr>
+      <tr><th>Review</th><td>September 30th, 2026</td></tr>
+      <tr><th>Author</th><td>Hackerbane</td></tr>
+    </tbody>
+  </table>
+  <div class="cover-foot">
+    <a href="https://hackerbane.com">hackerbane.com</a>
+    <!--email_off--><a href="mailto:hello@hackerbane.com">hello@hackerbane.com</a><!--/email_off-->
+    <span>HB-AR-2026.17</span>
+  </div>
+</section>
+
+<div class="page-head">
+  <span class="left">
+    <span class="mini-seal" aria-hidden="true"><span class="stem l"></span><span class="stem r"></span><span class="bar"></span></span>
+    Hackerbane · Assessment Report
+  </span>
+  <span>HB-AR-2026.17</span>
+</div>
+<hr class="hair">
+
+<h2>Contents</h2>
+<ol class="toc">
+  <li><span class="toc-num"></span><span>Document revision history</span></li>
+  <li><span class="toc-num"></span><span>Contacts</span></li>
+  <li><span class="toc-num">1</span><span>Executive overview</span></li>
+  <li><span class="toc-num">1.1</span><span>Introduction</span></li>
+  <li><span class="toc-num">1.2</span><span>What we found</span></li>
+  <li><span class="toc-num">1.3</span><span>How this review was done</span></li>
+  <li><span class="toc-num">2</span><span>Scoring (BVSS)</span></li>
+  <li><span class="toc-num">2.4</span><span>Scope</span></li>
+  <li><span class="toc-num">3</span><span>Findings overview</span></li>
+  <li><span class="toc-num">4</span><span>Findings</span></li>
+  <li><span class="toc-num">4.1</span><a href="#HACK-01">Assembly data keys that differ only by case keep the other payload</a></li><li><span class="toc-num">4.2</span><a href="#HACK-02">oksolc compile follows a symlink out of the project</a></li><li><span class="toc-num">4.3</span><a href="#HACK-03">A PUSH value that already has 0x is assembled</a></li><li><span class="toc-num">4.4</span><a href="#HACK-04">Assembly tag integers are parsed as plain decimal</a></li><li><span class="toc-num">4.5</span><a href="#HACK-05">A subassembly key of 0x is rejected</a></li><li><span class="toc-num">4.6</span><a href="#HACK-06">super.f() crashes when the next base is unimplemented</a></li><li><span class="toc-num">4.7</span><a href="#HACK-07">Homestead call returning string memory is accepted</a></li><li><span class="toc-num">4.8</span><a href="#HACK-08">string.length is accepted</a></li><li><span class="toc-num">4.9</span><a href="#HACK-09">A bare storage push is accepted</a></li><li><span class="toc-num">4.10</span><a href="#HACK-10">.selector is accepted on internal functions and anonymous events</a></li><li><span class="toc-num">4.11</span><a href="#HACK-11">A state-variable function selector is a compile-time constant</a></li><li><span class="toc-num">4.12</span><a href="#HACK-12">uint256.min and uint256.max are accepted on the type name</a></li><li><span class="toc-num">4.13</span><a href="#HACK-13">An overloaded module member is dropped</a></li><li><span class="toc-num">4.14</span><a href="#HACK-14">A zero-argument library function aborts using-for lookup</a></li><li><span class="toc-num">4.15</span><a href="#HACK-15">memoryguard at 2^31 compiles on oksolc and ICEs solc</a></li><li><span class="toc-num">4.16</span><a href="#HACK-16">OpenZeppelin 5.6.1 dies in the unused pruner</a></li>
+  <li><span class="toc-num">5</span><span>Recommendations</span></li>
+  <li><span class="toc-num">6</span><span>Fuzz testing</span></li>
+  <li><span class="toc-num">7</span><span>Static analysis</span></li>
+  <li><span class="toc-num">8</span><span>Remediation record</span></li>
+  <li><span class="toc-num">9</span><span>Exhibit B</span></li>
+</ol>
+
+<h2>Document revision history</h2>
+<table class="grid keep">
+  <thead><tr><th>Version</th><th>Date</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>0.4</td><td>09/30/2026</td><td>Draft Review. Every finding is PENDING.</td></tr>
+  </tbody>
+</table>
+
+<h2>Contacts</h2>
+<table class="grid keep">
+  <thead><tr><th>Contact</th><th>Company</th><th>Email</th></tr></thead>
+  <tbody>
+    <tr><td>Hackerbane</td><td>Hackerbane</td><td><!--email_off--><a href="mailto:hello@hackerbane.com">hello@hackerbane.com</a><!--/email_off--></td></tr>
+  </tbody>
+</table>
+
+<h2>1 &nbsp; Executive overview</h2>
+<h3>1.1 &nbsp; Introduction</h3>
+<p>
+  oksolc 0.1.4 compiles Solidity through the via-IR pipeline and aims to match solc 0.8.36
+  bytecode. Hackerbane reviewed
+  <a href="https://github.com/okcontract/oksolc">okcontract/oksolc</a>
+  at commit <code>a59339132a1aecc8594a34cbba6b5a1bffbeeca8</code>.
+  The oracle is solc <code>0.8.36+commit.8a079791</code>, source tag v0.8.36 commit
+  <code>8a079791d9cca7a6c03fd6a8429b93aa3bddefed</code>.
+  Report date is 30 September 2026. Scope is in section 2.4.
+</p>
+
+<h3>1.2 &nbsp; What we found</h3>
+<p>
+  Creation and runtime bytecode matched solc on the 50-source via-IR campaign and on the
+  frozen corpus (5/5). Seaport 1.6 matched, including the one stack-too-deep error.
+  That is the path the README supports.
+</p>
+<p>
+  HACK-01 is assembly JSON import. <code>parseAssemblyJSONNode</code> applies <code>.data</code>
+  strings in parse order. solc applies them in sorted key order. Two keys for one hash,
+  differing only by case, deploy <code>22</code> on oksolc and <code>11</code> on solc.
+  oksolc does not ship an <code>import-asm-json</code> command. Its JSON printer sorts keys,
+  so a round trip of an oksolc export does not hit HACK-01.
+</p>
+<p>
+  Fifteen High findings are open. HACK-02 follows a symlink out of the project on
+  <code>oksolc compile</code>. HACK-03 through HACK-05 are the other assembly JSON integer
+  parsers. HACK-06 aborts on <code>super.f()</code> when the next base is unimplemented.
+  HACK-07 through HACK-13 accept Solidity that solc 0.8.36 rejects, or drop an overload
+  solc compiles. HACK-14 aborts on <code>using L for *</code> when a zero-argument overload
+  exists (Solady 0.1.26, reduced). HACK-15 emits bytecode for <code>memoryguard</code> at
+  2^31, where solc hits an internal compiler error. HACK-16 dies in the unused pruner on
+  OpenZeppelin 5.6.1, reduced to <code>ERC721ConsecutiveTarget</code> plus 37 imports.
+</p>
+<p>
+  Three Medium findings are IR text that differs while Solidity bytecode matches.
+  Six Low findings are diagnostic codes, JSON field shape, or a Yul literal that both
+  compilers reject under different error classes. Four Informational rows cover
+  <code>viaIR: false</code> and three solc behaviors: named <code>require</code> field order,
+  the memoryguard shift precedence, and a SIGSEGV on assembly tag 2^32-1 (HACK-27).
+</p>
+<h3>Open Highs</h3>
+<table class="grid">
+  <thead><tr><th>ID</th><th>Action</th><th>Status</th></tr></thead>
+  <tbody>
+  <tr><td><a href="#HACK-01">HACK-01</a></td><td>Assembly data keys that differ only by case keep the other payload</td><td>PENDING</td></tr><tr><td><a href="#HACK-02">HACK-02</a></td><td>oksolc compile follows a symlink out of the project</td><td>PENDING</td></tr><tr><td><a href="#HACK-03">HACK-03</a></td><td>A PUSH value that already has 0x is assembled</td><td>PENDING</td></tr><tr><td><a href="#HACK-04">HACK-04</a></td><td>Assembly tag integers are parsed as plain decimal</td><td>PENDING</td></tr><tr><td><a href="#HACK-05">HACK-05</a></td><td>A subassembly key of 0x is rejected</td><td>PENDING</td></tr><tr><td><a href="#HACK-06">HACK-06</a></td><td>super.f() crashes when the next base is unimplemented</td><td>PENDING</td></tr><tr><td><a href="#HACK-07">HACK-07</a></td><td>Homestead call returning string memory is accepted</td><td>PENDING</td></tr><tr><td><a href="#HACK-08">HACK-08</a></td><td>string.length is accepted</td><td>PENDING</td></tr><tr><td><a href="#HACK-09">HACK-09</a></td><td>A bare storage push is accepted</td><td>PENDING</td></tr><tr><td><a href="#HACK-10">HACK-10</a></td><td>.selector is accepted on internal functions and anonymous events</td><td>PENDING</td></tr><tr><td><a href="#HACK-11">HACK-11</a></td><td>A state-variable function selector is a compile-time constant</td><td>PENDING</td></tr><tr><td><a href="#HACK-12">HACK-12</a></td><td>uint256.min and uint256.max are accepted on the type name</td><td>PENDING</td></tr><tr><td><a href="#HACK-13">HACK-13</a></td><td>An overloaded module member is dropped</td><td>PENDING</td></tr><tr><td><a href="#HACK-14">HACK-14</a></td><td>A zero-argument library function aborts using-for lookup</td><td>PENDING</td></tr><tr><td><a href="#HACK-15">HACK-15</a></td><td>memoryguard at 2^31 compiles on oksolc and ICEs solc</td><td>PENDING</td></tr><tr><td><a href="#HACK-16">HACK-16</a></td><td>OpenZeppelin 5.6.1 dies in the unused pruner</td><td>PENDING</td></tr>
+  </tbody>
+</table>
+
+<h3>1.3 &nbsp; How this review was done</h3>
+<ul>
+  <li>Line read of the via-IR pipeline, Yul optimizer, EVM assembly, Standard JSON, paths, and the incremental cache, recorded in <code>audit/04-review/</code>.</li>
+  <li>Differential compile of 50 Solidity sources, via-IR, optimizer runs 200, cancun, against solc 0.8.36. Creation and runtime bytecode matched. A second batch covered try/catch, modifiers, immutables, and Yul loops.</li>
+  <li>Issue 8 inputs: Seaport 1.6 (bytecode match, shared stack-too-deep), Solady 0.1.26 (HACK-14), OpenZeppelin 5.6.1 (HACK-16).</li>
+  <li><code>--jobs</code> 1 and 4 matched a serial compile. A user-config SQLite cache matched <code>--no-cache</code> on that input.</li>
+  <li>EMI on two contracts with metadata stripped. Opt-level matrix: optimizer off, runs 1, 200, and 1000000, shanghai and cancun. Bytecode matched.</li>
+  <li>63 <code>bugs.json</code> shapes, plus 18 blog proofs of concept that had a static code block, and the SOL-2023-3 Yul verbatim object. No bytecode diff.</li>
+  <li>Assembly JSON import harness: <code>Assembly.fromJSON</code> then <code>assemble</code>, compared with <code>solc --experimental --import-asm-json --bin</code>. The harness source was removed after the run.</li>
+  <li><code>zig build lint</code> reported no issues. <code>zig build fuzz-json-adapter</code> under ASan passed 1000 mutations plus 5 seeds. Two unit-test binaries that the build log marked <code>failed command</code> were re-run and passed 141 and 583 tests.</li>
+</ul>
+
+<h2>2 &nbsp; Scoring (BVSS)</h2>
+<p>
+  Each finding gets a BVSS vector. Exploitability is Attack Origin, Attack Cost, and
+  Attack Complexity. Impact is Confidentiality, Integrity, Availability, Deposit, and
+  Yield. The coefficient is Reversibility times Scope. The printed score is
+  min(10, E * I * C * 10), rounded up to one decimal.
+</p>
+<p class="mono">S = min(10, E * I * C * 10)</p>
+<h3>2.1 &nbsp; Exploitability</h3>
+<p>E is the product of Attack Origin (AO), Attack Cost (AC), and Attack Complexity (AX).</p>
+<table class="grid keep">
+  <thead><tr><th>Metric</th><th>Value</th><th>Numeric</th></tr></thead>
+  <tbody>
+    <tr><td>Attack Origin (AO)</td><td>Arbitrary (AO:A) / Specific (AO:S)</td><td>1 / 0.2</td></tr>
+    <tr><td>Attack Cost (AC)</td><td>Low / Medium / High</td><td>1 / 0.67 / 0.33</td></tr>
+    <tr><td>Attack Complexity (AX)</td><td>Low / Medium / High</td><td>1 / 0.67 / 0.33</td></tr>
+  </tbody>
+</table>
+<h3>2.2 &nbsp; Impact</h3>
+<p>I is max(metrics) plus one quarter of the rest. Integrity and Availability are used here. Deposit and Yield stay None: this tree does not custody funds.</p>
+<table class="grid keep">
+  <thead><tr><th>Metric</th><th>None</th><th>Low</th><th>Medium</th><th>High</th><th>Critical</th></tr></thead>
+  <tbody>
+    <tr><td>C, I, A, D, Y</td><td>0</td><td>0.25</td><td>0.5</td><td>0.75</td><td>1</td></tr>
+  </tbody>
+</table>
+<h3>2.3 &nbsp; Severity coefficient</h3>
+<p>C is Reversibility (R) times Scope (S). R:N is 1, R:P is 0.5, R:F is 0.25. S:U is 1, S:C is 1.25.</p>
+<table class="grid keep">
+  <thead><tr><th>Band</th><th>Range</th></tr></thead>
+  <tbody>
+    <tr><td>Critical</td><td>9.0 - 10.0</td></tr>
+    <tr><td>High</td><td>7.0 - 8.9</td></tr>
+    <tr><td>Medium</td><td>4.5 - 6.9</td></tr>
+    <tr><td>Low</td><td>2.0 - 4.4</td></tr>
+    <tr><td>Informational</td><td>0.0 - 1.9</td></tr>
+  </tbody>
+</table>
+<p>
+  Wrong deployed bytes are Integrity Critical (HACK-01, score 10). A program solc rejects
+  and oksolc compiles, or the reverse when the bytes differ, is Integrity High (7.5).
+  A compile that aborts on input solc accepts is Availability High (7.5). IR spelling
+  with matching bytecode is Integrity Medium (5.0). A different diagnostic with no bytecode
+  is Integrity Low (2.5). Oracle notes about solc, and the documented <code>viaIR: false</code>
+  rejection, are impact None (0.0) and printed as Informational.
+</p>
+
+<h3>2.4 &nbsp; Scope</h3>
+<p>Code repositories:</p>
+<ol>
+  <li>oksolc
+    <ul>
+      <li>Repository: okcontract/oksolc</li>
+      <li>Commit ID: a59339132a1aecc8594a34cbba6b5a1bffbeeca8</li>
+      <li>Product version 0.1.4. Zig 0.16.0. Optimize mode ReleaseFast.</li>
+    </ul>
+  </li>
+  <li>solc oracle
+    <ul>
+      <li>Binary: 0.8.36+commit.8a079791.Linux.g++</li>
+      <li>Source tag v0.8.36, commit 8a079791d9cca7a6c03fd6a8429b93aa3bddefed</li>
+    </ul>
+  </li>
+</ol>
+<p>In scope: compiles with <code>via_ir = true</code>, optimizer on, <code>optimizer_runs = 200</code> (the JSON input Foundry and Hardhat send to solc), the Yul optimizer, EVM assembly including JSON import, the C ABI error mapping, CLI path checks, and the incremental cache equality rule (a cached or parallel compile must match a clean single-thread compile).</p>
+<p>Out of scope:</p>
+<ul>
+  <li>Browser UI. <code>-Dbrowser</code> is off by default.</li>
+  <li>SMT.</li>
+  <li>Legacy codegen as a product path. <code>viaIR: false</code> is rejected (HACK-26).</li>
+  <li>Code after the pinned commit.</li>
+</ul>
+
+<h2>3 &nbsp; Findings overview</h2>
+<table class="grid keep">
+  <thead><tr><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Informational</th></tr></thead>
+  <tbody><tr><td class="num">1</td><td class="num">15</td><td class="num">3</td><td class="num">6</td><td class="num">4</td></tr></tbody>
+</table>
+<table class="grid">
+  <thead><tr><th>Security analysis</th><th>Risk level</th><th>Remediation</th></tr></thead>
+  <tbody>
+  <tr><td><a href="#HACK-01">(HACK-01) ASSEMBLY DATA KEYS THAT DIFFER ONLY BY CASE KEEP THE OTHER PAYLOAD</a></td><td>Critical (10)</td><td>PENDING</td></tr><tr><td><a href="#HACK-02">(HACK-02) OKSOLC COMPILE FOLLOWS A SYMLINK OUT OF THE PROJECT</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-03">(HACK-03) A PUSH VALUE THAT ALREADY HAS 0X IS ASSEMBLED</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-04">(HACK-04) ASSEMBLY TAG INTEGERS ARE PARSED AS PLAIN DECIMAL</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-05">(HACK-05) A SUBASSEMBLY KEY OF 0X IS REJECTED</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-06">(HACK-06) SUPER.F() CRASHES WHEN THE NEXT BASE IS UNIMPLEMENTED</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-07">(HACK-07) HOMESTEAD CALL RETURNING STRING MEMORY IS ACCEPTED</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-08">(HACK-08) STRING.LENGTH IS ACCEPTED</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-09">(HACK-09) A BARE STORAGE PUSH IS ACCEPTED</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-10">(HACK-10) .SELECTOR IS ACCEPTED ON INTERNAL FUNCTIONS AND ANONYMOUS EVENTS</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-11">(HACK-11) A STATE-VARIABLE FUNCTION SELECTOR IS A COMPILE-TIME CONSTANT</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-12">(HACK-12) UINT256.MIN AND UINT256.MAX ARE ACCEPTED ON THE TYPE NAME</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-13">(HACK-13) AN OVERLOADED MODULE MEMBER IS DROPPED</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-14">(HACK-14) A ZERO-ARGUMENT LIBRARY FUNCTION ABORTS USING-FOR LOOKUP</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-15">(HACK-15) MEMORYGUARD AT 2^31 COMPILES ON OKSOLC AND ICES SOLC</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-16">(HACK-16) OPENZEPPELIN 5.6.1 DIES IN THE UNUSED PRUNER</a></td><td>High (7.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-17">(HACK-17) EMPTY DISPATCH OMITS UNUSED SELECTOR SHIFT HELPER</a></td><td>Medium (5.0)</td><td>PENDING</td></tr><tr><td><a href="#HACK-18">(HACK-18) STORAGE ARRAY PUSH PARAMETER IS VALUE_0 NOT VALUE0</a></td><td>Medium (5.0)</td><td>PENDING</td></tr><tr><td><a href="#HACK-19">(HACK-19) YUL NUMBER SPELLING DIFFERS FROM SOLC 0.8.36</a></td><td>Medium (5.0)</td><td>PENDING</td></tr><tr><td><a href="#HACK-20">(HACK-20) NAMED TYPE CONVERSION ALSO REPORTS THE CONVERSION ERROR</a></td><td>Low (2.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-21">(HACK-21) NON-PAYABLE CONSTRUCTOR VALUE OPTION OMITS THE CONTRACT NAME</a></td><td>Low (2.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-22">(HACK-22) .GAS() IS A DEPRECATION ERROR INSTEAD OF A MISSING MEMBER</a></td><td>Low (2.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-23">(HACK-23) OUTPUT SELECTION STAR INCLUDES IR AND IROPTIMIZED</a></td><td>Low (2.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-24">(HACK-24) EMPTY STORAGE LAYOUT USES TYPES OBJECT INSTEAD OF NULL</a></td><td>Low (2.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-25">(HACK-25) A 2^256 YUL LITERAL IS A PARSER ERROR</a></td><td>Low (2.5)</td><td>PENDING</td></tr><tr><td><a href="#HACK-26">(HACK-26) VIAIR FALSE IS REJECTED WITH UNIMPLEMENTEDFEATUREERROR</a></td><td>Informational (0.0)</td><td>PENDING</td></tr><tr><td><a href="#HACK-27">(HACK-27) SOLC SEGFAULTS ON ASSEMBLY TAG 2^32-1</a></td><td>Informational (0.0)</td><td>PENDING</td></tr><tr><td><a href="#HACK-28">(HACK-28) REQUIRE NAMED CUSTOM ERROR ENCODES SOURCE ORDER</a></td><td>Informational (0.0)</td><td>PENDING</td></tr><tr><td><a href="#HACK-29">(HACK-29) SOLC MEMORYGUARD CEILING IS 2^31 FROM SHIFT PRECEDENCE</a></td><td>Informational (0.0)</td><td>PENDING</td></tr>
+  </tbody>
+</table>
+
+<h2>4 &nbsp; Findings</h2>
+
+<article class="finding" id="HACK-01">
+  <div class="finding-head"><h3 class="finding-id">4.1 (HACK-01) ASSEMBLY DATA KEYS THAT DIFFER ONLY BY CASE KEEP THE OTHER PAYLOAD</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag critical">Critical (10)</span>
+    <span class="finding-tag">Bytecode</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>Two .data entries for one 32-byte hash, spelled in different cases, produce different bytecode. oksolc appends 22. solc 0.8.36 appends 11.</p><p>audit/vectors/C-01/data.json. oksolc bytecode 6003fe22. solc --experimental --import-asm-json --bin bytecode 6003fe11. The final data byte is what would be deployed.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 1: src/libevmasm/assembly.zig (Lines 1361-1372)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">1361</td><td class="src">        for (data_object.keys(), data_object.values()) |key, *value| {</td></tr>
+<tr><td class="ln">1362</td><td class="src">            switch (value.*) {</td></tr>
+<tr><td class="ln">1363</td><td class="src">                .string =&gt; |encoded_data| {</td></tr>
+<tr><td class="ln">1364</td><td class="src">                    const decoded = try CommonData.fromHexAlloc(allocator, encoded_data, .dont_throw);</td></tr>
+<tr><td class="ln">1365</td><td class="src">                    if (encoded_data.len != 0 and decoded.len == 0) {</td></tr>
+<tr><td class="ln">1366</td><td class="src">                        allocator.free(decoded);</td></tr>
+<tr><td class="ln">1367</td><td class="src">                        return error.InvalidAssemblyDataHex;</td></tr>
+<tr><td class="ln">1368</td><td class="src">                    }</td></tr>
+<tr><td class="ln">1369</td><td class="src">                    const hash = try assemblyDataKey(allocator, key);</td></tr>
+<tr><td class="ln">1370</td><td class="src">                    try putDataEntryOwned(result, hash, decoded);</td></tr>
+<tr><td class="ln">1371</td><td class="src">                },</td></tr>
+<tr><td class="ln">1372</td><td class="src">                .object =&gt; {</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Feed assembly JSON whose .data object has two keys for one 32-byte hash. The lowercase key maps to hex 11. The uppercase key maps to hex 22. .code is a PUSH data of that hash.</li><li>oksolc Assembly.fromJSON then assemble returns 6003fe22.</li><li>solc 0.8.36 --experimental --import-asm-json --bin returns 6003fe11.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:C/A:N/D:N/Y:N/R:N/S:U (10)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Apply .data string entries in sorted key order, the same order json.zig already prints.</p>
+  <div class="kicker">References</div>
+  <p>Source id C-01. src/libevmasm/assembly.zig:1361.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-02">
+  <div class="finding-head"><h3 class="finding-id">4.2 (HACK-02) OKSOLC COMPILE FOLLOWS A SYMLINK OUT OF THE PROJECT</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Path</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>oksolc compile src/link.sol reads a symlink that points outside the project and emits bytecode for that outside file. An import of the same symlink is rejected.</p><p>A file named inside the project can supply source from outside it. The compiler output for that run contained contract Secret from /tmp/outside-secret.sol, under the key src/link.sol, with creation bytecode 280 hex characters and no errors. import "./link.sol" from Main.sol returned ParserError: Source "src/link.sol" not found: Source path is outside configured roots or is not a regular file.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 2: src/cli/input.zig (Lines 65-87)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">65</td><td class="src">pub fn loadSourcesAt(allocator: std.mem.Allocator, io: std.Io, paths: []const []const u8, project: ?[]const u8) !LoadedSources {</td></tr>
+<tr><td class="ln">66</td><td class="src">    const sources = try allocator.alloc(Source, paths.len);</td></tr>
+<tr><td class="ln">67</td><td class="src">    errdefer allocator.free(sources);</td></tr>
+<tr><td class="ln">68</td><td class="src">    var loaded: usize = 0;</td></tr>
+<tr><td class="ln">69</td><td class="src">    errdefer for (sources[0..loaded]) |source| {</td></tr>
+<tr><td class="ln">70</td><td class="src">        allocator.free(source.content);</td></tr>
+<tr><td class="ln">71</td><td class="src">        if (project != null) allocator.free(source.name);</td></tr>
+<tr><td class="ln">72</td><td class="src">    };</td></tr>
+<tr><td class="ln">73</td><td class="src">    var total: usize = 0;</td></tr>
+<tr><td class="ln">74</td><td class="src">    for (paths, sources) |path, *source| {</td></tr>
+<tr><td class="ln">75</td><td class="src">        const content = try std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(64 * 1024 * 1024 -| total));</td></tr>
+<tr><td class="ln">76</td><td class="src">        errdefer allocator.free(content);</td></tr>
+<tr><td class="ln">77</td><td class="src">        const name = if (project) |root| name: {</td></tr>
+<tr><td class="ln">78</td><td class="src">            const canonical = try std.Io.Dir.cwd().realPathFileAlloc(io, path, allocator);</td></tr>
+<tr><td class="ln">79</td><td class="src">            defer allocator.free(canonical);</td></tr>
+<tr><td class="ln">80</td><td class="src">            if (!@import("project_sources.zig").pathContainedBy(root, canonical) or canonical.len &lt;= root.len)</td></tr>
+<tr><td class="ln">81</td><td class="src">                break :name try allocator.dupe(u8, path);</td></tr>
+<tr><td class="ln">82</td><td class="src">            const relative = try allocator.dupe(u8, std.mem.trimStart(u8, canonical[root.len..], "/\\"));</td></tr>
+<tr><td class="ln">83</td><td class="src">            std.mem.replaceScalar(u8, relative, '\\', '/');</td></tr>
+<tr><td class="ln">84</td><td class="src">            break :name relative;</td></tr>
+<tr><td class="ln">85</td><td class="src">        } else path;</td></tr>
+<tr><td class="ln">86</td><td class="src">        source.* = .{ .name = name, .content = content };</td></tr>
+<tr><td class="ln">87</td><td class="src">        loaded += 1;</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Point oksolc compile at a symlink whose target sits outside the project root.</li><li>The compiler follows the link and compiles the outside file. An import of the same link is rejected.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:H/A:N/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Reject the path when any component is a symlink, or when realPath is outside the project, before the bytes are kept. Use the same rule as FileSourceLoader.read. Add a CLI test next to the import symlink tests in src/cli/main.zig.</p>
+  <div class="kicker">References</div>
+  <p>Source id H-02. src/cli/input.zig:75.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-03">
+  <div class="finding-head"><h3 class="finding-id">4.3 (HACK-03) A PUSH VALUE THAT ALREADY HAS 0X IS ASSEMBLED</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Bytecode</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>PUSH value 0x10 assembles to 6010 on oksolc. solc rejects it.</p><p>audit/vectors/H-14/push.json. oksolc bytecode 6010. solc throws Unexpected content found while parsing character string.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 3: src/libevmasm/assembly.zig (Lines 1557-1561)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">1557</td><td class="src">fn parseU256Hex(input: []const u8) AssemblyError!u256 {</td></tr>
+<tr><td class="ln">1558</td><td class="src">    const digits = if (std.mem.startsWith(u8, input, "0x")) input[2..] else input;</td></tr>
+<tr><td class="ln">1559</td><td class="src">    if (digits.len == 0) return error.InvalidAssemblyItemValue;</td></tr>
+<tr><td class="ln">1560</td><td class="src">    return std.fmt.parseUnsigned(u256, digits, 16) catch return error.InvalidAssemblyItemValue;</td></tr>
+<tr><td class="ln">1561</td><td class="src">}</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Import assembly JSON {"name":"PUSH","value":"0x10"}.</li><li>oksolc emits 6010. solc throws Unexpected content found while parsing character string.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:H/A:N/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Reject a PUSH value that already starts with 0x. The caller adds that prefix.</p>
+  <div class="kicker">References</div>
+  <p>Source id H-14. src/libevmasm/assembly.zig:1557.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-04">
+  <div class="finding-head"><h3 class="finding-id">4.4 (HACK-04) ASSEMBLY TAG INTEGERS ARE PARSED AS PLAIN DECIMAL</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Accept</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>parseU256Decimal is base 10 only. solc's u256(string) is Boost: a leading 0 is octal, a leading 0x is hex, and digit 8 in an octal token is rejected.</p><p>A tag id in assembly JSON is not the same integer on the two compilers, so a jump can target a different JUMPDEST or fail to link.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 4: src/libevmasm/assembly.zig (Lines 1563-1565)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">1563</td><td class="src">fn parseU256Decimal(input: []const u8) AssemblyError!u256 {</td></tr>
+<tr><td class="ln">1564</td><td class="src">    return std.fmt.parseUnsigned(u256, input, 10) catch return error.InvalidAssemblyItemValue;</td></tr>
+<tr><td class="ln">1565</td><td class="src">}</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Tag value 08: oksolc emits 5b. solc rejects the octal digit.</li><li>PUSH [tag] 8 with tag 010: solc emits 6003565b00. oksolc returns ReferenceToTagWithoutPosition.</li><li>Tag value 0x10: solc emits 5b. oksolc returns InvalidAssemblyItemValue.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:H/A:N/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Parse tag values with the same prefixes Boost accepts, and reject an octal token that contains 8 or 9.</p>
+  <div class="kicker">References</div>
+  <p>Source id H-13. src/libevmasm/assembly.zig:1563.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-05">
+  <div class="finding-head"><h3 class="finding-id">4.5 (HACK-05) A SUBASSEMBLY KEY OF 0X IS REJECTED</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Accept</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>.data key 0x with no digits is SubassemblyIndexNotInteger on oksolc. solc takes subassembly 0 and emits fe.</p><p>audit/vectors/H-15/sub.json. solc bytecode fe. oksolc does not assemble.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 5: src/libevmasm/assembly.zig (Lines 1641-1652)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">1641</td><td class="src">fn parseHexStoiIndex(input: []const u8) AssemblyError!usize {</td></tr>
+<tr><td class="ln">1642</td><td class="src">    var index: usize = 0;</td></tr>
+<tr><td class="ln">1643</td><td class="src">    while (index &lt; input.len and std.ascii.isWhitespace(input[index])) : (index += 1) {}</td></tr>
+<tr><td class="ln">1644</td><td class="src">    var negative = false;</td></tr>
+<tr><td class="ln">1645</td><td class="src">    if (index &lt; input.len and (input[index] == '+' or input[index] == '-')) {</td></tr>
+<tr><td class="ln">1646</td><td class="src">        negative = input[index] == '-';</td></tr>
+<tr><td class="ln">1647</td><td class="src">        index += 1;</td></tr>
+<tr><td class="ln">1648</td><td class="src">    }</td></tr>
+<tr><td class="ln">1649</td><td class="src">    if (index + 2 &lt;= input.len and input[index] == '0' and</td></tr>
+<tr><td class="ln">1650</td><td class="src">        (input[index + 1] == 'x' or input[index + 1] == 'X')) index += 2;</td></tr>
+<tr><td class="ln">1651</td><td class="src">    const digit_start = index;</td></tr>
+<tr><td class="ln">1652</td><td class="src">    var value: u32 = 0;</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Import assembly JSON with an empty .code and a .data key 0x whose object contains STOP.</li><li>oksolc returns SubassemblyIndexNotInteger. solc emits fe.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:N/A:H/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Treat a 0x prefix with no digits as index 0, which is what std::stoi returns.</p>
+  <div class="kicker">References</div>
+  <p>Source id H-15. src/libevmasm/assembly.zig:1649.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-06">
+  <div class="finding-head"><h3 class="finding-id">4.6 (HACK-06) SUPER.F() CRASHES WHEN THE NEXT BASE IS UNIMPLEMENTED</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Availability</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>super.f() aborts when the next base in the linearization declares f without a body and a later base implements it. solc 0.8.36 compiles the call. oksolc returns InvalidAst, and the CLI prints error: InternalFailure.</p><p>audit/vectors/H-12/super.sol crashes oksolc. solc emits creation bytecode for A and C, 280 hex characters each. contract C is B, A with the same functions compiles on both, because A.f is the next base and it has a body. Replacing an implemented A.f with an empty B.f is TypeError 4593 on both, so that shape never reaches this lookup.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 6: src/libsolidity/analysis/control_flow_builder.zig (Lines 847-872)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">847</td><td class="src">fn resolveVirtualFunction(</td></tr>
+<tr><td class="ln">848</td><td class="src">    declaration: *const AST.Node,</td></tr>
+<tr><td class="ln">849</td><td class="src">    most_derived_contract: *const AST.Node,</td></tr>
+<tr><td class="ln">850</td><td class="src">    search_start: ?*const AST.Node,</td></tr>
+<tr><td class="ln">851</td><td class="src">) BuildError!*const AST.Node {</td></tr>
+<tr><td class="ln">852</td><td class="src">    const annotation = ASTAnnotations.annotationConst(most_derived_contract) orelse</td></tr>
+<tr><td class="ln">853</td><td class="src">        return error.InvalidAst;</td></tr>
+<tr><td class="ln">854</td><td class="src">    const hierarchy = switch (annotation.*) {</td></tr>
+<tr><td class="ln">855</td><td class="src">        .contract_definition =&gt; |value| value.linearized_base_contracts,</td></tr>
+<tr><td class="ln">856</td><td class="src">        else =&gt; return error.InvalidAst,</td></tr>
+<tr><td class="ln">857</td><td class="src">    };</td></tr>
+<tr><td class="ln">858</td><td class="src">    var found_start = search_start == null;</td></tr>
+<tr><td class="ln">859</td><td class="src">    for (hierarchy) |contract| {</td></tr>
+<tr><td class="ln">860</td><td class="src">        if (!found_start and contract != search_start.?) continue;</td></tr>
+<tr><td class="ln">861</td><td class="src">        found_start = true;</td></tr>
+<tr><td class="ln">862</td><td class="src">        if (contract.nodeKind() != .contract_definition) return error.InvalidAst;</td></tr>
+<tr><td class="ln">863</td><td class="src">        for (contract.payload.contract_definition.sub_nodes) |candidate| {</td></tr>
+<tr><td class="ln">864</td><td class="src">            if (candidate.nodeKind() != .function_definition) continue;</td></tr>
+<tr><td class="ln">865</td><td class="src">            if (search_start != null and</td></tr>
+<tr><td class="ln">866</td><td class="src">                !candidate.payload.function_definition.implemented()) continue;</td></tr>
+<tr><td class="ln">867</td><td class="src">            if (candidate == declaration or callableOverrides(candidate, declaration, 0))</td></tr>
+<tr><td class="ln">868</td><td class="src">                return candidate;</td></tr>
+<tr><td class="ln">869</td><td class="src">        }</td></tr>
+<tr><td class="ln">870</td><td class="src">    }</td></tr>
+<tr><td class="ln">871</td><td class="src">    return error.InvalidAst;</td></tr>
+<tr><td class="ln">872</td><td class="src">}</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Compile contract C is A, B where B.f has no body, A.f is implemented, and C.f calls super.f(). via-IR, optimizer runs 200.</li><li>oksolc returns InvalidAst and the CLI prints InternalFailure. solc compiles A and C.</li><li>contract C is B, A compiles on both.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:N/A:H/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Match super lookup by signature, the way resolveFunctionVirtual in ast.zig:810 already skips an unimplemented function and continues. Do not require the later function to override the unimplemented declaration. Return a compile error instead of InvalidAst if nothing matches.</p>
+  <div class="kicker">References</div>
+  <p>Source id H-12. src/libsolidity/analysis/control_flow_builder.zig:865.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-07">
+  <div class="finding-head"><h3 class="finding-id">4.7 (HACK-07) HOMESTEAD CALL RETURNING STRING MEMORY IS ACCEPTED</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Accept</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>An external call that returns string memory, compiled for homestead, is accepted. solc 0.8.36 rejects it. The creation bytecode contains STATICCALL.</p><p>audit/vectors/H-03/pre_byz.sol compiles on oksolc and is TypeError 6359 on solc. The creation bytecode is 1034 hex characters and contains one STATICCALL (0xfa). Homestead has no STATICCALL. The form that assigns the result to an unused local is TypeError 9574 on solc and is also accepted.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 7: src/libsolidity/analysis/type_checker.zig (Lines 3161-3175)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">3161</td><td class="src">                        "Cannot call function via contract type name.",</td></tr>
+<tr><td class="ln">3162</td><td class="src">                    );</td></tr>
+<tr><td class="ln">3163</td><td class="src">                }</td></tr>
+<tr><td class="ln">3164</td><td class="src">                break :blk function_type.return_parameter_types;</td></tr>
+<tr><td class="ln">3165</td><td class="src">            },</td></tr>
+<tr><td class="ln">3166</td><td class="src">            else =&gt; blk: {</td></tr>
+<tr><td class="ln">3167</td><td class="src">                if (function_type.kind == .BareStaticCall and !self.evm_version.hasStaticCall())</td></tr>
+<tr><td class="ln">3168</td><td class="src">                    try self.reporter.typeError(</td></tr>
+<tr><td class="ln">3169</td><td class="src">                        errorId(5052),</td></tr>
+<tr><td class="ln">3170</td><td class="src">                        node.location,</td></tr>
+<tr><td class="ln">3171</td><td class="src">                        "\"staticcall\" is not supported by the VM version.",</td></tr>
+<tr><td class="ln">3172</td><td class="src">                    );</td></tr>
+<tr><td class="ln">3173</td><td class="src">                try self.checkFunctionGeneral(node, function_type, false);</td></tr>
+<tr><td class="ln">3174</td><td class="src">                break :blk function_type.return_parameter_types;</td></tr>
+<tr><td class="ln">3175</td><td class="src">            },</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Compile an external call that returns string memory with evmVersion homestead, via-IR.</li><li>oksolc accepts and the bytecode contains STATICCALL (0xfa). solc reports 6359 or 9574.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:H/A:N/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>When the EVM version has no returndata, type the call with the same dynamic-stripped return list solc uses, and reject the conversion.</p>
+  <div class="kicker">References</div>
+  <p>Source id H-03. src/libsolidity/analysis/type_checker.zig:3166.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-08">
+  <div class="finding-head"><h3 class="finding-id">4.8 (HACK-08) STRING.LENGTH IS ACCEPTED</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Accept</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>string memory has a .length member. solc 0.8.36 reports TypeError 9582. bytes .length matches.</p><p>audit/vectors/H-04/string_len.sol compiles. Creation bytecode is 548 hex characters and the prefix matches a bytes memory length read. solc rejects with 9582.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 8: src/libsolidity/analysis/type_checker.zig (Lines 4523-4537)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">4523</td><td class="src">    fn resolveArrayMember(</td></tr>
+<tr><td class="ln">4524</td><td class="src">        self: *TypeChecker,</td></tr>
+<tr><td class="ln">4525</td><td class="src">        node: *AST.Node,</td></tr>
+<tr><td class="ln">4526</td><td class="src">        owner_type: *const Types.Type,</td></tr>
+<tr><td class="ln">4527</td><td class="src">        array: Types.ArrayType,</td></tr>
+<tr><td class="ln">4528</td><td class="src">        name: []const u8,</td></tr>
+<tr><td class="ln">4529</td><td class="src">        arguments: ?@import("../ast/ast_enums.zig").FuncCallArguments,</td></tr>
+<tr><td class="ln">4530</td><td class="src">        owner_pure: bool,</td></tr>
+<tr><td class="ln">4531</td><td class="src">    ) CheckError!?ResolvedMember {</td></tr>
+<tr><td class="ln">4532</td><td class="src">        if (std.mem.eql(u8, name, "length"))</td></tr>
+<tr><td class="ln">4533</td><td class="src">            return .{</td></tr>
+<tr><td class="ln">4534</td><td class="src">                .type_ref = self.type_provider.uint256(),</td></tr>
+<tr><td class="ln">4535</td><td class="src">                .is_pure = owner_pure,</td></tr>
+<tr><td class="ln">4536</td><td class="src">            };</td></tr>
+<tr><td class="ln">4537</td><td class="src">        if (array.reference.location != .Storage or array.length != null) return null;</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Compile a contract that reads string.length.</li><li>oksolc accepts. solc reports 9582. bytes.length matches on both.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:H/A:N/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Return null for length when the array kind is string, and let the existing missing-member path report 9582.</p>
+  <div class="kicker">References</div>
+  <p>Source id H-04. src/libsolidity/analysis/type_checker.zig:4532.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-09">
+  <div class="finding-head"><h3 class="finding-id">4.9 (HACK-09) A BARE STORAGE PUSH IS ACCEPTED</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Accept</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>a.push; with no call is accepted. solc 0.8.36 reports TypeError 6675 because push is not unique.</p><p>audit/vectors/H-05/push_bare.sol compiles. Creation bytecode is 254 hex characters. solc rejects with 6675.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 9: src/libsolidity/analysis/type_checker.zig (Lines 4558-4579)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">4558</td><td class="src">        }</td></tr>
+<tr><td class="ln">4559</td><td class="src">        if (!std.mem.eql(u8, name, "push")) return null;</td></tr>
+<tr><td class="ln">4560</td><td class="src">        const argument_count = if (arguments) |value| value.types.items.len else 0;</td></tr>
+<tr><td class="ln">4561</td><td class="src">        if (argument_count == 0) {</td></tr>
+<tr><td class="ln">4562</td><td class="src">            const returns = [_]*const Types.Type{array.base_type};</td></tr>
+<tr><td class="ln">4563</td><td class="src">            const return_names = [_][]const u8{""};</td></tr>
+<tr><td class="ln">4564</td><td class="src">            const unbound = try self.type_provider.function(</td></tr>
+<tr><td class="ln">4565</td><td class="src">                &amp;.{self_pointer},</td></tr>
+<tr><td class="ln">4566</td><td class="src">                &amp;returns,</td></tr>
+<tr><td class="ln">4567</td><td class="src">                &amp;.{""},</td></tr>
+<tr><td class="ln">4568</td><td class="src">                &amp;return_names,</td></tr>
+<tr><td class="ln">4569</td><td class="src">                .ArrayPush,</td></tr>
+<tr><td class="ln">4570</td><td class="src">                .NonPayable,</td></tr>
+<tr><td class="ln">4571</td><td class="src">                null,</td></tr>
+<tr><td class="ln">4572</td><td class="src">                .{},</td></tr>
+<tr><td class="ln">4573</td><td class="src">            );</td></tr>
+<tr><td class="ln">4574</td><td class="src">            return .{</td></tr>
+<tr><td class="ln">4575</td><td class="src">                .type_ref = try self.type_provider.withBoundFirstArgument(unbound),</td></tr>
+<tr><td class="ln">4576</td><td class="src">                .is_pure = false,</td></tr>
+<tr><td class="ln">4577</td><td class="src">            };</td></tr>
+<tr><td class="ln">4578</td><td class="src">        }</td></tr>
+<tr><td class="ln">4579</td><td class="src">        const parameters = [_]*const Types.Type{ self_pointer, array.base_type };</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Compile a bare storage member access a.push with no call parentheses.</li><li>oksolc accepts it as the no-argument push. solc reports 6675.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:H/A:N/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>If arguments is null, leave both overloads unresolved and report 6675.</p>
+  <div class="kicker">References</div>
+  <p>Source id H-05. src/libsolidity/analysis/type_checker.zig:4560.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-10">
+  <div class="finding-head"><h3 class="finding-id">4.10 (HACK-10) .SELECTOR IS ACCEPTED ON INTERNAL FUNCTIONS AND ANONYMOUS EVENTS</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Accept</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>.selector resolves on an internal function and on an anonymous event. solc 0.8.36 reports TypeError 9582 for both.</p><p>audit/vectors/H-06/internal.sol compiles (creation bytecode 292 hex characters). audit/vectors/H-06/event.sol compiles (342 hex characters). solc rejects both with 9582. h.value(1)() on a payable function is TypeError 8820 on both compilers.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 10: src/libsolidity/analysis/type_checker.zig (Lines 4680-4688)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">4680</td><td class="src">        const function = owner_type.asFunction() orelse return null;</td></tr>
+<tr><td class="ln">4681</td><td class="src">        if (std.mem.eql(u8, name, "selector"))</td></tr>
+<tr><td class="ln">4682</td><td class="src">            return .{</td></tr>
+<tr><td class="ln">4683</td><td class="src">                .type_ref = try self.type_provider.fixedBytes(</td></tr>
+<tr><td class="ln">4684</td><td class="src">                    if (function.kind == .Event) 32 else 4,</td></tr>
+<tr><td class="ln">4685</td><td class="src">                ),</td></tr>
+<tr><td class="ln">4686</td><td class="src">                .is_pure = function.declaration != null,</td></tr>
+<tr><td class="ln">4687</td><td class="src">            };</td></tr>
+<tr><td class="ln">4688</td><td class="src">        if (std.mem.eql(u8, name, "address") and function.kind == .External)</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Read .selector on an internal function, and on an anonymous event.</li><li>oksolc accepts both. solc reports 9582 on both. .value(1)() on a payable function is 8820 on both.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:H/A:N/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Return null unless the function kind is external (or public) and, for events, the event is not anonymous.</p>
+  <div class="kicker">References</div>
+  <p>Source id H-06. src/libsolidity/analysis/type_checker.zig:4681.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-11">
+  <div class="finding-head"><h3 class="finding-id">4.11 (HACK-11) A STATE-VARIABLE FUNCTION SELECTOR IS A COMPILE-TIME CONSTANT</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Accept</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>bytes4 constant S = i.f.selector compiles when i is a state variable. solc 0.8.36 reports TypeError 8349.</p><p>audit/vectors/H-07/state_sel.sol compiles. Creation bytecode is 162 hex characters. solc rejects with 8349.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 11: src/libsolidity/analysis/type_checker.zig (Lines 4686-4687)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">4686</td><td class="src">                .is_pure = function.declaration != null,</td></tr>
+<tr><td class="ln">4687</td><td class="src">            };</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Compile bytes4 constant S = i.f.selector where i.f is a state variable of function type.</li><li>oksolc accepts. solc reports 8349.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:H/A:N/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Set is_pure from the parent expression, matching solc, so a state read is not a constant.</p>
+  <div class="kicker">References</div>
+  <p>Source id H-07. src/libsolidity/analysis/type_checker.zig:4686.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-12">
+  <div class="finding-head"><h3 class="finding-id">4.12 (HACK-12) UINT256.MIN AND UINT256.MAX ARE ACCEPTED ON THE TYPE NAME</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Accept</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>uint256.min and uint256.max compile. solc 0.8.36 reports TypeError 9582. type(uint256).min matches.</p><p>audit/vectors/H-08/uint_min.sol and uint_max.sol compile. solc rejects each with 9582. type(uint256).min produces the same 278 hex character creation bytecode on both compilers.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 12: src/libsolidity/analysis/type_checker.zig (Lines 4954-4970)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">4954</td><td class="src">                        .type_ref = try self.type_provider.function(</td></tr>
+<tr><td class="ln">4955</td><td class="src">                            &amp;parameters,</td></tr>
+<tr><td class="ln">4956</td><td class="src">                            &amp;returns,</td></tr>
+<tr><td class="ln">4957</td><td class="src">                            &amp;parameter_names,</td></tr>
+<tr><td class="ln">4958</td><td class="src">                            &amp;parameter_names,</td></tr>
+<tr><td class="ln">4959</td><td class="src">                            .Unwrap,</td></tr>
+<tr><td class="ln">4960</td><td class="src">                            .Pure,</td></tr>
+<tr><td class="ln">4961</td><td class="src">                            user_type.declaration,</td></tr>
+<tr><td class="ln">4962</td><td class="src">                            .{},</td></tr>
+<tr><td class="ln">4963</td><td class="src">                        ),</td></tr>
+<tr><td class="ln">4964</td><td class="src">                        .is_pure = true,</td></tr>
+<tr><td class="ln">4965</td><td class="src">                    };</td></tr>
+<tr><td class="ln">4966</td><td class="src">                }</td></tr>
+<tr><td class="ln">4967</td><td class="src">            },</td></tr>
+<tr><td class="ln">4968</td><td class="src">            .Integer =&gt; if (std.mem.eql(u8, name, "min") or std.mem.eql(u8, name, "max"))</td></tr>
+<tr><td class="ln">4969</td><td class="src">                return .{ .type_ref = actual_type, .is_pure = true },</td></tr>
+<tr><td class="ln">4970</td><td class="src">            .Array =&gt; |array| if (array.kind != .Ordinary and std.mem.eql(u8, name, "concat")) {</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Compile uint256.min and uint256.max on the type name.</li><li>oksolc accepts. solc reports 9582. type(uint256).min matches on both.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:H/A:N/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Delete the integer arm in resolveTypeMember. Leave min and max on the meta-type path.</p>
+  <div class="kicker">References</div>
+  <p>Source id H-08. src/libsolidity/analysis/type_checker.zig:4968.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-13">
+  <div class="finding-head"><h3 class="finding-id">4.13 (HACK-13) AN OVERLOADED MODULE MEMBER IS DROPPED</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Accept</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>import "A.sol" as M then M.f(1) is TypeError 9582 when A.sol exports two free functions named f. solc 0.8.36 compiles it.</p><p>audit/vectors/H-09/ is rejected by oksolc with 9582. solc emits creation bytecode for contract C, 280 hex characters, sha256 prefix 3ef10f29715cdfa0.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 13: src/libsolidity/analysis/type_checker.zig (Lines 5128-5147)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">5128</td><td class="src">    fn resolveModuleMember(</td></tr>
+<tr><td class="ln">5129</td><td class="src">        self: *TypeChecker,</td></tr>
+<tr><td class="ln">5130</td><td class="src">        source_unit: *const AST.Node,</td></tr>
+<tr><td class="ln">5131</td><td class="src">        name: []const u8,</td></tr>
+<tr><td class="ln">5132</td><td class="src">    ) CheckError!?ResolvedMember {</td></tr>
+<tr><td class="ln">5133</td><td class="src">        const annotation = ASTAnnotations.annotationConst(source_unit) orelse return error.InvalidAst;</td></tr>
+<tr><td class="ln">5134</td><td class="src">        const exports = switch (annotation.*) {</td></tr>
+<tr><td class="ln">5135</td><td class="src">            .source_unit =&gt; |*value| try value.exported_symbols.get(),</td></tr>
+<tr><td class="ln">5136</td><td class="src">            else =&gt; return error.InvalidAst,</td></tr>
+<tr><td class="ln">5137</td><td class="src">        };</td></tr>
+<tr><td class="ln">5138</td><td class="src">        for (exports.*) |symbol| {</td></tr>
+<tr><td class="ln">5139</td><td class="src">            if (!std.mem.eql(u8, symbol.name, name) or symbol.declarations.len != 1) continue;</td></tr>
+<tr><td class="ln">5140</td><td class="src">            const declaration = symbol.declarations[0];</td></tr>
+<tr><td class="ln">5141</td><td class="src">            return .{</td></tr>
+<tr><td class="ln">5142</td><td class="src">                .type_ref = try self.declarationType(declaration),</td></tr>
+<tr><td class="ln">5143</td><td class="src">                .declaration = declaration,</td></tr>
+<tr><td class="ln">5144</td><td class="src">                .is_pure = true,</td></tr>
+<tr><td class="ln">5145</td><td class="src">            };</td></tr>
+<tr><td class="ln">5146</td><td class="src">        }</td></tr>
+<tr><td class="ln">5147</td><td class="src">        return null;</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Compile a file-level module with two functions of the same name and a call that should resolve the overload.</li><li>oksolc drops the overload and reports 9582. solc emits creation bytecode whose prefix is 3ef10f29715cdfa0.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:H/A:N/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Return the whole declaration list for that name and let the existing overload resolution pick f(uint).</p>
+  <div class="kicker">References</div>
+  <p>Source id H-09. src/libsolidity/analysis/type_checker.zig:5138.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-14">
+  <div class="finding-head"><h3 class="finding-id">4.14 (HACK-14) A ZERO-ARGUMENT LIBRARY FUNCTION ABORTS USING-FOR LOOKUP</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Availability</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>using L for * plus a call a.p(1) aborts if the library also has function p() .... solc 0.8.36 compiles it. The CLI reports error: InternalFailure and writes no JSON.</p><p>audit/vectors/H-11/using.sol is InvalidAst on oksolc and compiles on solc (2 contracts). Solady 0.1.26 does the same. src/utils/DynamicArrayLib.sol defines p() with no parameters, and test/DynamicArrayLib.t.sol calls a.p(uint256(1)) under using DynamicArrayLib for *. The issue 8 JSON exits 1 in 1.55 s, RSS 522 MB, stderr error: InternalFailure. solc compiles that JSON (254 contracts, warnings only). src/ without the tests compiles on oksolc.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 14: src/libsolidity/analysis/type_checker.zig (Lines 5290-5294)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">5290</td><td class="src">        const parameters = try self.parameterTypesAndNames(function.callable.parameters);</td></tr>
+<tr><td class="ln">5291</td><td class="src">        defer self.allocator.free(parameters.types);</td></tr>
+<tr><td class="ln">5292</td><td class="src">        defer self.allocator.free(parameters.names);</td></tr>
+<tr><td class="ln">5293</td><td class="src">        if (parameters.types.len == 0) return error.InvalidAst;</td></tr>
+<tr><td class="ln">5294</td><td class="src">        const returns = if (function.callable.return_parameters) |return_parameters|</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Library L has p(A, uint256) and p(). A contract does using L for * and calls a.p(uint256(1)).</li><li>oksolc returns InvalidAst. The CLI prints InternalFailure. solc compiles it. This is the Solady 0.1.26 failure, reduced.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:N/A:H/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Skip a zero-parameter function in attachedFunctionType (return null, or continue in the caller) instead of error.InvalidAst. Let the one-argument p bind. Surface the Zig error name in the JSON error instead of InternalFailure.</p>
+  <div class="kicker">References</div>
+  <p>Source id H-11. src/libsolidity/analysis/type_checker.zig:5293.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-15">
+  <div class="finding-head"><h3 class="finding-id">4.15 (HACK-15) MEMORYGUARD AT 2^31 COMPILES ON OKSOLC AND ICES SOLC</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Accept</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>A Yul Standard JSON input with memoryguard(2147483648) is compiled by oksolc to bytecode 63800000005f5500. solc 0.8.36 returns InternalCompilerError and no bytecode.</p><p>Accept/reject mismatch on Yul Standard JSON. oksolc emits creation bytecode. solc 0.8.36 emits an internal compiler error. A pipeline that treats a clean JSON compile as "solc 0.8.36 accepted this" will ship bytecode for a program the reference compiler rejects. Solidity viaIR sources do not reach this builtin from user assembly.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 15: src/libyul/optimiser/stack_limit_evader.zig (Lines 192-212)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">192</td><td class="src">    pub fn runWithUnreachableVariables(</td></tr>
+<tr><td class="ln">193</td><td class="src">        context: *OptimiserStepContext,</td></tr>
+<tr><td class="ln">194</td><td class="src">        ast_root: *AST.Block,</td></tr>
+<tr><td class="ln">195</td><td class="src">        unreachable_variables: *const Compilability.UnreachableVariables,</td></tr>
+<tr><td class="ln">196</td><td class="src">    ) !void {</td></tr>
+<tr><td class="ln">197</td><td class="src">        const evm_dialect = try requireObjectDialect(context.dialect);</td></tr>
+<tr><td class="ln">198</td><td class="src">        const allocator = context.dispenser.allocator;</td></tr>
+<tr><td class="ln">199</td><td class="src">        const memory_guard_handle = context.dialect.findBuiltin("memoryguard") orelse</td></tr>
+<tr><td class="ln">200</td><td class="src">            return error.MissingMemoryGuardBuiltin;</td></tr>
+<tr><td class="ln">201</td><td class="src">        var memory_guard_calls = try FunctionCallFinder.findFunctionCalls(</td></tr>
+<tr><td class="ln">202</td><td class="src">            allocator,</td></tr>
+<tr><td class="ln">203</td><td class="src">            ast_root,</td></tr>
+<tr><td class="ln">204</td><td class="src">            .{ .builtin = memory_guard_handle },</td></tr>
+<tr><td class="ln">205</td><td class="src">        );</td></tr>
+<tr><td class="ln">206</td><td class="src">        defer memory_guard_calls.deinit(allocator);</td></tr>
+<tr><td class="ln">207</td><td class="src">        if (memory_guard_calls.items.len == 0) return;</td></tr>
+<tr><td class="ln">208</td><td class="src"></td></tr>
+<tr><td class="ln">209</td><td class="src">        const reserved_memory = try literalArgumentValue(memory_guard_calls.items[0]);</td></tr>
+<tr><td class="ln">210</td><td class="src">        const limit: u256 = (@as(u256, 1) &lt;&lt; 32) - 1;</td></tr>
+<tr><td class="ln">211</td><td class="src">        if (reserved_memory &gt;= limit) return error.ReservedMemoryTooLarge;</td></tr>
+<tr><td class="ln">212</td><td class="src">        for (memory_guard_calls.items) |call|</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Compile Yul memoryguard(2147483648) via the assembly path used in audit/vectors/H-01.</li><li>oksolc emits 63800000005f5500. solc hits an internal compiler error and emits no bytecode.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:H/A:N/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Reject when reserved_memory &gt;= (1 &lt;&lt; 31), and return an error before codegen. Add audit/vectors/H-01/request.json to the frozen corpus and expect a compile error. See SPEC-02 for the reading that solc's expression is the accidental one.</p>
+  <div class="kicker">References</div>
+  <p>Source id H-01. src/libyul/optimiser/stack_limit_evader.zig:210.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-16">
+  <div class="finding-head"><h3 class="finding-id">4.16 (HACK-16) OPENZEPPELIN 5.6.1 DIES IN THE UNUSED PRUNER</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag high">High (7.5)</span>
+    <span class="finding-tag">Availability</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>The OpenZeppelin 5.6.1 Standard JSON from oksolc issue 8 compiles on solc 0.8.36 and fails on oksolc with YulException: Yul optimizer failed: MissingReference.</p><p>Input sha256 666aacb7 (the solar dani/bench-oksolc OpenZeppelin file, 2761150 bytes). Settings are inside that JSON (osaka, optimizer runs 200). oksolc: 16.07 s, max RSS 9166784 kB, one error, 0 contracts. Exit status of --standard-json was 0 because the failure is a JSON error. solc 0.8.36: 60.17 s, max RSS 1422768 kB, 0 errors, 480 contracts. Issue 8 describes an OOM near 50 GiB. This run stopped in the optimizer at 9.2 GiB RSS. The same error reproduces on audit/vectors/H-10/consecutive.json (38 files, 1099241 bytes). The only source that can be removed without error 6275 is the trigger, ERC721ConsecutiveTarget in trigger.sol. Without it, the other 37 files compile. solc compiles the 38-file JSON: 0 errors, 44 contracts. A rewritten helper that does not inherit StdUtils compiled on oksolc, so this is not every subclass of ERC721Consecutive.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 16: src/libyul/optimiser/unused_pruner.zig (Lines 285-291)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">285</td><td class="src">    fn subtractReferences(</td></tr>
+<tr><td class="ln">286</td><td class="src">        self: *UnusedPruner,</td></tr>
+<tr><td class="ln">287</td><td class="src">        subtrahend: *const NameCollectorModule.ReferenceMap,</td></tr>
+<tr><td class="ln">288</td><td class="src">    ) !void {</td></tr>
+<tr><td class="ln">289</td><td class="src">        for (subtrahend.items()) |entry| {</td></tr>
+<tr><td class="ln">290</td><td class="src">            const count = self.references.getPtr(entry.key) orelse return error.MissingReference;</td></tr>
+<tr><td class="ln">291</td><td class="src">            if (count.* &lt; entry.value) return error.ReferenceUnderflow;</td></tr>
+</tbody></table></div>
+  <div class="kicker">Proof of concept</div><ol><li>Compile audit/vectors/H-10/consecutive.json (ERC721ConsecutiveTarget plus its 37 imports, OpenZeppelin 5.6.1 settings).</li><li>oksolc returns YulException: Yul optimizer failed: MissingReference and zero contracts.</li><li>solc 0.8.36 returns 0 errors and 44 contracts. The full 390-source project fails the same way.</li></ol>
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:N/A:H/D:N/Y:N/R:N/S:U (7.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Find the name that is subtracted without a prior reference count, and align that count with solc's unused pruner. Add a reduced Yul or Solidity case next to the pruner tests.</p>
+  <div class="kicker">References</div>
+  <p>Source id H-10. src/libyul/optimiser/unused_pruner.zig:290.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-17">
+  <div class="finding-head"><h3 class="finding-id">4.17 (HACK-17) EMPTY DISPATCH OMITS UNUSED SELECTOR SHIFT HELPER</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag medium">Medium (5.0)</span>
+    <span class="finding-tag">IR</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>Contracts with no external interface functions get unoptimized IR that lacks shift_right_224_unsigned. solc still emits that helper. Optimized IR and bytecode match.</p><p>Unoptimized ir token compare fails when the external interface is empty. The helper is dead. Optimized IR and bytecode matched solc.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 17: src/libsolidity/codegen/ir/ir_generator.zig (Lines 710-718)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">710</td><td class="src">            for (functions.items) |function| self.allocator.free(function.signature);</td></tr>
+<tr><td class="ln">711</td><td class="src">            functions.deinit(self.allocator);</td></tr>
+<tr><td class="ln">712</td><td class="src">        }</td></tr>
+<tr><td class="ln">713</td><td class="src">        var output: Generated.Buffer = .{ .generator = generator };</td></tr>
+<tr><td class="ln">714</td><td class="src">        if (functions.items.len != 0) {</td></tr>
+<tr><td class="ln">715</td><td class="src">            const shift = try utils.shiftRightFunction(224);</td></tr>
+<tr><td class="ln">716</td><td class="src">            defer self.allocator.free(shift);</td></tr>
+<tr><td class="ln">717</td><td class="src">            var branch = try generator.ifStatement(try generator.expression("iszero(lt(calldatasize(), 4))", .{}), try generator.statements("let selector := @0(calldataload(0))", .{shift}));</td></tr>
+<tr><td class="ln">718</td><td class="src">            var dispatch = try generator.switchStatement(try generator.identifier("selector"), &amp;.{});</td></tr>
+</tbody></table></div>
+  
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:M/A:N/D:N/Y:N/R:N/S:U (5.0)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Call shiftRightFunction(224) while building the dispatch routine even when there are no cases, so the collector keeps the helper solc keeps. Add an empty contract to the corpus with ir requested.</p>
+  <div class="kicker">References</div>
+  <p>Source id M-03. src/libsolidity/codegen/ir/ir_generator.zig:714.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-18">
+  <div class="finding-head"><h3 class="finding-id">4.18 (HACK-18) STORAGE ARRAY PUSH PARAMETER IS VALUE_0 NOT VALUE0</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag medium">Medium (5.0)</span>
+    <span class="finding-tag">IR</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>Unoptimized IR for array.push names the value parameter value_0. solc 0.8.36 names it value0. Bytecode and irOptimized still match on the reduced fixtures after the optimizer renames temps, except where M-01's hex bound remains in irOptimized.</p><p>Unoptimized ir token compare fails for contracts that push to storage arrays. The name is internal. Runtime bytecode matched solc on both fixtures.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 18: src/libsolidity/codegen/yul_util_functions.zig (Lines 4249-4250)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">4249</td><td class="src">        const values = try generator.indexedNames("value_", value_count);</td></tr>
+<tr><td class="ln">4250</td><td class="src">        const panic = try self.panicFunction(.resource_error);</td></tr>
+</tbody></table></div>
+  
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:M/A:N/D:N/Y:N/R:N/S:U (5.0)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Pass "value" into indexedNames at the three storage-update sites, matching suffixedVariableNameList("value", ...). Keep the value0 unit test and add a storage push IR token fixture.</p>
+  <div class="kicker">References</div>
+  <p>Source id M-02. src/libsolidity/codegen/yul_util_functions.zig:4249.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-19">
+  <div class="finding-head"><h3 class="finding-id">4.19 (HACK-19) YUL NUMBER SPELLING DIFFERS FROM SOLC 0.8.36</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag medium">Medium (5.0)</span>
+    <span class="finding-tag">IR</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>A Foundry user who requests ir or irOptimized for a storage array push gets a different Yul text than solc 0.8.36. Creation and runtime bytecode match.</p><p>ir and, for the array bound, irOptimized fail an exact or token compare. Deployed bytecode does not change. A tool that hashes irOptimized will not match solc. A tool that executes the bytecode will.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 19: src/libsolidity/codegen/yul_util_functions.zig (Lines 4274-4277, 4802-4805)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">4274</td><td class="src">                \\let data := sload(array)</td></tr>
+<tr><td class="ln">4275</td><td class="src">                \\let oldLen := @0(data)</td></tr>
+<tr><td class="ln">4276</td><td class="src">                \\if iszero(lt(oldLen, 0x10000000000000000)) { @1() }</td></tr>
+<tr><td class="ln">4277</td><td class="src">                \\switch gt(oldLen, 31)</td></tr>
+</tbody></table></div>
+<div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">4802</td><td class="src">        const code = try generator.functionDefinition(</td></tr>
+<tr><td class="ln">4803</td><td class="src">            \\function @0(array, data, oldLen, newLen) {</td></tr>
+<tr><td class="ln">4804</td><td class="src">            \\if gt(newLen, 0x10000000000000000) { @1() }</td></tr>
+<tr><td class="ln">4805</td><td class="src">            \\switch lt(oldLen, 32)</td></tr>
+</tbody></table></div>
+  
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:M/A:N/D:N/Y:N/R:N/S:U (5.0)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Emit (u256(1) &lt;&lt; 64) with the decimal spelling solc uses, and give error selectors the 0x hint solc prints. Add 08_transient.sol and 27_array_pop.sol to the frozen corpus with ir and irOptimized selected explicitly.</p>
+  <div class="kicker">References</div>
+  <p>Source id M-01. src/libsolidity/codegen/yul_util_functions.zig:4276.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-20">
+  <div class="finding-head"><h3 class="finding-id">4.20 (HACK-20) NAMED TYPE CONVERSION ALSO REPORTS THE CONVERSION ERROR</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag low">Low (2.5)</span>
+    <span class="finding-tag">Diagnostic</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>uint({a: true}) reports TypeError 5153 and TypeError 9640. solc 0.8.36 reports 5153 and stops.</p><p>Both compilers reject audit/vectors/L-04/named.sol. oksolc adds 9640, "Explicit type conversion not allowed from bool to uint256". No bytecode from either side.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 20: src/libsolidity/analysis/type_checker.zig (Lines 3008-3028)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">3008</td><td class="src">    fn checkTypeConversion(</td></tr>
+<tr><td class="ln">3009</td><td class="src">        self: *TypeChecker,</td></tr>
+<tr><td class="ln">3010</td><td class="src">        node: *AST.Node,</td></tr>
+<tr><td class="ln">3011</td><td class="src">        requested_type: *const Types.Type,</td></tr>
+<tr><td class="ln">3012</td><td class="src">    ) CheckError!*const Types.Type {</td></tr>
+<tr><td class="ln">3013</td><td class="src">        const value = node.payload.function_call;</td></tr>
+<tr><td class="ln">3014</td><td class="src">        if (value.arguments.len != 1) {</td></tr>
+<tr><td class="ln">3015</td><td class="src">            try self.reporter.typeError(</td></tr>
+<tr><td class="ln">3016</td><td class="src">                errorId(2558),</td></tr>
+<tr><td class="ln">3017</td><td class="src">                node.location,</td></tr>
+<tr><td class="ln">3018</td><td class="src">                "Exactly one argument expected for explicit type conversion.",</td></tr>
+<tr><td class="ln">3019</td><td class="src">            );</td></tr>
+<tr><td class="ln">3020</td><td class="src">            return requested_type;</td></tr>
+<tr><td class="ln">3021</td><td class="src">        }</td></tr>
+<tr><td class="ln">3022</td><td class="src">        if (value.names.len != 0)</td></tr>
+<tr><td class="ln">3023</td><td class="src">            try self.reporter.typeError(</td></tr>
+<tr><td class="ln">3024</td><td class="src">                errorId(5153),</td></tr>
+<tr><td class="ln">3025</td><td class="src">                node.location,</td></tr>
+<tr><td class="ln">3026</td><td class="src">                "Type conversion cannot allow named arguments.",</td></tr>
+<tr><td class="ln">3027</td><td class="src">            );</td></tr>
+<tr><td class="ln">3028</td><td class="src">        const argument_type = (try expressionAnnotation(</td></tr>
+</tbody></table></div>
+  
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:L/A:N/D:N/Y:N/R:N/S:U (2.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Return after reporting 5153.</p>
+  <div class="kicker">References</div>
+  <p>Source id L-04. src/libsolidity/analysis/type_checker.zig:3022.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-21">
+  <div class="finding-head"><h3 class="finding-id">4.21 (HACK-21) NON-PAYABLE CONSTRUCTOR VALUE OPTION OMITS THE CONTRACT NAME</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag low">Low (2.5)</span>
+    <span class="finding-tag">Diagnostic</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>new D{value: 1}(0) on a non-payable constructor is error 7006 on both compilers. oksolc's message does not name D. solc's message does. Neither compiler emits bytecode.</p><p>Diagnostic text. Error code 7006 and the reject match. A tool that compares message strings will not. A tool that keys off the code will.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 21: src/libsolidity/analysis/type_checker.zig (Lines 4013-4015)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">4013</td><td class="src">                        if (function_type.kind == .Creation)</td></tr>
+<tr><td class="ln">4014</td><td class="src">                            "Cannot set option \"value\", since the constructor is not payable."</td></tr>
+<tr><td class="ln">4015</td><td class="src">                        else</td></tr>
+</tbody></table></div>
+  
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:L/A:N/D:N/Y:N/R:N/S:U (2.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>When kind == .Creation, include the contract's human-readable name the way TypeChecker.cpp:2985 does. Add the vector to the corpus and compare error code and message.</p>
+  <div class="kicker">References</div>
+  <p>Source id L-03. src/libsolidity/analysis/type_checker.zig:4013.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-22">
+  <div class="finding-head"><h3 class="finding-id">4.22 (HACK-22) .GAS() IS A DEPRECATION ERROR INSTEAD OF A MISSING MEMBER</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag low">Low (2.5)</span>
+    <span class="finding-tag">Diagnostic</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>h.gas(1)() is TypeError 1621 on oksolc and TypeError 9582 on solc 0.8.36. Both reject the program.</p><p>audit/vectors/L-05/gas.sol produces no bytecode from either compiler. A tool that branches on the error code sees 1621 instead of 9582. .value(1)() on a payable function is 8820 on both.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 22: src/libsolidity/analysis/type_checker.zig (Lines 4715-4737)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">4715</td><td class="src">        if (std.mem.eql(u8, name, "gas") and function.kind != .Creation) {</td></tr>
+<tr><td class="ln">4716</td><td class="src">            const gas_set = try self.type_provider.copyAndSetCallOptions(</td></tr>
+<tr><td class="ln">4717</td><td class="src">                owner_type,</td></tr>
+<tr><td class="ln">4718</td><td class="src">                true,</td></tr>
+<tr><td class="ln">4719</td><td class="src">                false,</td></tr>
+<tr><td class="ln">4720</td><td class="src">                false,</td></tr>
+<tr><td class="ln">4721</td><td class="src">            );</td></tr>
+<tr><td class="ln">4722</td><td class="src">            const names = [_][]const u8{""};</td></tr>
+<tr><td class="ln">4723</td><td class="src">            return .{</td></tr>
+<tr><td class="ln">4724</td><td class="src">                .type_ref = try self.type_provider.function(</td></tr>
+<tr><td class="ln">4725</td><td class="src">                    &amp;.{self.type_provider.uint256()},</td></tr>
+<tr><td class="ln">4726</td><td class="src">                    &amp;.{gas_set},</td></tr>
+<tr><td class="ln">4727</td><td class="src">                    &amp;names,</td></tr>
+<tr><td class="ln">4728</td><td class="src">                    &amp;names,</td></tr>
+<tr><td class="ln">4729</td><td class="src">                    .SetGas,</td></tr>
+<tr><td class="ln">4730</td><td class="src">                    .Pure,</td></tr>
+<tr><td class="ln">4731</td><td class="src">                    null,</td></tr>
+<tr><td class="ln">4732</td><td class="src">                    function.options,</td></tr>
+<tr><td class="ln">4733</td><td class="src">                ),</td></tr>
+<tr><td class="ln">4734</td><td class="src">                .is_pure = false,</td></tr>
+<tr><td class="ln">4735</td><td class="src">            };</td></tr>
+<tr><td class="ln">4736</td><td class="src">        }</td></tr>
+<tr><td class="ln">4737</td><td class="src">        return null;</td></tr>
+</tbody></table></div>
+  
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:L/A:N/D:N/Y:N/R:N/S:U (2.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Do not resolve gas on a function type. Leave the missing-member path to report 9582.</p>
+  <div class="kicker">References</div>
+  <p>Source id L-05. src/libsolidity/analysis/type_checker.zig:4715.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-23">
+  <div class="finding-head"><h3 class="finding-id">4.23 (HACK-23) OUTPUT SELECTION STAR INCLUDES IR AND IROPTIMIZED</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag low">Low (2.5)</span>
+    <span class="finding-tag">JSON</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>outputSelection "*" makes oksolc emit ir and irOptimized. solc 0.8.36 does not. Bytecode, ABI, metadata, and method identifiers still matched on the fixtures when those fields were compared.</p><p>A client that sends "*" and compares the whole JSON document will see extra keys. Foundry's usual selection lists concrete artifacts. Bytecode under evm.bytecode.object matched.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 23: src/libsolidity/interface/standard_compiler.zig (Lines 2039-2052)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">2039</td><td class="src">            const wants_ir = isArtifactRequested(</td></tr>
+<tr><td class="ln">2040</td><td class="src">                &amp;settings.projection.output_selection,</td></tr>
+<tr><td class="ln">2041</td><td class="src">                parsed.tree.source_name,</td></tr>
+<tr><td class="ln">2042</td><td class="src">                contract_name,</td></tr>
+<tr><td class="ln">2043</td><td class="src">                "ir",</td></tr>
+<tr><td class="ln">2044</td><td class="src">                true,</td></tr>
+<tr><td class="ln">2045</td><td class="src">            );</td></tr>
+<tr><td class="ln">2046</td><td class="src">            const wants_optimized_ir = isArtifactRequested(</td></tr>
+<tr><td class="ln">2047</td><td class="src">                &amp;settings.projection.output_selection,</td></tr>
+<tr><td class="ln">2048</td><td class="src">                parsed.tree.source_name,</td></tr>
+<tr><td class="ln">2049</td><td class="src">                contract_name,</td></tr>
+<tr><td class="ln">2050</td><td class="src">                "irOptimized",</td></tr>
+<tr><td class="ln">2051</td><td class="src">                true,</td></tr>
+<tr><td class="ln">2052</td><td class="src">            );</td></tr>
+</tbody></table></div>
+  
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:L/A:N/D:N/Y:N/R:N/S:U (2.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Pass false for ir and irOptimized, matching solc's wildcard flag. Keep emitting them when the request names them.</p>
+  <div class="kicker">References</div>
+  <p>Source id L-02. src/libsolidity/interface/standard_compiler.zig:2039.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-24">
+  <div class="finding-head"><h3 class="finding-id">4.24 (HACK-24) EMPTY STORAGE LAYOUT USES TYPES OBJECT INSTEAD OF NULL</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag low">Low (2.5)</span>
+    <span class="finding-tag">JSON</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>When a contract has no variables in a storage area, oksolc emits "types": {}. solc 0.8.36 emits "types": null. Slot lists are empty on both sides. Contracts that do have variables in that area matched, including packed structs and the transient fixture's persistent array.</p><p>Exact JSON compare of storageLayout or transientStorageLayout fails for empty areas. Slot numbers do not change. Upgrade tools that only read the storage array see the same entries.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 24: src/libsolidity/interface/storage_layout.zig (Lines 24-74)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">24</td><td class="src">    compatibility_ids: CompatibilityIdResolver,</td></tr>
+<tr><td class="ln">25</td><td class="src">    contract: ?*const AST.Node = null,</td></tr>
+<tr><td class="ln">26</td><td class="src">    types: Json = .{ .object = .empty },</td></tr>
+<tr><td class="ln">27</td><td class="src"></td></tr>
+<tr><td class="ln">28</td><td class="src">    pub fn init(</td></tr>
+<tr><td class="ln">29</td><td class="src">        allocator: std.mem.Allocator,</td></tr>
+<tr><td class="ln">30</td><td class="src">        type_provider: *TypeProviderModule.TypeProvider,</td></tr>
+<tr><td class="ln">31</td><td class="src">        compatibility_ids: CompatibilityIdResolver,</td></tr>
+<tr><td class="ln">32</td><td class="src">    ) StorageLayout {</td></tr>
+<tr><td class="ln">33</td><td class="src">        return .{</td></tr>
+<tr><td class="ln">34</td><td class="src">            .allocator = allocator,</td></tr>
+<tr><td class="ln">35</td><td class="src">            .type_provider = type_provider,</td></tr>
+<tr><td class="ln">36</td><td class="src">            .compatibility_ids = compatibility_ids,</td></tr>
+<tr><td class="ln">37</td><td class="src">        };</td></tr>
+<tr><td class="ln">38</td><td class="src">    }</td></tr>
+<tr><td class="ln">39</td><td class="src"></td></tr>
+<tr><td class="ln">40</td><td class="src">    /// Generates the exact Standard JSON layout for ordinary or transient</td></tr>
+<tr><td class="ln">41</td><td class="src">    /// storage. All returned strings and containers are owned by `allocator`.</td></tr>
+<tr><td class="ln">42</td><td class="src">    pub fn generate(</td></tr>
+<tr><td class="ln">43</td><td class="src">        self: *StorageLayout,</td></tr>
+<tr><td class="ln">44</td><td class="src">        contract: *const AST.Node,</td></tr>
+<tr><td class="ln">45</td><td class="src">        location: Types.DataLocation,</td></tr>
+<tr><td class="ln">46</td><td class="src">    ) StorageLayoutError!Json {</td></tr>
+<tr><td class="ln">47</td><td class="src">        if (self.contract != null or contract.nodeKind() != .contract_definition)</td></tr>
+<tr><td class="ln">48</td><td class="src">            return error.InvalidAst;</td></tr>
+<tr><td class="ln">49</td><td class="src">        if (location != .Storage and location != .Transient)</td></tr>
+<tr><td class="ln">50</td><td class="src">            return error.InvalidAst;</td></tr>
+<tr><td class="ln">51</td><td class="src">        self.contract = contract;</td></tr>
+<tr><td class="ln">52</td><td class="src">        self.types = .{ .object = .empty };</td></tr>
+<tr><td class="ln">53</td><td class="src"></td></tr>
+<tr><td class="ln">54</td><td class="src">        const contract_type = try self.type_provider.contract(contract, false);</td></tr>
+<tr><td class="ln">55</td><td class="src">        const variables = try TypeBehavior.linearizedStateVariablesAlloc(</td></tr>
+<tr><td class="ln">56</td><td class="src">            self.allocator,</td></tr>
+<tr><td class="ln">57</td><td class="src">            contract_type.payload.Contract,</td></tr>
+<tr><td class="ln">58</td><td class="src">            location,</td></tr>
+<tr><td class="ln">59</td><td class="src">        );</td></tr>
+<tr><td class="ln">60</td><td class="src">        defer self.allocator.free(variables);</td></tr>
+<tr><td class="ln">61</td><td class="src"></td></tr>
+<tr><td class="ln">62</td><td class="src">        var storage = std.json.Array.init(self.allocator); // zlinter-disable-current-line require_errdefer_dealloc - JSON graph uses caller-owned arena lifetime and transfers into the result</td></tr>
+<tr><td class="ln">63</td><td class="src">        for (variables) |entry|</td></tr>
+<tr><td class="ln">64</td><td class="src">            try storage.append(try self.generateVariable(</td></tr>
+<tr><td class="ln">65</td><td class="src">                entry.declaration,</td></tr>
+<tr><td class="ln">66</td><td class="src">                entry.slot,</td></tr>
+<tr><td class="ln">67</td><td class="src">                entry.byte_offset,</td></tr>
+<tr><td class="ln">68</td><td class="src">            ));</td></tr>
+<tr><td class="ln">69</td><td class="src"></td></tr>
+<tr><td class="ln">70</td><td class="src">        var layout: Json = .{ .object = .empty };</td></tr>
+<tr><td class="ln">71</td><td class="src">        try layout.object.put(self.allocator, "storage", .{ .array = storage });</td></tr>
+<tr><td class="ln">72</td><td class="src">        try layout.object.put(self.allocator, "types", self.types);</td></tr>
+<tr><td class="ln">73</td><td class="src">        return layout;</td></tr>
+<tr><td class="ln">74</td><td class="src">    }</td></tr>
+</tbody></table></div>
+  
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:L/A:N/D:N/Y:N/R:N/S:U (2.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Leave types as JSON null until the first type is inserted. Add an empty contract storage-layout byte compare to the corpus.</p>
+  <div class="kicker">References</div>
+  <p>Source id L-01. src/libsolidity/interface/storage_layout.zig:26.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-25">
+  <div class="finding-head"><h3 class="finding-id">4.25 (HACK-25) A 2^256 YUL LITERAL IS A PARSER ERROR</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag low">Low (2.5)</span>
+    <span class="finding-tag">Diagnostic</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>let a := 115792089237316195423570985008687907853269984665640564039457584007913129639936 is ParserError "Invalid number literal." on oksolc. solc 0.8.36 reports TypeError "Number literal too large (&gt; 256 bits)". Both reject the object.</p><p>No bytecode. A tool that switches on errors[].type sees ParserError instead of TypeError.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 25: src/libyul/asm_parser.zig (Lines 536-539, 958-968)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">536</td><td class="src">                    else =&gt; .Number,</td></tr>
+<tr><td class="ln">537</td><td class="src">                };</td></tr>
+<tr><td class="ln">538</td><td class="src">                if (kind == .Number and !isValidNumberLiteral(self.currentLiteral()))</td></tr>
+<tr><td class="ln">539</td><td class="src">                    try self.fatalParserError(4828, self.currentLocation(), "Invalid number literal.");</td></tr>
+</tbody></table></div>
+<div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">958</td><td class="src">fn isValidNumberLiteral(literal: []const u8) bool {</td></tr>
+<tr><td class="ln">959</td><td class="src">    if (std.mem.startsWith(u8, literal, "0x")) {</td></tr>
+<tr><td class="ln">960</td><td class="src">        if (literal.len == 2) return false;</td></tr>
+<tr><td class="ln">961</td><td class="src">        _ = std.fmt.parseUnsigned(u256, literal[2..], 16) catch return false;</td></tr>
+<tr><td class="ln">962</td><td class="src">        return true;</td></tr>
+<tr><td class="ln">963</td><td class="src">    }</td></tr>
+<tr><td class="ln">964</td><td class="src">    for (literal) |character| if (!std.ascii.isDigit(character)) return false;</td></tr>
+<tr><td class="ln">965</td><td class="src">    if (literal.len == 0) return false;</td></tr>
+<tr><td class="ln">966</td><td class="src">    _ = std.fmt.parseUnsigned(u256, literal, 10) catch return false;</td></tr>
+<tr><td class="ln">967</td><td class="src">    return true;</td></tr>
+<tr><td class="ln">968</td><td class="src">}</td></tr>
+</tbody></table></div>
+  
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:L/A:N/D:N/Y:N/R:N/S:U (2.5)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Parse the digits, then report the same too-large TypeError solc uses when the value does not fit in 256 bits. Stop the parse after the first fatal error so the second ParserError is not emitted.</p>
+  <div class="kicker">References</div>
+  <p>Source id L-06. src/libyul/asm_parser.zig:538.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-26">
+  <div class="finding-head"><h3 class="finding-id">4.26 (HACK-26) VIAIR FALSE IS REJECTED WITH UNIMPLEMENTEDFEATUREERROR</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag info">Informational (0.0)</span>
+    <span class="finding-tag">Product</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>Standard JSON with viaIR: false and an EVM output request is an error in oksolc and a successful compile in solc 0.8.36. The error code is UnimplementedFeatureError. No legacy bytecode is emitted.</p><p>A Foundry project that points solc at oksolc and leaves via_ir unset will not build. It will not deploy legacy bytecode that oksolc never generated.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 26: src/libsolidity/interface/standard_compiler.zig (Lines 317-330)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">317</td><td class="src"></td></tr>
+<tr><td class="ln">318</td><td class="src">    if (requestsSolidityEvmOutput(&amp;settings.projection.output_selection) and !settings.ir.via_ir) {</td></tr>
+<tr><td class="ln">319</td><td class="src">        const message = "Zig port: Solidity EVM output requires \"settings.viaIR\": true; the legacy direct-codegen pipeline is unsupported.";</td></tr>
+<tr><td class="ln">320</td><td class="src">        try appendError(</td></tr>
+<tr><td class="ln">321</td><td class="src">            arena,</td></tr>
+<tr><td class="ln">322</td><td class="src">            errors_value,</td></tr>
+<tr><td class="ln">323</td><td class="src">            .UnimplementedFeatureError,</td></tr>
+<tr><td class="ln">324</td><td class="src">            message,</td></tr>
+<tr><td class="ln">325</td><td class="src">            message,</td></tr>
+<tr><td class="ln">326</td><td class="src">            null,</td></tr>
+<tr><td class="ln">327</td><td class="src">            null,</td></tr>
+<tr><td class="ln">328</td><td class="src">        );</td></tr>
+<tr><td class="ln">329</td><td class="src">        return finishOutput(allocator, &amp;output);</td></tr>
+<tr><td class="ln">330</td><td class="src">    }</td></tr>
+</tbody></table></div>
+  
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:N/A:N/D:N/Y:N/R:N/S:U (0.0)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Keep the rejection. The Foundry snippet in the README already sets via_ir = true. No corpus change required beyond a test that the error type stays UnimplementedFeatureError.</p>
+  <div class="kicker">References</div>
+  <p>Source id I-01. src/libsolidity/interface/standard_compiler.zig:317.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-27">
+  <div class="finding-head"><h3 class="finding-id">4.27 (HACK-27) SOLC SEGFAULTS ON ASSEMBLY TAG 2^32-1</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag info">Informational (0.0)</span>
+    <span class="finding-tag">Oracle</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>Tag value 4294967295 makes solc 0.8.36 die with SIGSEGV (exit 139). oksolc returns TagTooLarge and emits nothing.</p><p>This input is not a bytecode mismatch. oksolc does not assemble it. The solc binary used as the oracle crashes, so there is no solc bytecode to compare.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 27: libevmasm/Assembly.cpp (Lines 188-189)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">188</td><td class="src">        m_usedTags = std::max(m_usedTags, static_cast&lt;unsigned&gt;(data) + 1);</td></tr>
+<tr><td class="ln">189</td><td class="src">        return data;</td></tr>
+</tbody></table></div>
+  
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:N/A:N/D:N/Y:N/R:N/S:U (0.0)</p>
+  <div class="kicker">Recommendation</div>
+  <p>No oksolc change for this row. A solc fix would be to reject the tag before the unsigned increment wraps.</p>
+  <div class="kicker">References</div>
+  <p>Source id SPEC-03. libevmasm/Assembly.cpp:188.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-28">
+  <div class="finding-head"><h3 class="finding-id">4.28 (HACK-28) REQUIRE NAMED CUSTOM ERROR ENCODES SOURCE ORDER</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag info">Informational (0.0)</span>
+    <span class="finding-tag">Oracle</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>require(ok, E({b: y, a: x})) encodes the payload as (y, x) in both compilers. The error is declared E(uint256 a, uint256 b), so a name binding would encode (x, y). revert E({b: y, a: x}) encodes (x, y) in oksolc, and that contract's bytecode matched solc.</p><p>A contract that uses named arguments out of declaration order inside require reverts with the source-order payload. Callers that decode by the error's parameter names will read the fields swapped. solc 0.8.36 does the same, so replacing oksolc with solc does not fix it.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 28: libsolidity/codegen/ir/IRGeneratorForStatements.cpp (Lines 1166-1172)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">1166</td><td class="src">            auto const&amp; errorConstructorCall = dynamic_cast&lt;FunctionCall const&amp;&gt;(*arguments[1]);</td></tr>
+<tr><td class="ln">1167</td><td class="src">            appendCode() &lt;&lt; m_utils.requireWithErrorFunction(errorConstructorCall) &lt;&lt; "(" &lt;&lt;IRVariable(*arguments[0]).name();</td></tr>
+<tr><td class="ln">1168</td><td class="src">            for (auto argument: errorConstructorCall.arguments())</td></tr>
+<tr><td class="ln">1169</td><td class="src">                if (argument-&gt;annotation().type-&gt;sizeOnStack() &gt; 0)</td></tr>
+<tr><td class="ln">1170</td><td class="src">                    appendCode() &lt;&lt; ", " &lt;&lt; IRVariable(*argument).commaSeparatedList();</td></tr>
+<tr><td class="ln">1171</td><td class="src">            appendCode() &lt;&lt; ")\n";</td></tr>
+<tr><td class="ln">1172</td><td class="src">        }</td></tr>
+</tbody></table></div>
+  
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:N/A:N/D:N/Y:N/R:N/S:U (0.0)</p>
+  <div class="kicker">Recommendation</div>
+  <p>Do not "fix" oksolc alone. That would break the byte-compatibility claim. File the language bug against solc. If solc changes the order, change oksolc in the same release and add this fixture to the corpus. Replacement text for a solc bug note: require(cond, Error({name: value, ...})) passes the constructor arguments in source order into a helper whose parameters were built from sorted argument order. revert Error({...}) encodes in declaration order.</p>
+  <div class="kicker">References</div>
+  <p>Source id SPEC-01. libsolidity/codegen/ir/IRGeneratorForStatements.cpp:1166.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+<article class="finding" id="HACK-29">
+  <div class="finding-head"><h3 class="finding-id">4.29 (HACK-29) SOLC MEMORYGUARD CEILING IS 2^31 FROM SHIFT PRECEDENCE</h3></div>
+  <div class="finding-meta">
+    <span class="finding-tag info">Informational (0.0)</span>
+    <span class="finding-tag">Oracle</span>
+    <span class="finding-tag">PENDING</span>
+  </div>
+  <div class="kicker">Description</div>
+  <p>solc aborts Yul optimization when memoryguard's literal is &gt;= 2^31. The next assert in the same function caps slot count at 2^32 - 1. The two expressions are not the same bound.</p><p>Users of solc 0.8.36 cannot compile Yul whose reserved memory is in [2^31, 2^32). The failure is an assertion, not a source diagnostic with an error code.</p>
+  <div class="kicker">Code location</div>
+  <p class="loc">Listing 29: libyul/optimiser/StackLimitEvader.cpp (Lines 203-229)</p><div class="listing-wrap"><table class="listing"><tbody>
+<tr><td class="ln">203</td><td class="src">    yulAssert(reservedMemory &lt; u256(1) &lt;&lt; 32 - 1, "");</td></tr>
+<tr><td class="ln">204</td><td class="src"></td></tr>
+<tr><td class="ln">205</td><td class="src">    for (FunctionCall const* memoryGuardCall: memoryGuardCalls)</td></tr>
+<tr><td class="ln">206</td><td class="src">        if (reservedMemory != literalArgumentValue(*memoryGuardCall))</td></tr>
+<tr><td class="ln">207</td><td class="src">            return;</td></tr>
+<tr><td class="ln">208</td><td class="src"></td></tr>
+<tr><td class="ln">209</td><td class="src">    CallGraph callGraph = CallGraphGenerator::callGraph(_astRoot);</td></tr>
+<tr><td class="ln">210</td><td class="src"></td></tr>
+<tr><td class="ln">211</td><td class="src">    // We cannot move variables in recursive functions to fixed memory offsets.</td></tr>
+<tr><td class="ln">212</td><td class="src">    for (FunctionHandle function: callGraph.recursiveFunctions())</td></tr>
+<tr><td class="ln">213</td><td class="src">    {</td></tr>
+<tr><td class="ln">214</td><td class="src">        yulAssert(std::holds_alternative&lt;YulName&gt;(function), "Builtins are not recursive.");</td></tr>
+<tr><td class="ln">215</td><td class="src">        if (_unreachableVariables.count(std::get&lt;YulName&gt;(function)))</td></tr>
+<tr><td class="ln">216</td><td class="src">            return;</td></tr>
+<tr><td class="ln">217</td><td class="src">    }</td></tr>
+<tr><td class="ln">218</td><td class="src"></td></tr>
+<tr><td class="ln">219</td><td class="src">    std::map&lt;YulName, FunctionDefinition const*&gt; functionDefinitions = allFunctionDefinitions(_astRoot);</td></tr>
+<tr><td class="ln">220</td><td class="src"></td></tr>
+<tr><td class="ln">221</td><td class="src">    MemoryOffsetAllocator memoryOffsetAllocator{</td></tr>
+<tr><td class="ln">222</td><td class="src">        _unreachableVariables,</td></tr>
+<tr><td class="ln">223</td><td class="src">        callGraph.functionCalls,</td></tr>
+<tr><td class="ln">224</td><td class="src">        functionDefinitions,</td></tr>
+<tr><td class="ln">225</td><td class="src">        evmDialect-&gt;reachableStackDepth()</td></tr>
+<tr><td class="ln">226</td><td class="src">    };</td></tr>
+<tr><td class="ln">227</td><td class="src">    uint64_t requiredSlots = memoryOffsetAllocator.run();</td></tr>
+<tr><td class="ln">228</td><td class="src">    yulAssert(requiredSlots &lt; (uint64_t(1) &lt;&lt; 32) - 1, "");</td></tr>
+<tr><td class="ln">229</td><td class="src"></td></tr>
+</tbody></table></div>
+  
+  <div class="kicker">BVSS</div>
+  <p class="mono">AO:A/AC:L/AX:L/C:N/I:N/A:N/D:N/Y:N/R:N/S:U (0.0)</p>
+  <div class="kicker">Recommendation</div>
+  <p>If the ceiling is meant to match the slot cap, write reservedMemory &lt; (u256(1) &lt;&lt; 32) - 1 and report a normal Yul error instead of an uncaught assertion. If 2^31 is intentional, say so in the assert message. Until one of those lands, oksolc matches this binary by rejecting at 1 &lt;&lt; 31 (H-01).</p>
+  <div class="kicker">References</div>
+  <p>Source id SPEC-02. libyul/optimiser/StackLimitEvader.cpp:203.</p>
+  <div class="kicker">Remediation plan</div>
+  <p>PENDING.</p>
+</article>
+
+
+<h2>5 &nbsp; Recommendations</h2>
+
+<h3>Critical</h3>
+<table class="grid">
+  <thead><tr><th>ID</th><th>Risk</th><th>Recommendation</th><th>Status</th></tr></thead>
+  <tbody>
+  <tr><td><a href="#HACK-01">HACK-01</a></td><td>Critical (10)</td><td>Apply .data string entries in sorted key order, the same order json.zig already prints.</td><td>PENDING</td></tr>
+  </tbody>
+</table>
+
+
+<h3>High</h3>
+<table class="grid">
+  <thead><tr><th>ID</th><th>Risk</th><th>Recommendation</th><th>Status</th></tr></thead>
+  <tbody>
+  <tr><td><a href="#HACK-02">HACK-02</a></td><td>High (7.5)</td><td>Reject the path when any component is a symlink, or when realPath is outside the project, before the bytes are kept. Use the same rule as FileSourceLoader.read. Add a CLI test next to the import symlink tests in src/cli/main.zig.</td><td>PENDING</td></tr><tr><td><a href="#HACK-03">HACK-03</a></td><td>High (7.5)</td><td>Reject a PUSH value that already starts with 0x. The caller adds that prefix.</td><td>PENDING</td></tr><tr><td><a href="#HACK-04">HACK-04</a></td><td>High (7.5)</td><td>Parse tag values with the same prefixes Boost accepts, and reject an octal token that contains 8 or 9.</td><td>PENDING</td></tr><tr><td><a href="#HACK-05">HACK-05</a></td><td>High (7.5)</td><td>Treat a 0x prefix with no digits as index 0, which is what std::stoi returns.</td><td>PENDING</td></tr><tr><td><a href="#HACK-06">HACK-06</a></td><td>High (7.5)</td><td>Match super lookup by signature, the way resolveFunctionVirtual in ast.zig:810 already skips an unimplemented function and continues. Do not require the later function to override the unimplemented declaration. Return a compile error instead of InvalidAst if nothing matches.</td><td>PENDING</td></tr><tr><td><a href="#HACK-07">HACK-07</a></td><td>High (7.5)</td><td>When the EVM version has no returndata, type the call with the same dynamic-stripped return list solc uses, and reject the conversion.</td><td>PENDING</td></tr><tr><td><a href="#HACK-08">HACK-08</a></td><td>High (7.5)</td><td>Return null for length when the array kind is string, and let the existing missing-member path report 9582.</td><td>PENDING</td></tr><tr><td><a href="#HACK-09">HACK-09</a></td><td>High (7.5)</td><td>If arguments is null, leave both overloads unresolved and report 6675.</td><td>PENDING</td></tr><tr><td><a href="#HACK-10">HACK-10</a></td><td>High (7.5)</td><td>Return null unless the function kind is external (or public) and, for events, the event is not anonymous.</td><td>PENDING</td></tr><tr><td><a href="#HACK-11">HACK-11</a></td><td>High (7.5)</td><td>Set is_pure from the parent expression, matching solc, so a state read is not a constant.</td><td>PENDING</td></tr><tr><td><a href="#HACK-12">HACK-12</a></td><td>High (7.5)</td><td>Delete the integer arm in resolveTypeMember. Leave min and max on the meta-type path.</td><td>PENDING</td></tr><tr><td><a href="#HACK-13">HACK-13</a></td><td>High (7.5)</td><td>Return the whole declaration list for that name and let the existing overload resolution pick f(uint).</td><td>PENDING</td></tr><tr><td><a href="#HACK-14">HACK-14</a></td><td>High (7.5)</td><td>Skip a zero-parameter function in attachedFunctionType (return null, or continue in the caller) instead of error.InvalidAst. Let the one-argument p bind. Surface the Zig error name in the JSON error instead of InternalFailure.</td><td>PENDING</td></tr><tr><td><a href="#HACK-15">HACK-15</a></td><td>High (7.5)</td><td>Reject when reserved_memory &gt;= (1 &lt;&lt; 31), and return an error before codegen. Add audit/vectors/H-01/request.json to the frozen corpus and expect a compile error. See SPEC-02 for the reading that solc's expression is the accidental one.</td><td>PENDING</td></tr><tr><td><a href="#HACK-16">HACK-16</a></td><td>High (7.5)</td><td>Find the name that is subtracted without a prior reference count, and align that count with solc's unused pruner. Add a reduced Yul or Solidity case next to the pruner tests.</td><td>PENDING</td></tr>
+  </tbody>
+</table>
+
+
+<h3>Medium</h3>
+<table class="grid">
+  <thead><tr><th>ID</th><th>Risk</th><th>Recommendation</th><th>Status</th></tr></thead>
+  <tbody>
+  <tr><td><a href="#HACK-17">HACK-17</a></td><td>Medium (5.0)</td><td>Call shiftRightFunction(224) while building the dispatch routine even when there are no cases, so the collector keeps the helper solc keeps. Add an empty contract to the corpus with ir requested.</td><td>PENDING</td></tr><tr><td><a href="#HACK-18">HACK-18</a></td><td>Medium (5.0)</td><td>Pass "value" into indexedNames at the three storage-update sites, matching suffixedVariableNameList("value", ...). Keep the value0 unit test and add a storage push IR token fixture.</td><td>PENDING</td></tr><tr><td><a href="#HACK-19">HACK-19</a></td><td>Medium (5.0)</td><td>Emit (u256(1) &lt;&lt; 64) with the decimal spelling solc uses, and give error selectors the 0x hint solc prints. Add 08_transient.sol and 27_array_pop.sol to the frozen corpus with ir and irOptimized selected explicitly.</td><td>PENDING</td></tr>
+  </tbody>
+</table>
+
+
+<h3>Low</h3>
+<table class="grid">
+  <thead><tr><th>ID</th><th>Risk</th><th>Recommendation</th><th>Status</th></tr></thead>
+  <tbody>
+  <tr><td><a href="#HACK-20">HACK-20</a></td><td>Low (2.5)</td><td>Return after reporting 5153.</td><td>PENDING</td></tr><tr><td><a href="#HACK-21">HACK-21</a></td><td>Low (2.5)</td><td>When kind == .Creation, include the contract's human-readable name the way TypeChecker.cpp:2985 does. Add the vector to the corpus and compare error code and message.</td><td>PENDING</td></tr><tr><td><a href="#HACK-22">HACK-22</a></td><td>Low (2.5)</td><td>Do not resolve gas on a function type. Leave the missing-member path to report 9582.</td><td>PENDING</td></tr><tr><td><a href="#HACK-23">HACK-23</a></td><td>Low (2.5)</td><td>Pass false for ir and irOptimized, matching solc's wildcard flag. Keep emitting them when the request names them.</td><td>PENDING</td></tr><tr><td><a href="#HACK-24">HACK-24</a></td><td>Low (2.5)</td><td>Leave types as JSON null until the first type is inserted. Add an empty contract storage-layout byte compare to the corpus.</td><td>PENDING</td></tr><tr><td><a href="#HACK-25">HACK-25</a></td><td>Low (2.5)</td><td>Parse the digits, then report the same too-large TypeError solc uses when the value does not fit in 256 bits. Stop the parse after the first fatal error so the second ParserError is not emitted.</td><td>PENDING</td></tr>
+  </tbody>
+</table>
+
+
+<h3>Informational</h3>
+<table class="grid">
+  <thead><tr><th>ID</th><th>Risk</th><th>Recommendation</th><th>Status</th></tr></thead>
+  <tbody>
+  <tr><td><a href="#HACK-26">HACK-26</a></td><td>Informational (0.0)</td><td>Keep the rejection. The Foundry snippet in the README already sets via_ir = true. No corpus change required beyond a test that the error type stays UnimplementedFeatureError.</td><td>PENDING</td></tr><tr><td><a href="#HACK-27">HACK-27</a></td><td>Informational (0.0)</td><td>No oksolc change for this row. A solc fix would be to reject the tag before the unsigned increment wraps.</td><td>PENDING</td></tr><tr><td><a href="#HACK-28">HACK-28</a></td><td>Informational (0.0)</td><td>Do not "fix" oksolc alone. That would break the byte-compatibility claim. File the language bug against solc. If solc changes the order, change oksolc in the same release and add this fixture to the corpus. Replacement text for a solc bug note: require(cond, Error({name: value, ...})) passes the constructor arguments in source order into a helper whose parameters were built from sorted argument order. revert Error({...}) encodes in declaration order.</td><td>PENDING</td></tr><tr><td><a href="#HACK-29">HACK-29</a></td><td>Informational (0.0)</td><td>If the ceiling is meant to match the slot cap, write reservedMemory &lt; (u256(1) &lt;&lt; 32) - 1 and report a normal Yul error instead of an uncaught assertion. If 2^31 is intentional, say so in the assert message. Until one of those lands, oksolc matches this binary by rejecting at 1 &lt;&lt; 31 (H-01).</td><td>PENDING</td></tr>
+  </tbody>
+</table>
+
+
+<h2>6 &nbsp; Fuzz testing</h2>
+<p>
+  <code>zig build fuzz-json-adapter</code> was run under ASan. 1000 mutations plus 5 seeds passed.
+  Log: the audit host file <code>campaign-out/followup/asan.log</code>.
+</p>
+<p>
+  Equivalence modulo inputs was run on <code>01_storage.sol</code> and on a contract with
+  <code>set</code> and <code>add</code>, with <code>bytecodeHash: none</code> and
+  <code>appendCBOR: false</code>. An unused internal function left creation and runtime
+  bytecode unchanged, and the two compilers matched. The default script compare includes
+  metadata, so both compilers' bytecode changed together.
+</p>
+<p>
+  An opt-level matrix on that second contract matched: optimizer off, runs 1, runs 200,
+  runs 1000000, shanghai, and cancun. A function-count series at n=50, 150, and 400 was
+  near linear on both compilers. No separate performance finding was filed.
+</p>
+
+<h2>7 &nbsp; Static analysis</h2>
+<p>
+  <code>zig build lint</code> completed with no issues. The rest of the review was a manual
+  line read of the compiler, diffed against the solc 0.8.36 sources, plus the differential
+  compiles in section 1.3. No third-party Zig analyzer was run.
+</p>
+
+<h2>8 &nbsp; Remediation record</h2>
+<p>No remediation commit was supplied. Every finding is PENDING.</p>
+<table class="grid">
+  <thead><tr><th>Date</th><th>Finding</th><th>Commit or statement</th><th>Confirmed</th><th>Merge</th></tr></thead>
+  <tbody>
+    <tr><td>09/30/2026</td><td>HACK-01 through HACK-29</td><td>No fix recorded</td><td>No</td><td>Open</td></tr>
+  </tbody>
+</table>
+<p>Still open: all 29 findings on commit a59339132a1aecc8594a34cbba6b5a1bffbeeca8.</p>
+
+<h2>9 &nbsp; Exhibit B</h2>
+<table class="grid keep">
+  <thead><tr><th>Severity</th><th>Range</th><th>Meaning in this report</th></tr></thead>
+  <tbody>
+    <tr><td>Critical</td><td>9.0 - 10.0</td><td>Compiler output bytes differ from solc on an input both tools accept.</td></tr>
+    <tr><td>High</td><td>7.0 - 8.9</td><td>Accept/reject differs, or a compile aborts, on a reachable path.</td></tr>
+    <tr><td>Medium</td><td>4.5 - 6.9</td><td>IR text differs. Solidity bytecode matches.</td></tr>
+    <tr><td>Low</td><td>2.0 - 4.4</td><td>Diagnostic class, message text, or JSON shape. Both sides reject, or bytecode matches.</td></tr>
+    <tr><td>Informational</td><td>0.0 - 1.9</td><td>Documented product limit, or a solc behavior recorded so the oracle is explicit.</td></tr>
+  </tbody>
+</table>
+<p>Warranty caps for a paid review sit in the services agreement when one exists.</p>
+
+<div class="cover-foot" style="margin-top:28px">
+  <a href="https://hackerbane.com">hackerbane.com</a>
+  <!--email_off--><a href="mailto:hello@hackerbane.com">hello@hackerbane.com</a><!--/email_off-->
+  <span>HB-AR-2026.17</span>
+</div>
+</body>
+</html>
