@@ -4268,6 +4268,7 @@ pub const TypeChecker = struct {
                 value.member_name,
             ),
             .Module => |module| resolved = try self.resolveModuleMember(
+                node,
                 module.source_unit,
                 value.member_name,
             ),
@@ -5160,6 +5161,7 @@ pub const TypeChecker = struct {
 
     fn resolveModuleMember(
         self: *TypeChecker,
+        node: *AST.Node,
         source_unit: *const AST.Node,
         name: []const u8,
     ) CheckError!?ResolvedMember {
@@ -5169,13 +5171,28 @@ pub const TypeChecker = struct {
             else => return error.InvalidAst,
         };
         for (exports.*) |symbol| {
-            if (!std.mem.eql(u8, symbol.name, name) or symbol.declarations.len != 1) continue;
-            const declaration = symbol.declarations[0];
-            return .{
-                .type_ref = try self.declarationType(declaration),
-                .declaration = declaration,
-                .is_pure = true,
-            };
+            if (!std.mem.eql(u8, symbol.name, name)) continue;
+            const arguments = (try memberAccessAnnotation(self.tree, node)).expression.arguments;
+            var resolved: ?ResolvedMember = null;
+            for (symbol.declarations) |declaration| {
+                const type_ref = try self.declarationType(declaration);
+                if (symbol.declarations.len > 1) {
+                    if (arguments) |*call_arguments|
+                        if (type_ref.asFunction() != null and !functionTypeCanTakeArguments(type_ref, call_arguments, null)) continue;
+                }
+                if (resolved != null) {
+                    const owner_type = (try expressionAnnotation(self.tree, node.payload.member_access.expression)).type_ref.?;
+                    const message = try std.fmt.allocPrint(
+                        self.allocator,
+                        "Member \"{s}\" not unique after argument-dependent lookup in {s}.",
+                        .{ name, try self.typeNameTemporary(owner_type) },
+                    );
+                    defer self.allocator.free(message);
+                    try self.reporter.fatal(errorId(6675), .TypeError, node.location, null, message);
+                }
+                resolved = .{ .type_ref = type_ref, .declaration = declaration, .is_pure = true };
+            }
+            return resolved;
         }
         return null;
     }
