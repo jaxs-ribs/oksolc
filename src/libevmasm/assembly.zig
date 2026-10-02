@@ -1496,7 +1496,7 @@ fn createSpecialAssemblyItem(
     }
     if (std.mem.eql(u8, name, "PUSH [tag]")) {
         try requireAssemblyValue(value);
-        const tag = try parseU256Decimal(value);
+        const tag = try parseU256Integer(value);
         const item = AssemblyItem.initType(.PushTag, tag, .{});
         const split = try item.splitForeignPushTag();
         if (split[0].empty()) try updateUsedTags(assembly, split[1]);
@@ -1532,7 +1532,7 @@ fn createSpecialAssemblyItem(
     }
     if (std.mem.eql(u8, name, "tag")) {
         try requireAssemblyValue(value);
-        const tag = try parseU256Decimal(value);
+        const tag = try parseU256Integer(value);
         try updateUsedTags(assembly, tag);
         return AssemblyItem.initType(.Tag, tag, .{});
     }
@@ -1569,8 +1569,13 @@ fn parseU256Hex(input: []const u8) AssemblyError!u256 {
     return std.fmt.parseUnsigned(u256, input, 16) catch return error.InvalidAssemblyItemValue;
 }
 
-fn parseU256Decimal(input: []const u8) AssemblyError!u256 {
-    return std.fmt.parseUnsigned(u256, input, 10) catch return error.InvalidAssemblyItemValue;
+fn parseU256Integer(input: []const u8) AssemblyError!u256 {
+    const hex = std.mem.startsWith(u8, input, "0x") or std.mem.startsWith(u8, input, "0X");
+    const base: u8 = if (hex) 16 else if (std.mem.startsWith(u8, input, "0")) 8 else 10;
+    const digits = if (hex) input[2..] else input;
+    for (digits) |character|
+        _ = std.fmt.charToDigit(character, base) catch return error.InvalidAssemblyItemValue;
+    return std.fmt.parseUnsigned(u256, digits, base) catch return error.InvalidAssemblyItemValue;
 }
 
 fn jsonObject(value: *const JSON.Json) ?*const std.json.ObjectMap {
@@ -2038,6 +2043,26 @@ test "assembly JSON preserves code, source names, data, and subassemblies" {
     const actual = try JSON.jsonCompactPrintAlloc(allocator, &round_trip.value);
     defer allocator.free(actual);
     try std.testing.expectEqualStrings(expected, actual);
+}
+
+test "assembly JSON tag integers use decimal octal and hexadecimal prefixes" {
+    const allocator = std.testing.allocator;
+    for ([_][]const u8{ "8", "010", "0x8", "0X8" }) |tag| {
+        const input = try std.fmt.allocPrint(
+            allocator,
+            "{{\".code\":[{{\"name\":\"PUSH [tag]\",\"value\":\"8\"}},{{\"name\":\"JUMP\"}},{{\"name\":\"tag\",\"value\":\"{s}\"}},{{\"name\":\"JUMPDEST\"}},{{\"name\":\"STOP\"}}]}}",
+            .{tag},
+        );
+        defer allocator.free(input);
+        const parsed = try std.json.parseFromSlice(JSON.Json, allocator, input, .{});
+        defer parsed.deinit();
+        const assembly = try Assembly.fromJSON(allocator, &parsed.value);
+        defer assembly.destroy();
+        const object = try assembly.assemble();
+        try std.testing.expectEqualSlices(u8, &.{ 0x60, 0x03, 0x56, 0x5b, 0x00 }, object.bytecode.items);
+    }
+    for ([_][]const u8{ "08", "09", "0xg", "1_0", "+1" }) |value|
+        try std.testing.expectError(error.InvalidAssemblyItemValue, parseU256Integer(value));
 }
 
 test "assembly JSON PUSH values require unprefixed hex digits" {
