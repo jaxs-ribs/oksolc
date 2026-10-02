@@ -24,6 +24,7 @@ test "ownership test inventory" {
     _ = @import("libyul/optimiser/function_specializer.zig");
     _ = @import("libyul/optimiser/ssa_reverser.zig");
     _ = @import("libyul/optimiser/full_inliner.zig");
+    _ = @import("libyul/optimiser/unused_pruner.zig");
     _ = @import("libyul/optimiser/block_flattener.zig");
     _ = @import("libyul/optimiser/for_loop_init_rewriter.zig");
     _ = @import("libyul/optimiser/optimizer_utilities.zig");

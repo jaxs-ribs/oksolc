@@ -263,6 +263,11 @@ pub const UnusedPruner = struct {
         errdefer deinitExpressions(self.allocator, &arguments);
         try arguments.ensureTotalCapacity(self.allocator, 1);
         const value = declaration.value orelse return error.InvalidAst;
+        const handle: AST.FunctionHandle = .{ .builtin = discard };
+        if (self.references.getPtr(handle)) |count|
+            count.* += 1
+        else
+            _ = try self.references.insert(self.scratch_allocator, handle, 1);
         const expression = value.*;
         self.allocator.destroy(value);
         declaration.value = null;
@@ -298,4 +303,26 @@ pub const UnusedPruner = struct {
 fn deinitExpressions(allocator: std.mem.Allocator, expressions: *std.ArrayList(AST.Expression)) void {
     for (expressions.items) |*expression| expression.deinit(allocator);
     expressions.deinit(allocator);
+}
+
+test "unused pruner counts inserted discard calls across iterations" {
+    const allocator = std.testing.allocator;
+    const Parser = @import("../asm_parser.zig").Parser;
+    const Diagnostics = @import("../../liblangutil/diagnostics.zig");
+    const EVMDialect = @import("../backends/evm/evm_dialect.zig").EVMDialect;
+    var dialect = try EVMDialect.init(allocator, .current(), true);
+    defer dialect.deinit();
+    for ([_][]const u8{
+        "{ function f() { let unused := g() } function h() { f() } function g() -> x { sstore(0, 1) x := 1 } }",
+        "{ pop(2) function f() { let unused := g() } function h() { f() } function g() -> x { sstore(0, 1) x := 1 } }",
+    }) |source| {
+        var reporter = Diagnostics.ErrorReporter.init(allocator);
+        defer reporter.deinit();
+        var ast = (try Parser.parseSource(allocator, source, "pruner.yul", &reporter, dialect.dialect(), .{})).?;
+        defer ast.deinit();
+        var reserved: NameCollectorModule.NameSet = .{};
+        defer reserved.deinit(allocator);
+        try UnusedPruner.runUntilStabilisedOnFullAST(allocator, dialect.dialect(), &ast.root_block, &reserved);
+        try std.testing.expectEqual(@as(usize, 0), ast.root().statements.items.len);
+    }
 }
