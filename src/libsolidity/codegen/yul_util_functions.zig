@@ -4183,10 +4183,10 @@ pub const YulUtilFunctions = struct {
         if (!(try self.function_collector.beginFunction(name)))
             return self.function_collector.copyFunctionName(name);
         errdefer self.function_collector.abortFunction(name);
-        const extract = try self.extractByteArrayLengthFunction();
-        defer self.allocator.free(extract);
         const panic = try self.panicFunction(.empty_array_pop);
         defer self.allocator.free(panic);
+        const extract = try self.extractByteArrayLengthFunction();
+        defer self.allocator.free(extract);
         const transit = try self.byteArrayTransitLongToShortFunction(type_ref);
         defer self.allocator.free(transit);
         const encode = try self.shortByteArrayEncodeUsedAreaSetLengthFunction();
@@ -6758,10 +6758,10 @@ test "Yul AST reference, packed ABI, and storage helper surface is instantiated"
     defer allocator.free(canonical);
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(canonical, &digest, .{});
-    // Updated from the 5b1255faa baseline for solc's nested copy blocks and
-    // typed cleanup dependencies, covered by solidity-array-copy-scopes.json.
+    // HB-AR-2026.17 HACK-18/HACK-19 align push names and error selectors
+    // with solc, retaining hexadecimal array bounds for readability.
     // This checks statement/dependency order, values and literal kinds.
-    try std.testing.expectEqualStrings("10b6ca3444702b840465013a9934c9dde1f8665e09b1a350f3b2a10be34a07a7", &std.fmt.bytesToHex(digest, .lower));
+    try std.testing.expectEqualStrings("98db39f6fc1416335f7cb015343d2ef98e1462b413a20bea04333cca77e368d5", &std.fmt.bytesToHex(digest, .lower));
 }
 
 test "Yul AST scalar helper generation retains structure and published code" {
