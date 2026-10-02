@@ -2620,3 +2620,19 @@ test "parallel worker allocation failures propagate after outstanding jobs join"
             }
         };
 }
+
+test "Hackerbane HB-AR-2026.17 hack-06 matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-06",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
