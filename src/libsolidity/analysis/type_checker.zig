@@ -4696,13 +4696,16 @@ pub const TypeChecker = struct {
         name: []const u8,
     ) CheckError!?ResolvedMember {
         const function = owner_type.asFunction() orelse return null;
-        if (std.mem.eql(u8, name, "selector"))
-            return .{
-                .type_ref = try self.type_provider.fixedBytes(
-                    if (function.kind == .Event) 32 else 4,
-                ),
-                .is_pure = function.declaration != null,
-            };
+        if (std.mem.eql(u8, name, "selector")) {
+            var members = try TypeBehavior.nativeMembersAlloc(self.type_provider, self.allocator, owner_type, self.current_contract);
+            defer members.deinit();
+            for (members.items) |member|
+                if (std.mem.eql(u8, member.name, name)) return .{
+                    .type_ref = member.type_ref,
+                    .is_pure = function.declaration != null,
+                };
+            return null;
+        }
         if (std.mem.eql(u8, name, "address") and function.kind == .External)
             return .{ .type_ref = self.type_provider.address(), .is_pure = false };
         if (std.mem.eql(u8, name, "value") and

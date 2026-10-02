@@ -1,0 +1,1 @@
+{"language":"Solidity","sources":{"C.sol":{"content":"// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.36;\ncontract C { function h() internal pure {} function f() external pure returns(bytes4) { return h.selector; } }"}},"settings":{"optimizer":{"enabled":true,"runs":200},"outputSelection":{"*":{"*":["evm.bytecode.object"]}},"viaIR":true}}
