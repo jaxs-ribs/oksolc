@@ -4538,6 +4538,7 @@ pub const TypeChecker = struct {
         arguments: ?@import("../ast/ast_enums.zig").FuncCallArguments,
         owner_pure: bool,
     ) CheckError!?ResolvedMember {
+        if (array.isString()) return null;
         if (std.mem.eql(u8, name, "length"))
             return .{
                 .type_ref = self.type_provider.uint256(),
