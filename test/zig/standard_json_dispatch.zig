@@ -2703,3 +2703,20 @@ test "Hackerbane HB-AR-2026.17 hack-10-internal matches solc 0.8.36" {
         );
     }
 }
+
+test "Hackerbane HB-AR-2026.17 hack-11 matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-11",
+        "hackerbane-hack-11-valid",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}

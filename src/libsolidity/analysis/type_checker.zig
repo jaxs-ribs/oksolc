@@ -4250,6 +4250,7 @@ pub const TypeChecker = struct {
             ),
             .Function => resolved = try self.resolveFunctionMember(
                 owner_type,
+                value.expression,
                 value.member_name,
             ),
             .Contract => |contract_type| resolved = try self.resolveContractMember(
@@ -4693,16 +4694,29 @@ pub const TypeChecker = struct {
     fn resolveFunctionMember(
         self: *TypeChecker,
         owner_type: *const Types.Type,
+        expression: *AST.Node,
         name: []const u8,
     ) CheckError!?ResolvedMember {
         const function = owner_type.asFunction() orelse return null;
         if (std.mem.eql(u8, name, "selector")) {
             var members = try TypeBehavior.nativeMembersAlloc(self.type_provider, self.allocator, owner_type, self.current_contract);
             defer members.deinit();
+            var is_pure = false;
+            if (function.declaration) |declaration| switch (declaration.nodeKind()) {
+                .event_definition, .error_definition => is_pure = true,
+                .function_definition => if (expression.nodeKind() == .member_access) {
+                    const owner = expression.payload.member_access.expression;
+                    is_pure = (try (try expressionAnnotation(self.tree, owner)).is_pure.get()).*;
+                    if (owner.nodeKind() == .identifier and
+                        (std.mem.eql(u8, owner.payload.identifier.name, "this") or
+                            std.mem.eql(u8, owner.payload.identifier.name, "super"))) is_pure = true;
+                },
+                else => {},
+            };
             for (members.items) |member|
                 if (std.mem.eql(u8, member.name, name)) return .{
                     .type_ref = member.type_ref,
-                    .is_pure = function.declaration != null,
+                    .is_pure = is_pure,
                 };
             return null;
         }
