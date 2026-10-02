@@ -1563,9 +1563,10 @@ fn updateUsedTags(assembly: *Assembly, tag: u256) AssemblyError!void {
 }
 
 fn parseU256Hex(input: []const u8) AssemblyError!u256 {
-    const digits = if (std.mem.startsWith(u8, input, "0x")) input[2..] else input;
-    if (digits.len == 0) return error.InvalidAssemblyItemValue;
-    return std.fmt.parseUnsigned(u256, digits, 16) catch return error.InvalidAssemblyItemValue;
+    if (input.len == 0) return error.InvalidAssemblyItemValue;
+    for (input) |character|
+        if (!std.ascii.isHex(character)) return error.InvalidAssemblyItemValue;
+    return std.fmt.parseUnsigned(u256, input, 16) catch return error.InvalidAssemblyItemValue;
 }
 
 fn parseU256Decimal(input: []const u8) AssemblyError!u256 {
@@ -2037,6 +2038,23 @@ test "assembly JSON preserves code, source names, data, and subassemblies" {
     const actual = try JSON.jsonCompactPrintAlloc(allocator, &round_trip.value);
     defer allocator.free(actual);
     try std.testing.expectEqualStrings(expected, actual);
+}
+
+test "assembly JSON PUSH values require unprefixed hex digits" {
+    const allocator = std.testing.allocator;
+    for ([_][]const u8{ "0x10", "0X10", "1_0", "+10" }) |value| {
+        const input = try std.fmt.allocPrint(
+            allocator,
+            "{{\".code\":[{{\"name\":\"PUSH\",\"value\":\"{s}\"}}]}}",
+            .{value},
+        );
+        defer allocator.free(input);
+        const parsed = try std.json.parseFromSlice(JSON.Json, allocator, input, .{});
+        defer parsed.deinit();
+        try std.testing.expectError(error.InvalidAssemblyItemValue, Assembly.fromJSON(allocator, &parsed.value));
+    }
+    try std.testing.expectEqual(@as(u256, 0x10), try parseU256Hex("10"));
+    try std.testing.expectEqual(@as(u256, 0xab), try parseU256Hex("aB"));
 }
 
 test "assembly JSON data aliases use lexicographic key order" {
