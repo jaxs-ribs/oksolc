@@ -5389,7 +5389,15 @@ pub const YulUtilFunctions = struct {
             try generator.expression("@0()", .{allocate})
         else
             try generator.expression("0", .{});
-        const selector = FunctionSelector.selectorFromSignatureU256(signature);
+        const selector_value = FunctionSelector.selectorFromSignatureU256(signature);
+        const selector_hex = std.fmt.bytesToHex(Numeric.toBigEndian256(selector_value), .lower);
+        const selector_digits = @max(Numeric.numberEncodingSize(u256, selector_value), 1) * 2;
+        var selector = generator.number(selector_value);
+        selector.literal.value.string_value = try std.fmt.allocPrint(
+            generator.allocator(),
+            "0x{s}",
+            .{selector_hex[selector_hex.len - selector_digits ..]},
+        );
         return generator.statements(
             "let @0 := @1 mstore(@0, @2) let @3 := @4(add(@0, 4), @5) revert(@0, sub(@3, @0))",
             .{ position, allocation_expression, selector, end, encoder_name, argument_names },

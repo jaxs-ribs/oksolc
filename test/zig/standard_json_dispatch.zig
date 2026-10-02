@@ -2755,3 +2755,21 @@ test "Hackerbane HB-AR-2026.17 hack-13 matches solc 0.8.36" {
         );
     }
 }
+
+test "Hackerbane HB-AR-2026.17 hack-18 and hack-19 preserve readable bounds and solc bytecode" {
+    inline for (.{
+        "hackerbane-hack-18",
+        "hackerbane-hack-19",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try @import("ir_comparison.zig").compare(
+            std.testing.allocator,
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
