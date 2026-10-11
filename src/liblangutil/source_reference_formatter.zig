@@ -106,13 +106,12 @@ fn appendSourceLocation(
 
     const stream = try provider.charStream(reference.source_name);
     if (stream.isImportedFromAST()) return;
-    if (reference.start_column < 0 or reference.end_column < reference.start_column or
-        @as(usize, @intCast(reference.end_column)) > reference.text.len)
-    {
-        return error.InvalidSourceReference;
-    }
-    const start: usize = @intCast(reference.start_column);
-    const end: usize = @intCast(reference.end_column);
+    const start = std.math.cast(usize, reference.start_column) orelse return error.InvalidSourceReference;
+    const end = if (reference.multiline)
+        reference.text.len
+    else
+        std.math.cast(usize, reference.end_column) orelse return error.InvalidSourceReference;
+    if (start > end or end > reference.text.len) return error.InvalidSourceReference;
 
     try appendRepeated(output, allocator, ' ', line_number.len);
     try output.append(allocator, ' ');
@@ -321,4 +320,37 @@ test "diagnostic formatter emits the upstream source frame layout" {
     try std.testing.expect(std.mem.startsWith(u8, formatted, "Error (1234): expected token\n"));
     try std.testing.expect(std.mem.find(u8, formatted, "--> a.sol:2:2:") != null);
     try std.testing.expect(std.mem.findScalar(u8, formatted, '^') != null);
+}
+
+test "multiline diagnostic frames ignore closing-line indentation" {
+    const CharStream = @import("char_stream.zig").CharStream;
+    for ([_][]const u8{ "    {\n}\n", "    {\n        }\n" }) |source| {
+        const stream = CharStream.initBorrowed(source, "a.sol");
+        const singleton = providers.SingletonCharStreamProvider.init(&stream);
+        var diagnostic = try Diagnostics.Diagnostic.init(
+            std.testing.allocator,
+            .{ .value = 5740 },
+            .Warning,
+            "Unreachable code.",
+            .{ .start = 4, .end = @intCast(source.len - 1), .source_name = "a.sol" },
+            null,
+        );
+        defer diagnostic.deinit();
+        const formatted = try formatDiagnosticAlloc(
+            std.testing.allocator,
+            singleton.provider(),
+            &diagnostic,
+            false,
+            false,
+        );
+        defer std.testing.allocator.free(formatted);
+        try std.testing.expectEqualStrings(
+            "Warning: Unreachable code.\n" ++
+                " --> a.sol:1:5:\n" ++
+                "  |\n" ++
+                "1 |     {\n" ++
+                "  |     ^ (Relevant source part starts here and spans across multiple lines).\n\n",
+            formatted,
+        );
+    }
 }

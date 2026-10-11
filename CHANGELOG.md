@@ -13,6 +13,8 @@ Solidity compatibility target: `0.8.36`.
 
 ### Fixed
 
+- Format multiline diagnostic highlights independently of closing-line
+  indentation.
 - Preserve AST ownership during stack-preparation handoff and reject
   incompatible allocators before transferring the AST.
 
