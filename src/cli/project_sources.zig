@@ -4,6 +4,36 @@
 //! Deterministic, bounded enumeration of compilation entry points. Imported
 //! dependencies are discovered by the compiler's source callback instead.
 const std = @import("std");
+const builtin = @import("builtin");
+
+pub fn openSourceFileNonblocking(
+    parent: std.Io.Dir,
+    io: std.Io,
+    component: []const u8,
+) !std.Io.File {
+    if (comptime builtin.os.tag == .windows or
+        builtin.os.tag == .wasi or
+        builtin.os.tag == .uefi)
+    {
+        return parent.openFile(io, component, .{
+            .mode = .read_only,
+            .allow_directory = false,
+            .follow_symlinks = false,
+        });
+    }
+
+    var flags: std.posix.O = .{
+        .ACCMODE = .RDONLY,
+        .NOFOLLOW = true,
+    };
+    if (@hasField(std.posix.O, "CLOEXEC")) flags.CLOEXEC = true;
+    if (@hasField(std.posix.O, "NONBLOCK")) flags.NONBLOCK = true;
+    const handle = try std.posix.openat(parent.handle, component, flags, 0);
+    return .{
+        .handle = handle,
+        .flags = .{ .nonblocking = @hasField(std.posix.O, "NONBLOCK") },
+    };
+}
 
 pub fn pathContainedBy(parent: []const u8, child: []const u8) bool {
     if (!std.mem.startsWith(u8, child, parent)) return false;

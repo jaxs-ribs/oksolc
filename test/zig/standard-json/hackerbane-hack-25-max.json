@@ -1,0 +1,1 @@
+{"language":"Yul","sources":{"C.yul":{"content":"object \"C\" { code { mstore(0, 115792089237316195423570985008687907853269984665640564039457584007913129639935) mstore(32, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff) return(0, 64) } }"}},"settings":{"optimizer":{"enabled":true,"runs":200},"outputSelection":{"*":{"*":["evm.bytecode.object"]}}}}

@@ -1,0 +1,26 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "C.sol": {
+      "content": "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\ncontract C {\n    uint256 public sequence;\n    function next(uint256 value) internal returns (uint256) { sequence += 1; return value + sequence; }\n    error X(uint256 a, uint256 b);\n    error Mixed(uint256 a, string b, address c);\n    function effects(bool ok) external { require(ok, X({b: next(60), a: next(50)})); }\n    function f() external pure { require(false, X({b: 2, a: 1})); }\n    function values(bool ok, uint256 x, uint256 y) external pure { require(ok, X({b: y, a: x})); }\n    function mixed(bool ok, uint256 x, string calldata y, address z) external pure { require(ok, Mixed({c: z, b: y, a: x})); }\n}\n"
+    }
+  },
+  "settings": {
+    "viaIR": true,
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "metadata": {
+      "appendCBOR": false
+    },
+    "outputSelection": {
+      "*": {
+        "C": [
+          "evm.bytecode.object",
+          "evm.deployedBytecode.object"
+        ]
+      }
+    }
+  }
+}

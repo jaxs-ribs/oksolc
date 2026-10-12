@@ -72,7 +72,11 @@ pub fn loadSourcesAt(allocator: std.mem.Allocator, io: std.Io, paths: []const []
     };
     var total: usize = 0;
     for (paths, sources) |path, *source| {
-        const content = try std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(64 * 1024 * 1024 -| total));
+        var file = try openSourceFile(io, path);
+        defer file.close(io);
+        var buffer: [16 * 1024]u8 = undefined;
+        var reader = file.reader(io, &buffer);
+        const content = try reader.interface.allocRemaining(allocator, .limited(64 * 1024 * 1024 -| total));
         errdefer allocator.free(content);
         const name = if (project) |root| name: {
             const canonical = try std.Io.Dir.cwd().realPathFileAlloc(io, path, allocator);
@@ -88,6 +92,31 @@ pub fn loadSourcesAt(allocator: std.mem.Allocator, io: std.Io, paths: []const []
         total += content.len;
     }
     return .{ .allocator = allocator, .sources = sources, .owned_names = project != null };
+}
+
+fn openSourceFile(io: std.Io, path: []const u8) !std.Io.File {
+    const root = std.Io.Dir.path.parsePath(path).root;
+    var directory = try std.Io.Dir.cwd().openDir(io, if (root.len == 0) "." else root, .{
+        .follow_symlinks = false,
+    });
+    defer directory.close(io);
+    var components = std.mem.tokenizeAny(u8, path[root.len..], if (@import("builtin").os.tag == .windows) "/\\" else "/");
+    while (components.next()) |component| {
+        if (components.peek() != null) {
+            const next = try directory.openDir(io, component, .{ .follow_symlinks = false });
+            directory.close(io);
+            directory = next;
+            continue;
+        }
+        const path_stat = try directory.statFile(io, component, .{ .follow_symlinks = false });
+        if (path_stat.kind != .file) return error.SourceNotRegularFile;
+        var file = try @import("project_sources.zig").openSourceFileNonblocking(directory, io, component);
+        errdefer file.close(io);
+        const stat = try file.stat(io);
+        if (stat.kind != .file or stat.inode != path_stat.inode) return error.SourceNotRegularFile;
+        return file;
+    }
+    return error.SourceNotRegularFile;
 }
 
 pub fn buildAlloc(

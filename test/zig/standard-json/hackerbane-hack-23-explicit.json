@@ -1,0 +1,1 @@
+{"language":"Solidity","sources":{"C.sol":{"content":"// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.36;\ncontract C {}\ncontract D {}"}},"settings":{"optimizer":{"enabled":true,"runs":200},"outputSelection":{"*":{"*":["ir","irOptimized"]}},"viaIR":true}}

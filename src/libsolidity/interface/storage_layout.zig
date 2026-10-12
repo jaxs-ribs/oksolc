@@ -69,7 +69,7 @@ pub const StorageLayout = struct {
 
         var layout: Json = .{ .object = .empty };
         try layout.object.put(self.allocator, "storage", .{ .array = storage });
-        try layout.object.put(self.allocator, "types", self.types);
+        try layout.object.put(self.allocator, "types", if (self.types.object.count() == 0) .null else self.types);
         return layout;
     }
 
