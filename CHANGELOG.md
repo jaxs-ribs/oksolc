@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.7-dev
+
+Solidity compatibility target: `0.8.36`.
+
+### Fixed
+
+- Format multiline diagnostic highlights independently of closing-line
+  indentation.
+
 ## 0.1.6 - 2026-10-12
 
 Solidity compatibility target: `0.8.36`.
@@ -19,8 +28,6 @@ Solidity compatibility target: `0.8.36`.
 
 ### Fixed
 
-- Format multiline diagnostic highlights independently of closing-line
-  indentation.
 - Preserve AST ownership during stack-preparation handoff and reject
   incompatible allocators before transferring the AST.
 - Apply assembly data in lexical key order, reject prefixed PUSH values, and
