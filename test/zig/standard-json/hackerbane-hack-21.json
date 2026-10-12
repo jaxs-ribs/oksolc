@@ -1,0 +1,1 @@
+{"language":"Solidity","sources":{"C.sol":{"content":"// SPDX-License-Identifier: UNLICENSED\npragma solidity ^0.8.36;\ncontract D { constructor(uint) {} } contract C { function f() external { new D{value: 1}(0); } }"}},"settings":{"optimizer":{"enabled":true,"runs":200},"outputSelection":{"*":{"*":["evm.bytecode.object"]}},"viaIR":true}}

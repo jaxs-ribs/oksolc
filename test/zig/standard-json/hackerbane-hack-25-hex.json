@@ -1,0 +1,1 @@
+{"language":"Yul","sources":{"C.yul":{"content":"object \"C\" { code { let a := 0x10000000000000000000000000000000000000000000000000000000000000000 } }"}},"settings":{"optimizer":{"enabled":true,"runs":200},"outputSelection":{"*":{"*":["evm.bytecode.object"]}}}}

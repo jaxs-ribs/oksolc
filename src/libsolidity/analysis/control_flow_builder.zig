@@ -860,10 +860,24 @@ fn resolveVirtualFunction(
         if (!found_start and contract != search_start.?) continue;
         found_start = true;
         if (contract.nodeKind() != .contract_definition) return error.InvalidAst;
-        for (contract.payload.contract_definition.sub_nodes) |candidate| {
+        candidates: for (contract.payload.contract_definition.sub_nodes) |candidate| {
             if (candidate.nodeKind() != .function_definition) continue;
-            if (search_start != null and
-                !candidate.payload.function_definition.implemented()) continue;
+            if (search_start != null) {
+                const function = candidate.payload.function_definition;
+                const target = declaration.payload.function_definition;
+                if (!function.implemented() or !std.mem.eql(u8, function.callable.declaration.name, target.callable.declaration.name)) continue;
+                const parameters = function.callable.parameters.payload.parameter_list.parameters;
+                const target_parameters = target.callable.parameters.payload.parameter_list.parameters;
+                if (parameters.len != target_parameters.len) continue;
+                for (parameters, target_parameters) |parameter, target_parameter| {
+                    const parameter_annotation = ASTAnnotations.annotationConst(parameter) orelse return error.InvalidAst;
+                    const target_annotation = ASTAnnotations.annotationConst(target_parameter) orelse return error.InvalidAst;
+                    const parameter_type = parameter_annotation.variable_declaration.type_ref orelse return error.InvalidAst;
+                    const target_type = target_annotation.variable_declaration.type_ref orelse return error.InvalidAst;
+                    if (!Types.equals(parameter_type, target_type)) continue :candidates;
+                }
+                return candidate;
+            }
             if (candidate == declaration or callableOverrides(candidate, declaration, 0))
                 return candidate;
         }

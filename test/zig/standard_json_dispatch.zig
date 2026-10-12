@@ -1672,7 +1672,7 @@ test "Solidity indexed reference and function events plus dynamic custom errors 
     try std.testing.expectEqual(solidity.execution.Backend.zig, output.execution.backend);
 }
 
-test "Solidity named events and custom errors match upstream argument ordering" {
+test "Solidity named events and custom errors preserve argument binding" {
     var dispatcher: libsolc.Dispatcher = .{};
     var output = try dispatcher.compiler().compile(std.testing.allocator, .{
         .input = @embedFile("standard-json/solidity-named-events-errors-bytecode.json"),
@@ -1684,6 +1684,25 @@ test "Solidity named events and custom errors match upstream argument ordering" 
         output.bytes,
     );
     try std.testing.expectEqual(solidity.execution.Backend.zig, output.execution.backend);
+}
+
+test "Solidity named require errors match positional encoding" {
+    // The reference uses positional arguments, with side effects evaluated first
+    // in source order. solc 0.8.36 miscompiles the equivalent named require calls.
+    inline for (.{
+        "solidity-require-named-errors-bytecode",
+        "solidity-require-positional-errors-bytecode",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/solidity-require-named-errors-bytecode.json"),
+            output.bytes,
+        );
+    }
 }
 
 test "Solidity creation and deployed internal-function dispatch match via-IR bytecode exactly" {
@@ -2589,4 +2608,286 @@ test "parallel backend allocation failures propagate from inline consumers" {
                 defer std.testing.allocator.free(report);
             }
         };
+}
+
+test "Hackerbane HB-AR-2026.17 hack-06 matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-06",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-07 matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-07",
+        "hackerbane-hack-07-local",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-08 matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-08",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-09 matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-09",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-10-internal matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-10-internal",
+        "hackerbane-hack-10-event",
+        "hackerbane-hack-10-valid",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-11 matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-11",
+        "hackerbane-hack-11-valid",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-12-min matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-12-min",
+        "hackerbane-hack-12-max",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-13 matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-13",
+        "hackerbane-hack-13-ambiguous",
+        "hackerbane-hack-13-unmatched",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-18 and hack-19 preserve readable bounds and solc bytecode" {
+    inline for (.{
+        "hackerbane-hack-18",
+        "hackerbane-hack-19",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try @import("ir_comparison.zig").compare(
+            std.testing.allocator,
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-20 matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-20",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-21 matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-21",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-22 matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-22",
+        "hackerbane-hack-22-external",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-24 matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-24",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-23 preserves explicit IR selection in serial and parallel modes" {
+    inline for (.{
+        "hackerbane-hack-23",
+        "hackerbane-hack-23-explicit",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        var parallel = try compileWithParallelJobs(
+            std.testing.allocator,
+            @embedFile("standard-json/" ++ name ++ ".json"),
+            2,
+            null,
+            null,
+            null,
+        );
+        defer parallel.deinit();
+        try standard_json.compareExact(output.bytes, parallel.bytes);
+        try @import("ir_comparison.zig").compare(
+            std.testing.allocator,
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-25 matches solc 0.8.36" {
+    inline for (.{
+        "hackerbane-hack-25",
+        "hackerbane-hack-25-hex",
+        "hackerbane-hack-25-max",
+        "hackerbane-hack-25-inline",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try standard_json.compareExact(
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
+}
+
+test "Hackerbane HB-AR-2026.17 hack-19-array-pop preserves readable bounds and solc bytecode" {
+    inline for (.{
+        "hackerbane-hack-19-array-pop",
+    }) |name| {
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+            .input = @embedFile("standard-json/" ++ name ++ ".json"),
+        });
+        defer output.deinit();
+        try @import("ir_comparison.zig").compare(
+            std.testing.allocator,
+            @embedFile("standard-json/expected/" ++ name ++ ".json"),
+            output.bytes,
+        );
+    }
 }

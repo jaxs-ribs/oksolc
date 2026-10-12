@@ -4183,10 +4183,10 @@ pub const YulUtilFunctions = struct {
         if (!(try self.function_collector.beginFunction(name)))
             return self.function_collector.copyFunctionName(name);
         errdefer self.function_collector.abortFunction(name);
-        const extract = try self.extractByteArrayLengthFunction();
-        defer self.allocator.free(extract);
         const panic = try self.panicFunction(.empty_array_pop);
         defer self.allocator.free(panic);
+        const extract = try self.extractByteArrayLengthFunction();
+        defer self.allocator.free(extract);
         const transit = try self.byteArrayTransitLongToShortFunction(type_ref);
         defer self.allocator.free(transit);
         const encode = try self.shortByteArrayEncodeUsedAreaSetLengthFunction();
@@ -4246,7 +4246,7 @@ pub const YulUtilFunctions = struct {
         errdefer self.function_collector.abortFunction(name);
         const value_count = try TypeBehavior.sizeOnStack(from_type);
         const generator = try self.function_collector.generator(self.evm_version);
-        const values = try generator.indexedNames("value_", value_count);
+        const values = try generator.indexedNames("value", value_count);
         const panic = try self.panicFunction(.resource_error);
         defer self.allocator.free(panic);
         const extract = if (array.isByteArrayOrString())
@@ -5389,7 +5389,15 @@ pub const YulUtilFunctions = struct {
             try generator.expression("@0()", .{allocate})
         else
             try generator.expression("0", .{});
-        const selector = FunctionSelector.selectorFromSignatureU256(signature);
+        const selector_value = FunctionSelector.selectorFromSignatureU256(signature);
+        const selector_hex = std.fmt.bytesToHex(Numeric.toBigEndian256(selector_value), .lower);
+        const selector_digits = @max(Numeric.numberEncodingSize(u256, selector_value), 1) * 2;
+        var selector = generator.number(selector_value);
+        selector.literal.value.string_value = try std.fmt.allocPrint(
+            generator.allocator(),
+            "0x{s}",
+            .{selector_hex[selector_hex.len - selector_digits ..]},
+        );
         return generator.statements(
             "let @0 := @1 mstore(@0, @2) let @3 := @4(add(@0, 4), @5) revert(@0, sub(@3, @0))",
             .{ position, allocation_expression, selector, end, encoder_name, argument_names },
@@ -6435,7 +6443,7 @@ test "Yul AST panic and empty-message revert helpers match stable names and payl
     try std.testing.expect(std.mem.find(u8, code, "revert(0, 0)") != null);
 }
 
-test "Yul AST storage updates accept implicitly convertible rational literal sources" {
+test "Yul AST storage updates accept rational sources and preserve push parameter names" {
     var type_provider = try TypeProviderModule.TypeProvider.init(std.testing.allocator);
     defer type_provider.deinit();
     var collector = CollectorModule.MultiUseYulFunctionCollector.init(std.testing.allocator);
@@ -6460,9 +6468,15 @@ test "Yul AST storage updates accept implicitly convertible rational literal sou
         "update_storage_value_offset_0_t_rational_7_by_1_to_t_uint256",
         update,
     );
+    const push = try utils.storageArrayPushFunction(
+        try type_provider.array(.Storage, type_provider.uint256()),
+        null,
+    );
+    defer std.testing.allocator.free(push);
 
     const code = try collector.testFunctionsAlloc();
     defer std.testing.allocator.free(code);
+    try std.testing.expect(std.mem.find(u8, code, "(array, value0)") != null);
     try std.testing.expect(std.mem.find(
         u8,
         code,
@@ -6744,10 +6758,10 @@ test "Yul AST reference, packed ABI, and storage helper surface is instantiated"
     defer allocator.free(canonical);
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(canonical, &digest, .{});
-    // Updated from the 5b1255faa baseline for solc's nested copy blocks and
-    // typed cleanup dependencies, covered by solidity-array-copy-scopes.json.
+    // HB-AR-2026.17 HACK-18/HACK-19 align push names and error selectors
+    // with solc, retaining hexadecimal array bounds for readability.
     // This checks statement/dependency order, values and literal kinds.
-    try std.testing.expectEqualStrings("10b6ca3444702b840465013a9934c9dde1f8665e09b1a350f3b2a10be34a07a7", &std.fmt.bytesToHex(digest, .lower));
+    try std.testing.expectEqualStrings("98db39f6fc1416335f7cb015343d2ef98e1462b413a20bea04333cca77e368d5", &std.fmt.bytesToHex(digest, .lower));
 }
 
 test "Yul AST scalar helper generation retains structure and published code" {

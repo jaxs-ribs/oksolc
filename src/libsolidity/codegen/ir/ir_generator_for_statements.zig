@@ -3223,16 +3223,6 @@ pub const IRGeneratorForStatements = struct {
                     defer argument.deinit();
                     try argument.appendStackSlots(self.allocator, &sorted_argument_slots);
                 }
-                var call_argument_slots: std.ArrayList([]u8) = .empty;
-                defer deinitStrings(self.allocator, &call_argument_slots);
-                for (error_call.arguments) |argument_node| {
-                    var argument = try self.variableFromExpression(
-                        argument_node,
-                    );
-                    defer argument.deinit();
-                    try argument.appendStackSlots(self.allocator, &call_argument_slots);
-                }
-                const call_arguments = call_argument_slots.items;
                 var abi = self.context.abiFunctions();
                 const encoder = try abi.tupleEncoder(
                     sorted_argument_types.items,
@@ -3257,14 +3247,11 @@ pub const IRGeneratorForStatements = struct {
                     encoder,
                 );
                 defer self.allocator.free(helper);
-                // Preserve upstream 0.8.36 behavior: the generated helper's
-                // parameters follow sorted named-argument order, but its call
-                // site passes source-order values. ZIG-UPSTREAM-001 records
-                // the resulting swapped custom-error payload as an upstream
-                // defect, retained for compatibility.
+                // HACK-28: bind already evaluated values in declaration order,
+                // matching the helper's parameters without reordering evaluation.
                 try self.add(
                     "@0(@1, @2)\n",
-                    .{ helper, condition_name, call_arguments },
+                    .{ helper, condition_name, sorted_argument_slots.items },
                 );
                 return self.variableFromExpression(node);
             };

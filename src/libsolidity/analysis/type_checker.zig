@@ -3019,12 +3019,14 @@ pub const TypeChecker = struct {
             );
             return requested_type;
         }
-        if (value.names.len != 0)
+        if (value.names.len != 0) {
             try self.reporter.typeError(
                 errorId(5153),
                 node.location,
                 "Type conversion cannot allow named arguments.",
             );
+            return requested_type;
+        }
         const argument_type = (try expressionAnnotation(
             self.tree,
             value.arguments[0],
@@ -3171,6 +3173,15 @@ pub const TypeChecker = struct {
                         "\"staticcall\" is not supported by the VM version.",
                     );
                 try self.checkFunctionGeneral(node, function_type, false);
+                if (!self.evm_version.supportsReturndata()) {
+                    const returns = try TypeBehavior.returnParameterTypesWithoutDynamicTypesAlloc(
+                        self.type_provider,
+                        self.allocator,
+                        function_type.*,
+                    );
+                    defer self.allocator.free(returns);
+                    return self.functionReturnType(returns);
+                }
                 break :blk function_type.return_parameter_types;
             },
         };
@@ -4007,13 +4018,19 @@ pub const TypeChecker = struct {
                         "Cannot set option \"value\" for staticcall.",
                     );
                 } else if (function_type.state_mutability != .Payable) {
+                    const constructor_message = if (function_type.kind == .Creation)
+                        try std.fmt.allocPrint(
+                            self.allocator,
+                            "Cannot set option \"value\", since the constructor of {s} is not payable.",
+                            .{try self.typeNameTemporary(function_type.return_parameter_types[0])},
+                        )
+                    else
+                        null;
+                    defer if (constructor_message) |message| self.allocator.free(message);
                     try self.reporter.typeError(
                         errorId(7006),
                         node.location,
-                        if (function_type.kind == .Creation)
-                            "Cannot set option \"value\", since the constructor is not payable."
-                        else
-                            "Cannot set option \"value\" on a non-payable function type.",
+                        constructor_message orelse "Cannot set option \"value\" on a non-payable function type.",
                     );
                 } else {
                     try self.checkDuplicateCallOption(&set_value, "value", node.location);
@@ -4241,6 +4258,7 @@ pub const TypeChecker = struct {
             ),
             .Function => resolved = try self.resolveFunctionMember(
                 owner_type,
+                value.expression,
                 value.member_name,
             ),
             .Contract => |contract_type| resolved = try self.resolveContractMember(
@@ -4258,6 +4276,7 @@ pub const TypeChecker = struct {
                 value.member_name,
             ),
             .Module => |module| resolved = try self.resolveModuleMember(
+                node,
                 module.source_unit,
                 value.member_name,
             ),
@@ -4529,6 +4548,7 @@ pub const TypeChecker = struct {
         arguments: ?@import("../ast/ast_enums.zig").FuncCallArguments,
         owner_pure: bool,
     ) CheckError!?ResolvedMember {
+        if (array.isString()) return null;
         if (std.mem.eql(u8, name, "length"))
             return .{
                 .type_ref = self.type_provider.uint256(),
@@ -4557,7 +4577,16 @@ pub const TypeChecker = struct {
             };
         }
         if (!std.mem.eql(u8, name, "push")) return null;
-        const argument_count = if (arguments) |value| value.types.items.len else 0;
+        const argument_count = if (arguments) |value| value.types.items.len else {
+            const message = try std.fmt.allocPrint(
+                self.allocator,
+                "Member \"push\" not unique after argument-dependent lookup in {s}.",
+                .{try self.typeNameTemporary(owner_type)},
+            );
+            defer self.allocator.free(message);
+            try self.reporter.fatal(errorId(6675), .TypeError, node.location, null, message);
+            unreachable;
+        };
         if (argument_count == 0) {
             const returns = [_]*const Types.Type{array.base_type};
             const return_names = [_][]const u8{""};
@@ -4588,7 +4617,6 @@ pub const TypeChecker = struct {
             null,
             .{},
         );
-        _ = node;
         return .{
             .type_ref = try self.type_provider.withBoundFirstArgument(unbound),
             .is_pure = false,
@@ -4675,16 +4703,32 @@ pub const TypeChecker = struct {
     fn resolveFunctionMember(
         self: *TypeChecker,
         owner_type: *const Types.Type,
+        expression: *AST.Node,
         name: []const u8,
     ) CheckError!?ResolvedMember {
         const function = owner_type.asFunction() orelse return null;
-        if (std.mem.eql(u8, name, "selector"))
-            return .{
-                .type_ref = try self.type_provider.fixedBytes(
-                    if (function.kind == .Event) 32 else 4,
-                ),
-                .is_pure = function.declaration != null,
+        if (std.mem.eql(u8, name, "selector")) {
+            var members = try TypeBehavior.nativeMembersAlloc(self.type_provider, self.allocator, owner_type, self.current_contract);
+            defer members.deinit();
+            var is_pure = false;
+            if (function.declaration) |declaration| switch (declaration.nodeKind()) {
+                .event_definition, .error_definition => is_pure = true,
+                .function_definition => if (expression.nodeKind() == .member_access) {
+                    const owner = expression.payload.member_access.expression;
+                    is_pure = (try (try expressionAnnotation(self.tree, owner)).is_pure.get()).*;
+                    if (owner.nodeKind() == .identifier and
+                        (std.mem.eql(u8, owner.payload.identifier.name, "this") or
+                            std.mem.eql(u8, owner.payload.identifier.name, "super"))) is_pure = true;
+                },
+                else => {},
             };
+            for (members.items) |member|
+                if (std.mem.eql(u8, member.name, name)) return .{
+                    .type_ref = member.type_ref,
+                    .is_pure = is_pure,
+                };
+            return null;
+        }
         if (std.mem.eql(u8, name, "address") and function.kind == .External)
             return .{ .type_ref = self.type_provider.address(), .is_pure = false };
         if (std.mem.eql(u8, name, "value") and
@@ -4712,7 +4756,10 @@ pub const TypeChecker = struct {
                 .is_pure = false,
             };
         }
-        if (std.mem.eql(u8, name, "gas") and function.kind != .Creation) {
+        if (std.mem.eql(u8, name, "gas") and switch (function.kind) {
+            .External, .BareCall, .BareCallCode, .BareDelegateCall, .BareStaticCall => true,
+            else => false,
+        }) {
             const gas_set = try self.type_provider.copyAndSetCallOptions(
                 owner_type,
                 true,
@@ -4965,8 +5012,6 @@ pub const TypeChecker = struct {
                     };
                 }
             },
-            .Integer => if (std.mem.eql(u8, name, "min") or std.mem.eql(u8, name, "max"))
-                return .{ .type_ref = actual_type, .is_pure = true },
             .Array => |array| if (array.kind != .Ordinary and std.mem.eql(u8, name, "concat")) {
                 const returns = [_]*const Types.Type{try self.type_provider.withLocationIfReference(
                     .Memory,
@@ -5127,6 +5172,7 @@ pub const TypeChecker = struct {
 
     fn resolveModuleMember(
         self: *TypeChecker,
+        node: *AST.Node,
         source_unit: *const AST.Node,
         name: []const u8,
     ) CheckError!?ResolvedMember {
@@ -5136,13 +5182,28 @@ pub const TypeChecker = struct {
             else => return error.InvalidAst,
         };
         for (exports.*) |symbol| {
-            if (!std.mem.eql(u8, symbol.name, name) or symbol.declarations.len != 1) continue;
-            const declaration = symbol.declarations[0];
-            return .{
-                .type_ref = try self.declarationType(declaration),
-                .declaration = declaration,
-                .is_pure = true,
-            };
+            if (!std.mem.eql(u8, symbol.name, name)) continue;
+            const arguments = (try memberAccessAnnotation(self.tree, node)).expression.arguments;
+            var resolved: ?ResolvedMember = null;
+            for (symbol.declarations) |declaration| {
+                const type_ref = try self.declarationType(declaration);
+                if (symbol.declarations.len > 1) {
+                    if (arguments) |*call_arguments|
+                        if (type_ref.asFunction() != null and !functionTypeCanTakeArguments(type_ref, call_arguments, null)) continue;
+                }
+                if (resolved != null) {
+                    const owner_type = (try expressionAnnotation(self.tree, node.payload.member_access.expression)).type_ref.?;
+                    const message = try std.fmt.allocPrint(
+                        self.allocator,
+                        "Member \"{s}\" not unique after argument-dependent lookup in {s}.",
+                        .{ name, try self.typeNameTemporary(owner_type) },
+                    );
+                    defer self.allocator.free(message);
+                    try self.reporter.fatal(errorId(6675), .TypeError, node.location, null, message);
+                }
+                resolved = .{ .type_ref = type_ref, .declaration = declaration, .is_pure = true };
+            }
+            return resolved;
         }
         return null;
     }

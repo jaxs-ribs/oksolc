@@ -1,8 +1,14 @@
 # Changelog
 
-## 0.1.6-dev
+## 0.1.6 - 2026-10-12
 
 Solidity compatibility target: `0.8.36`.
+
+### Added
+
+- Hackerbane [HB-AR-2026.17 audit report](audits/hb-ar-2026.17-oksolc.html)
+  and [response](audits/hb-ar-2026.17-response.md), with regression coverage
+  for the audit fixes.
 
 ### Performance
 
@@ -17,6 +23,29 @@ Solidity compatibility target: `0.8.36`.
   indentation.
 - Preserve AST ownership during stack-preparation handoff and reject
   incompatible allocators before transferring the AST.
+- Apply assembly data in lexical key order, reject prefixed PUSH values, and
+  parse assembly tag integers using their declared base.
+- Reject CLI source paths containing file or directory symlinks.
+- Resolve `super` calls by signature and module overloads by argument types.
+- Enforce Solidity member availability and selector purity, and remove
+  unavailable dynamic return types on pre-Byzantium EVM targets.
+- Count inserted discard calls during Yul pruning, preventing
+  `MissingReference` and `ReferenceUnderflow` on later iterations.
+- Encode named custom-error arguments in `require` in declaration order while
+  preserving argument evaluation order. This intentionally corrects the
+  solc 0.8.36 behavior.
+- Match solc array-push parameter names, custom-error selector spelling, and
+  byte-array pop helper ordering.
+- Match solc diagnostics for named type conversions, nonpayable constructors,
+  and out-of-range Yul literals.
+- Honor Standard JSON output selection for IR and emit `null` layout types
+  when no storage types exist.
+
+### Compatibility
+
+- Retain hexadecimal array bounds in IR and omit unused dispatch helpers from
+  unoptimized IR. See the [documented compatibility exceptions](README.md#status-and-compatibility)
+  for all intentional differences from solc 0.8.36.
 
 ## 0.1.5 - 2026-09-30
 
