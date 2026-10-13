@@ -61,32 +61,19 @@ pub const Repository = struct {
         string: []const u8,
     ) std.mem.Allocator.Error!Handle {
         if (string.len == 0) return emptyHandle();
-        const string_hash = hash(string);
+        return self.stringToHandleHashed(string, hash(string));
+    }
+
+    fn stringToHandleHashed(
+        self: *Repository,
+        string: []const u8,
+        string_hash: u64,
+    ) std.mem.Allocator.Error!Handle {
         const lookup: StringKey = .{ .hash_value = string_hash, .string = string };
         if (self.index.get(lookup)) |entry| return .{ .entry = entry, .hash = string_hash };
 
         const owned = try self.allocator.dupe(u8, string);
         errdefer self.allocator.free(owned);
-        return self.insertOwned(owned, string_hash);
-    }
-
-    pub fn generatedHandle(
-        self: *Repository,
-        base: Handle,
-        counter: usize,
-    ) std.mem.Allocator.Error!Handle {
-        const owned = try std.fmt.allocPrint(
-            self.allocator,
-            "{s}_{d}",
-            .{ handleString(base), counter },
-        );
-        errdefer self.allocator.free(owned);
-        const string_hash = hash(owned);
-        const lookup: StringKey = .{ .hash_value = string_hash, .string = owned };
-        if (self.index.get(lookup)) |entry| {
-            self.allocator.free(owned);
-            return .{ .entry = entry, .hash = string_hash };
-        }
         return self.insertOwned(owned, string_hash);
     }
 
@@ -144,16 +131,42 @@ pub const ResetCallback = struct {
 };
 
 var global_mutex: std.Io.Mutex = .init;
-var global_repository: ?Repository = null;
 var reset_callbacks: std.ArrayList(ResetCallback) = .empty;
 
-fn repositoryLocked() std.mem.Allocator.Error!*Repository {
-    if (global_repository == null) {
-        // Interning creates many small, process-lifetime allocations. Giving each
-        // one directly to the page allocator amplifies the repository's RSS.
-        global_repository = try Repository.init(std.heap.smp_allocator);
+/// Each shard is an independent repository with its own lock. Serial
+/// compilation uses only the first shard; parallel compilation spreads strings
+/// over all of them so workers rarely wait for each other.
+const shard_count = 64;
+const Shard = struct {
+    mutex: std.Io.Mutex align(std.atomic.cache_line) = .init,
+    repository: ?Repository = null,
+
+    fn repositoryLocked(self: *Shard) std.mem.Allocator.Error!*Repository {
+        if (self.repository == null) {
+            // Interning creates many small, process-lifetime allocations. Giving each
+            // one directly to the page allocator amplifies the repository's RSS.
+            self.repository = try Repository.init(std.heap.smp_allocator);
+        }
+        return &self.repository.?;
     }
-    return &global_repository.?;
+};
+var shards: [shard_count]Shard = @splat(.{});
+var shard_mask: u64 = 0;
+
+/// Use all shards (parallel compilation) or one (serial). Equal strings must
+/// always reach the same shard, so this only takes effect while nothing is
+/// interned: call it once at startup, before any compilation thread exists.
+/// The CLI does so in `resolveParallelOptions` (cli/main.zig).
+pub fn setSharded(sharded: bool) void {
+    for (shards) |shard| if (shard.repository != null) return;
+    shard_mask = if (sharded) shard_count - 1 else 0;
+}
+
+fn shardIndex(string_hash: u64, mask: u64) usize {
+    if (mask == 0) return 0;
+    // Shards bucket their own tables on the low hash bits, so route on a
+    // remixed hash to keep each shard's table evenly filled.
+    return @intCast(std.hash.Wyhash.hash(0, std.mem.asBytes(&string_hash)) & mask);
 }
 
 pub fn reset() std.mem.Allocator.Error!void {
@@ -169,17 +182,24 @@ pub fn reset() std.mem.Allocator.Error!void {
 
     lockGlobal();
     defer unlockGlobal();
-    if (global_repository) |*repository| repository.deinit();
-    global_repository = null;
+    for (&shards) |*shard| std.Io.Threaded.mutexLock(&shard.mutex);
+    defer for (&shards) |*shard| std.Io.Threaded.mutexUnlock(&shard.mutex);
+    for (&shards) |*shard| {
+        if (shard.repository) |*repository| repository.deinit();
+        shard.repository = null;
+    }
 }
 
 pub const YulString = struct {
     handle: Handle = emptyHandle(),
 
     pub fn init(string: []const u8) std.mem.Allocator.Error!YulString {
-        lockGlobal();
-        defer unlockGlobal();
-        return .{ .handle = try (try repositoryLocked()).stringToHandle(string) };
+        if (string.len == 0) return .{};
+        const string_hash = hash(string);
+        const shard = &shards[shardIndex(string_hash, shard_mask)];
+        std.Io.Threaded.mutexLock(&shard.mutex);
+        defer std.Io.Threaded.mutexUnlock(&shard.mutex);
+        return .{ .handle = try (try shard.repositoryLocked()).stringToHandleHashed(string, string_hash) };
     }
 
     pub fn initGenerated(base: YulString, counter: usize) std.mem.Allocator.Error!YulString {
@@ -189,9 +209,9 @@ pub const YulString = struct {
             "{s}_{d}",
             .{ handleString(base.handle), counter },
         ) catch {
-            lockGlobal();
-            defer unlockGlobal();
-            return .{ .handle = try (try repositoryLocked()).generatedHandle(base.handle, counter) };
+            const long = try std.fmt.allocPrint(std.heap.smp_allocator, "{s}_{d}", .{ handleString(base.handle), counter });
+            defer std.heap.smp_allocator.free(long);
+            return init(long);
         };
         return init(generated);
     }
@@ -254,4 +274,61 @@ test "repository hash index returns stable handles" {
         const repeated = try repository.stringToHandle(name);
         try std.testing.expectEqual(inserted, repeated);
     }
+}
+
+test "Yul strings shard routing keeps shard tables evenly filled" {
+    // Routing on the raw low bits would put every string of a shard into the
+    // same 1/64 of that shard's buckets: only 256 (shard, bucket) pairs here.
+    var seen: [shard_count][256]bool = @splat(@splat(false));
+    var occupied: usize = 0;
+    var buffer: [64]u8 = undefined;
+    for (0..4096) |i| {
+        const value_hash = hash(try std.fmt.bufPrint(&buffer, "name_{d}", .{i}));
+        const slot = &seen[shardIndex(value_hash, shard_count - 1)][@intCast(value_hash & 255)];
+        if (!slot.*) occupied += 1;
+        slot.* = true;
+    }
+    try std.testing.expect(occupied > 2048);
+}
+
+test "Yul strings stay canonical when sharded across threads" {
+    try reset();
+    setSharded(true);
+    defer {
+        reset() catch {};
+        setSharded(false);
+    }
+    const workers = 12;
+    const count = 1024;
+    const Context = struct {
+        start: std.atomic.Value(bool) = .init(false),
+        failed: std.atomic.Value(bool) = .init(false),
+        shared: [workers][count]YulString = undefined,
+        generated: [workers][count]YulString = undefined,
+
+        fn run(self: *@This(), worker: usize) void {
+            while (!self.start.load(.acquire)) std.atomic.spinLoopHint();
+            self.fill(worker) catch self.failed.store(true, .release);
+        }
+
+        fn fill(self: *@This(), worker: usize) !void {
+            var buffer: [64]u8 = undefined;
+            const base = try YulString.init("shared_base");
+            for (0..count) |i| {
+                self.shared[worker][i] = try YulString.init(try std.fmt.bufPrint(&buffer, "shared_{d}", .{i}));
+                self.generated[worker][i] = try YulString.initGenerated(base, i);
+                _ = try YulString.init(try std.fmt.bufPrint(&buffer, "worker_{d}_{d}", .{ worker, i }));
+            }
+        }
+    };
+    var context: Context = .{};
+    var threads: [workers]std.Thread = undefined;
+    for (&threads, 0..) |*thread, i| thread.* = try std.Thread.spawn(.{}, Context.run, .{ &context, i });
+    context.start.store(true, .release);
+    for (threads) |thread| thread.join();
+    try std.testing.expect(!context.failed.load(.acquire));
+    for (1..workers) |worker| for (0..count) |i| {
+        try std.testing.expect(context.shared[0][i].eql(context.shared[worker][i]));
+        try std.testing.expect(context.generated[0][i].eql(context.generated[worker][i]));
+    };
 }

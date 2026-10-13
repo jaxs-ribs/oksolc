@@ -1445,6 +1445,7 @@ fn resolveParallelOptions(
     const config = try loadProjectConfig(init, project_root, security_root);
     defer config.deinit(init.gpa);
     const enabled = cli_parallel or (config.parallel orelse false);
+    solidity.libyul.yul_string.setSharded(enabled);
     const jobs = cli_jobs orelse config.jobs;
     if (!enabled and jobs != null) return error.JobsRequireParallel;
     if (jobs) |count| if (count == 0) return error.InvalidJobCount;
