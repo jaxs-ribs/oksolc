@@ -240,7 +240,7 @@ fn decimalAlloc(
     allocator: std.mem.Allocator,
     value: anytype,
 ) std.mem.Allocator.Error![]u8 {
-    return std.fmt.allocPrint(allocator, "{d}", .{value});
+    return allocator.print("{d}", .{value});
 }
 
 fn putString(

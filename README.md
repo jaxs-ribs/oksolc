@@ -71,8 +71,8 @@ comparisons; SemVer precedence ignores the build metadata after `+`.
 
 ## Requirements
 
-- Zig `0.16.0`
-- TypeScript `7.0.2` (`tsc`) and Bun `1.4.2` only for the optional web browser
+- Zig `0.17.0`
+- TypeScript `7.0.2` (`tsc`) and Bun `1.4.3` only for the optional web browser
 - libc and a working C toolchain
 - Clang with ASan/UBSan runtimes for `fuzz-json-adapter` and `fuzz` (limited to
   the yyjson adapter for now)

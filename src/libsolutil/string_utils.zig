@@ -95,7 +95,7 @@ pub fn joinHumanReadablePrefixedAlloc(
     if (list.len == 0) return allocator.alloc(u8, 0);
     const joined = try joinHumanReadableAlloc(allocator, list, separator, last_separator);
     defer allocator.free(joined);
-    return std.fmt.allocPrint(allocator, "{s}{s}", .{ separator, joined });
+    return allocator.print("{s}{s}", .{ separator, joined });
 }
 
 pub fn quotedAlternativesListAlloc(
@@ -169,12 +169,11 @@ fn tryFormatPowerOfTwo(
     if (zero_bytes <= 2) return null;
 
     if (prefix.compareUnsigned(1) == .eq) {
-        const formatted = try std.fmt.allocPrint(allocator, "2**{d}", .{zero_bytes * 8});
+        const formatted = try allocator.print("2**{d}", .{zero_bytes * 8});
         return formatted;
     }
     if (isPowerOfTwo(&prefix)) {
-        const formatted = try std.fmt.allocPrint(
-            allocator,
+        const formatted = try allocator.print(
             "2**{d}",
             .{zero_bytes * 8 + prefix.bitLength() - 1},
         );
@@ -185,7 +184,7 @@ fn tryFormatPowerOfTwo(
     defer allocator.free(bytes);
     const encoded = try common_data.toHexAlloc(allocator, bytes, .add, .mixed);
     defer allocator.free(encoded);
-    const formatted = try std.fmt.allocPrint(allocator, "{s} * 2**{d}", .{ encoded, zero_bytes * 8 });
+    const formatted = try allocator.print("{s} * 2**{d}", .{ encoded, zero_bytes * 8 });
     return formatted;
 }
 
@@ -211,7 +210,7 @@ pub fn formatNumberReadableAlloc(
 
     if (try tryFormatPowerOfTwo(allocator, &absolute)) |formatted| {
         defer allocator.free(formatted);
-        return std.fmt.allocPrint(allocator, "{s}{s}", .{ if (negative) "-" else "", formatted });
+        return allocator.print("{s}{s}", .{ if (negative) "-" else "", formatted });
     }
 
     var one = BigInt.initUnsigned(1);
@@ -220,8 +219,7 @@ pub fn formatNumberReadableAlloc(
     defer next.deinit();
     if (try tryFormatPowerOfTwo(allocator, &next)) |formatted| {
         defer allocator.free(formatted);
-        return std.fmt.allocPrint(
-            allocator,
+        return allocator.print(
             "{s}{s}{s}",
             .{ if (negative) "-" else "", formatted, if (negative) " + 1" else " - 1" },
         );
@@ -233,14 +231,13 @@ pub fn formatNumberReadableAlloc(
     defer allocator.free(encoded);
     const sign: []const u8 = if (negative) "-" else "";
     if (!use_truncation or encoded.len < 24) {
-        return std.fmt.allocPrint(allocator, "{s}{s}", .{ sign, encoded });
+        return allocator.print("{s}{s}", .{ sign, encoded });
     }
 
     const initial_characters: usize = 6;
     const final_characters: usize = 4;
     const skipped = encoded.len - initial_characters - final_characters;
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "{s}{s}...{{+{d} more}}...{s}",
         .{
             sign,

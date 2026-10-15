@@ -24,7 +24,7 @@ pub fn formatBytesAlloc(
     try output.append(allocator, '[');
     for (bytes, 0..) |byte, index| {
         if (index != 0) try output.append(allocator, ',');
-        const formatted = try std.fmt.allocPrint(allocator, "{x}", .{byte});
+        const formatted = try allocator.print("{x}", .{byte});
         defer allocator.free(formatted);
         try output.appendSlice(allocator, formatted);
     }
@@ -111,8 +111,8 @@ pub fn readStandardInputChar(io: std.Io) StandardInputError!?u8 {
         var unbuffered = original;
         unbuffered.lflag.ICANON = false;
         unbuffered.lflag.ECHO = false;
-        unbuffered.cc[@intFromEnum(std.posix.V.MIN)] = 1;
-        unbuffered.cc[@intFromEnum(std.posix.V.TIME)] = 0;
+        unbuffered.cc[@backingInt(std.posix.V.MIN)] = 1;
+        unbuffered.cc[@backingInt(std.posix.V.TIME)] = 0;
         try std.posix.tcsetattr(std.posix.STDIN_FILENO, .NOW, unbuffered);
         const read_result = readInputByte(io);
         const restore_result = std.posix.tcsetattr(std.posix.STDIN_FILENO, .DRAIN, original);
@@ -133,7 +133,7 @@ fn readInputByte(io: std.Io) std.Io.File.Reader.Error!?u8 {
 
 /// Allocating equivalent of the upstream stream-based `toString` helper.
 pub fn toStringAlloc(allocator: std.mem.Allocator, value: anytype) std.mem.Allocator.Error![]u8 {
-    return std.fmt.allocPrint(allocator, "{any}", .{value});
+    return allocator.print("{any}", .{value});
 }
 
 /// Resolves only paths whose first component is `.` or `..`, relative to the
@@ -151,7 +151,7 @@ pub fn absolutePathAlloc(
 
     const base = std.Io.Dir.path.dirname(reference) orelse
         if (std.Io.Dir.path.isAbsolute(reference)) reference else "";
-    const resolved = try std.Io.Dir.path.resolve(allocator, &.{ base, path });
+    const resolved = try std.Io.Dir.path.resolveAlloc(allocator, &.{ base, path });
     if (builtin.os.tag != .windows) return resolved;
     defer allocator.free(resolved);
     return sanitizePathAlloc(allocator, resolved);

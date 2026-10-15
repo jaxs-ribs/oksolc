@@ -195,9 +195,9 @@ pub const CodeCost = struct {
             instruction,
             OptimizerUtilities.evmVersionFromDialect(self.dialect),
         ).gas_price_tier;
-        if (@intFromEnum(tier) < @intFromEnum(InstructionModule.Tier.VeryLow))
+        if (@backingInt(tier) < @backingInt(InstructionModule.Tier.VeryLow))
             self.cost -= 1
-        else if (@intFromEnum(tier) < @intFromEnum(InstructionModule.Tier.High))
+        else if (@backingInt(tier) < @backingInt(InstructionModule.Tier.High))
             self.cost += 1
         else
             self.cost += 49;

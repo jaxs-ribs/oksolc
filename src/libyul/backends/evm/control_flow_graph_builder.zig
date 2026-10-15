@@ -176,8 +176,7 @@ pub const ControlFlowGraphBuilder = struct {
     fn visitSwitch(self: *ControlFlowGraphBuilder, switch_statement: *const AST.Switch) !void {
         if (switch_statement.cases.items.len == 0) return error.InvalidAst;
         const pre_switch_debug = switch_statement.debug_data;
-        const ghost_name_text = try std.fmt.allocPrint(
-            self.allocator,
+        const ghost_name_text = try self.allocator.print(
             "GHOST[{d}]",
             .{self.graph.ghost_variables.items.len},
         );

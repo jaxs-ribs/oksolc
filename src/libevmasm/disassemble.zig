@@ -20,7 +20,7 @@ pub const InstructionIterator = struct {
 
     pub fn next(self: *@This()) ?DecodedInstruction {
         if (self.index >= self.code.len) return null;
-        const decoded: instruction.Instruction = @enumFromInt(self.code[self.index]);
+        const decoded: instruction.Instruction = @fromBackingInt(@intCast(self.code[self.index]));
         self.index += 1;
         var additional: u8 = if (instruction.isValidInstruction(decoded))
             instruction.instructionInfo(decoded, self.evm_version).additional
@@ -63,7 +63,7 @@ pub fn disassembleAlloc(
     var decoded = iterator(code, evm_version);
     while (decoded.next()) |item| {
         if (!instruction.isValidInstruction(item.instruction)) {
-            try appendFormat(allocator, &output, "0x{X}", .{@intFromEnum(item.instruction)});
+            try appendFormat(allocator, &output, "0x{X}", .{@backingInt(item.instruction)});
         } else {
             const info = instruction.instructionInfo(item.instruction, evm_version);
             try output.appendSlice(allocator, info.name);
@@ -81,7 +81,7 @@ fn appendFormat(
     comptime format: []const u8,
     args: anytype,
 ) std.mem.Allocator.Error!void {
-    const formatted = try std.fmt.allocPrint(allocator, format, args);
+    const formatted = try allocator.print(format, args);
     defer allocator.free(formatted);
     try output.appendSlice(allocator, formatted);
 }

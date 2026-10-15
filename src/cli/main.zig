@@ -627,7 +627,7 @@ fn serveCommand(
         try ProjectSources.validatePath(source_path);
         const poll_ms = result.args.@"poll-ms" orelse default_watch_poll_milliseconds;
         if (poll_ms == 0 or poll_ms > std.math.maxInt(i64)) return error.InvalidPollInterval;
-        const directory_path = try std.Io.Dir.path.resolve(init.gpa, &.{ options.project_root, source_path });
+        const directory_path = try std.Io.Dir.path.resolveAlloc(init.gpa, &.{ options.project_root, source_path });
         defer init.gpa.free(directory_path);
         if (!pathContainedBy(options.project_root, directory_path)) return error.InvalidSourcePath;
         const prefix = std.mem.trimStart(u8, directory_path[options.project_root.len..], "/\\");
@@ -813,7 +813,13 @@ const SourceService = struct {
     }
 
     fn run(self: *SourceService) anyerror!void {
-        errdefer |err| if (self.live) |live| live.set(.{ .phase = .stopped, .failure = @errorName(err) });
+        return self.runLoop() catch |err| {
+            if (self.live) |live| live.set(.{ .phase = .stopped, .failure = @errorName(err) });
+            return err;
+        };
+    }
+
+    fn runLoop(self: *SourceService) anyerror!void {
         var last_error: ?anyerror = null;
         var initial = self.names == null;
         while (true) {
@@ -825,9 +831,9 @@ const SourceService = struct {
                 last_error = err;
                 var buffer: [512]u8 = undefined;
                 const message = if (self.pending) |pending|
-                    try std.fmt.bufPrint(&buffer, "oksolc serve: {s}; completed output retained (request {d} bytes, output {d} bytes), retrying publication.\n", .{ @errorName(err), pending.input.len, pending.output.bytes.len })
+                    try std.mem.print(&buffer, "oksolc serve: {s}; completed output retained (request {d} bytes, output {d} bytes), retrying publication.\n", .{ @errorName(err), pending.input.len, pending.output.bytes.len })
                 else
-                    try std.fmt.bufPrint(&buffer, "oksolc serve: {s}; last output is stale, retrying.\n", .{@errorName(err)});
+                    try std.mem.print(&buffer, "oksolc serve: {s}; last output is stale, retrying.\n", .{@errorName(err)});
                 try std.Io.File.stderr().writeStreamingAll(self.io, message);
                 continue;
             };
@@ -891,7 +897,13 @@ const SourceService = struct {
     }
 
     fn update(self: *SourceService) !void {
-        errdefer |err| if (self.live) |live| live.set(.{ .phase = .stale, .failure = @errorName(err) });
+        return self.updateSources() catch |err| {
+            if (self.live) |live| live.set(.{ .phase = .stale, .failure = @errorName(err) });
+            return err;
+        };
+    }
+
+    fn updateSources(self: *SourceService) !void {
         // Loader capabilities are pinned directory handles. A moved project or
         // include root must not keep supplying bytes from its old location.
         for (self.loader.roots.items) |root| {
@@ -1282,7 +1294,7 @@ fn suffixedFileSizeOrZero(
     path: []const u8,
     suffix: []const u8,
 ) !u64 {
-    const suffixed = try std.fmt.allocPrint(allocator, "{s}{s}", .{ path, suffix });
+    const suffixed = try allocator.print("{s}{s}", .{ path, suffix });
     defer allocator.free(suffixed);
     return fileSizeOrZero(io, suffixed);
 }
@@ -1804,7 +1816,7 @@ fn readServeFrameAlloc(
     }
 
     const length = content_length orelse return error.MissingContentLength;
-    return try reader.readAlloc(allocator, length);
+    return try reader.readAllocAll(allocator, length);
 }
 
 fn writeServeFrame(writer: *std.Io.Writer, bytes: []const u8) !void {
@@ -2149,7 +2161,7 @@ fn artifactCacheDirectoryPathAlloc(
     const raw_root = (try userCacheProjectsPathAlloc(init)) orelse
         return error.CacheLocationUnavailable;
     defer init.gpa.free(raw_root);
-    const cache_projects_root = try std.Io.Dir.path.resolve(init.gpa, &.{raw_root});
+    const cache_projects_root = try std.Io.Dir.path.resolveAlloc(init.gpa, &.{raw_root});
     defer init.gpa.free(cache_projects_root);
     return artifactCacheDirectoryUnderRootAlloc(
         init.gpa,
@@ -2305,7 +2317,7 @@ const CliProgress = struct {
         const name = if (update.item_name.len == 0)
             label
         else
-            std.fmt.bufPrint(
+            std.mem.print(
                 &name_buffer,
                 "{s}: {s}",
                 .{ label, update.item_name },
@@ -2396,7 +2408,7 @@ const FileSourceLoader = struct {
     fn addRoot(self: *FileSourceLoader, path: []const u8, lookup: bool) !void {
         if (path.len == 0) return error.InvalidSourceRoot;
         const canonical = if (std.Io.Dir.path.isAbsolute(path))
-            try std.Io.Dir.path.resolve(self.allocator, &.{path})
+            try std.Io.Dir.path.resolveAlloc(self.allocator, &.{path})
         else canonical: {
             const current_directory = try std.Io.Dir.cwd().realPathFileAlloc(
                 self.io,
@@ -2404,7 +2416,7 @@ const FileSourceLoader = struct {
                 self.allocator,
             );
             defer self.allocator.free(current_directory);
-            break :canonical try std.Io.Dir.path.resolve(
+            break :canonical try std.Io.Dir.path.resolveAlloc(
                 self.allocator,
                 &.{ current_directory, path },
             );
@@ -2465,14 +2477,14 @@ const FileSourceLoader = struct {
         if (path.len == 0 or path.len > max_source_path_bytes) return .denied;
 
         if (std.Io.Dir.path.isAbsolute(path)) {
-            const candidate = try std.Io.Dir.path.resolve(allocator, &.{path});
+            const candidate = try std.Io.Dir.path.resolveAlloc(allocator, &.{path});
             defer allocator.free(candidate);
             return self.readAuthorizedCandidateAlloc(allocator, candidate);
         }
 
         for (self.roots.items) |*lookup_root| {
             if (!lookup_root.lookup) continue;
-            const candidate = try std.Io.Dir.path.resolve(
+            const candidate = try std.Io.Dir.path.resolveAlloc(
                 allocator,
                 &.{ lookup_root.canonical_path, path },
             );
@@ -2778,14 +2790,12 @@ test "filesystem source loader confines reads to canonical regular files" {
         .sub_path = "outside/Secret.sol",
         .data = "secret",
     });
-    const base_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const base_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/base",
         .{&temporary.sub_path},
     );
     defer std.testing.allocator.free(base_path);
-    const outside_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const outside_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/outside/Secret.sol",
         .{&temporary.sub_path},
     );
@@ -2843,20 +2853,17 @@ test "filesystem source loader searches includes and only directly addresses all
         .sub_path = "allowed/Direct.sol",
         .data = "contract Direct {}",
     });
-    const base_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const base_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/base",
         .{&temporary.sub_path},
     );
     defer std.testing.allocator.free(base_path);
-    const include_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const include_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/include",
         .{&temporary.sub_path},
     );
     defer std.testing.allocator.free(include_path);
-    const allowed_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const allowed_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/allowed",
         .{&temporary.sub_path},
     );
@@ -2867,8 +2874,7 @@ test "filesystem source loader searches includes and only directly addresses all
         std.testing.allocator,
     );
     defer std.testing.allocator.free(canonical_allowed);
-    const direct_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const direct_path = try std.testing.allocator.print(
         "{s}/Direct.sol",
         .{canonical_allowed},
     );
@@ -2955,8 +2961,7 @@ test "filesystem source loader rejects symlink escapes" {
         "base/directory-link",
         .{ .is_directory = true },
     );
-    const base_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const base_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/base",
         .{&temporary.sub_path},
     );
@@ -3023,8 +3028,7 @@ test "filesystem source loader rejects symlinks in configured roots" {
         "root-link",
         .{ .is_directory = true },
     );
-    const linked_root = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const linked_root = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/root-link",
         .{&temporary.sub_path},
     );
@@ -3049,8 +3053,7 @@ test "filesystem source loader rejects a swapped root ancestor" {
     defer temporary.cleanup();
     try temporary.dir.createDirPath(std.testing.io, "stable/parent/root");
     try temporary.dir.createDirPath(std.testing.io, "outside/root");
-    const original_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const original_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/stable/parent/root",
         .{&temporary.sub_path},
     );
@@ -3099,14 +3102,12 @@ test "filesystem source loader rejects a FIFO without blocking" {
     var temporary = std.testing.tmpDir(.{});
     defer temporary.cleanup();
     try temporary.dir.createDirPath(std.testing.io, "base");
-    const base_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const base_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/base",
         .{&temporary.sub_path},
     );
     defer std.testing.allocator.free(base_path);
-    const fifo_path = try std.fmt.allocPrintSentinel(
-        std.testing.allocator,
+    const fifo_path = try std.testing.allocator.printSentinel(
         ".zig-cache/tmp/{s}/base/source.pipe",
         .{&temporary.sub_path},
         0,
@@ -3156,8 +3157,7 @@ test "filesystem source loader enforces a per-request total byte limit" {
         .sub_path = "base/B.sol",
         .data = "45",
     });
-    const base_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const base_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/base",
         .{&temporary.sub_path},
     );
@@ -3253,18 +3253,19 @@ test "persistent cache is opt-in and the CLI disable takes precedence" {
 }
 
 test "cache authentication keys require exactly 256 bits of hexadecimal" {
-    const expected = [_]u8{0x5a} ** 32;
+    const expected: [32]u8 = @splat(0x5a);
+    const encoded = std.fmt.bytesToHex(expected, .lower);
     try std.testing.expectEqual(
         expected,
-        try parseCacheAuthenticationKey("5a" ** 32),
+        try parseCacheAuthenticationKey(&encoded),
     );
     try std.testing.expectError(
         error.InvalidCacheAuthenticationKey,
-        parseCacheAuthenticationKey("5a" ** 31),
+        parseCacheAuthenticationKey(encoded[0..62]),
     );
     try std.testing.expectError(
         error.InvalidCacheAuthenticationKey,
-        parseCacheAuthenticationKey("zz" ** 32),
+        parseCacheAuthenticationKey(&@as([64]u8, @splat('z'))),
     );
 }
 
@@ -3345,8 +3346,7 @@ test "project discovery prefers the nearest config and stops at a repository" {
     try temporary.dir.createDirPath(std.testing.io, "repo/.git");
     try temporary.dir.createDirPath(std.testing.io, "repo/contracts/nested");
 
-    const repository_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const repository_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/repo",
         .{&temporary.sub_path},
     );
@@ -3395,8 +3395,7 @@ test "cache security boundary covers the enclosing repository" {
     try temporary.dir.createDirPath(std.testing.io, "repo/.git");
     try temporary.dir.createDirPath(std.testing.io, "repo/nested/project");
 
-    const repository_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const repository_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/repo",
         .{&temporary.sub_path},
     );
@@ -3432,8 +3431,7 @@ test "artifact cache directory is private even when it already exists" {
         "cache-dir",
         std.Io.Dir.Permissions.fromMode(0o755),
     );
-    const database_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const database_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/cache-dir/artifacts.sqlite",
         .{&temporary.sub_path},
     );
@@ -3467,8 +3465,7 @@ test "artifact cache directory rejects a symlink without changing its target" {
         "cache-dir",
         .{ .is_directory = true },
     );
-    const database_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const database_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/cache-dir/artifacts.sqlite",
         .{&temporary.sub_path},
     );

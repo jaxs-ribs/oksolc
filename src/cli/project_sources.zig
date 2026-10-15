@@ -192,7 +192,7 @@ test "source count budget is shared across disjoint roots" {
     defer tests.close(std.testing.io);
     for (0..2049) |index| {
         var buffer: [32]u8 = undefined;
-        const name = try std.fmt.bufPrint(&buffer, "{d}.sol", .{index});
+        const name = try std.mem.print(&buffer, "{d}.sol", .{index});
         try source.writeFile(std.testing.io, .{ .sub_path = name, .data = "" });
         try tests.writeFile(std.testing.io, .{ .sub_path = name, .data = "" });
     }

@@ -29,11 +29,11 @@ pub const SourceSccId = enum(u32) {
     _,
 
     pub fn init(raw_index: u32) SourceSccId {
-        return @enumFromInt(raw_index);
+        return @fromBackingInt(@intCast(raw_index));
     }
 
     pub fn index(self: SourceSccId) u32 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 };
 
@@ -350,7 +350,7 @@ fn lessSourceId(_: void, left: SourceId, right: SourceId) bool {
 /// bitset for constant-time membership and deterministic ascending snapshots.
 pub const DirtySourceSet = struct {
     allocator: std.mem.Allocator,
-    bits: std.DynamicBitSetUnmanaged,
+    bits: std.bit_set.Dynamic,
     epochs: []u64,
     members: std.ArrayList(SourceId) = .empty,
     epoch: u64 = 1,
@@ -360,7 +360,7 @@ pub const DirtySourceSet = struct {
         allocator: std.mem.Allocator,
         source_count: usize,
     ) std.mem.Allocator.Error!DirtySourceSet {
-        var bits = try std.DynamicBitSetUnmanaged.initEmpty(allocator, source_count);
+        var bits = try std.bit_set.Dynamic.initEmpty(allocator, source_count);
         errdefer bits.deinit(allocator);
         const epochs = try allocator.alloc(u64, source_count);
         @memset(epochs, 0);
@@ -643,7 +643,7 @@ test "rename churn keeps the frozen graph proportional to active sources" {
     defer registry.deinit();
     for (0..64) |revision| {
         var name_buffer: [32]u8 = undefined;
-        const name = try std.fmt.bufPrint(&name_buffer, "Generated-{d}.sol", .{revision});
+        const name = try std.mem.print(&name_buffer, "Generated-{d}.sol", .{revision});
         _ = try registry.beginRevision();
         _ = try registry.upsert(name, "contract Generated {}");
         _ = try registry.finishRevision();

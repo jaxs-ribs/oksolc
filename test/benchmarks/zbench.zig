@@ -621,8 +621,7 @@ fn runStandardJsonSurvey(
         &response_print_case,
         .{ .iterations = 3 },
     );
-    const compiler_name = try std.fmt.allocPrint(
-        init.gpa,
+    const compiler_name = try init.gpa.print(
         "compiler: Standard JSON end-to-end ({d} jobs, timing only)",
         .{jobs},
     );

@@ -264,7 +264,9 @@ test "project source names are stable for absolute paths and retain allocation o
     defer std.testing.allocator.free(path);
     const outside = try temporary.dir.realPathFileAlloc(std.testing.io, "outside.sol", std.testing.allocator);
     defer std.testing.allocator.free(outside);
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, struct {
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), struct {
         fn run(allocator: std.mem.Allocator, project: []const u8, inside: []const u8, external: []const u8) !void {
             var loaded = try loadSourcesAt(allocator, std.testing.io, &.{ inside, external }, project);
             defer loaded.deinit();
@@ -297,7 +299,8 @@ test "browser AST selection preserves requested artifacts settings and invalid r
         defer std.testing.allocator.free(same);
         try std.testing.expectEqualStrings(original, same);
     }
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, struct {
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), struct {
         fn run(allocator: std.mem.Allocator) !void {
             const bytes = try withAstAlloc(allocator, "{\"language\":\"Solidity\",\"sources\":{}}");
             defer allocator.free(bytes);

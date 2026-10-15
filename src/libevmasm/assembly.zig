@@ -713,14 +713,14 @@ pub const Assembly = struct {
         errdefer code_locations.deinit(self.allocator);
         try code_locations.instruction_locations.ensureTotalCapacity(self.allocator, self.assembly_items.items.len);
 
-        const tag_push = @intFromEnum(InstructionModule.pushInstruction(@intCast(bytes_per_tag)));
-        const data_ref_push = @intFromEnum(InstructionModule.pushInstruction(@intCast(bytes_per_data_ref)));
+        const tag_push = @backingInt(InstructionModule.pushInstruction(@intCast(bytes_per_tag)));
+        const data_ref_push = @backingInt(InstructionModule.pushInstruction(@intCast(bytes_per_data_ref)));
         for (self.assembly_items.items, 0..) |*item, item_index| {
             var location_start = ret.bytecode.items.len;
             if (item.item_type != .Tag and self.tag_positions_in_bytecode.items[0] == std.math.maxInt(usize))
                 self.tag_positions_in_bytecode.items[0] = ret.bytecode.items.len;
             switch (item.item_type) {
-                .Operation => try ret.bytecode.append(self.allocator, @intFromEnum(item.instruction_value.?)),
+                .Operation => try ret.bytecode.append(self.allocator, @backingInt(item.instruction_value.?)),
                 .Push => try appendPush(self.allocator, &ret.bytecode, item.data_value, self.evm_version),
                 .PushTag => {
                     try ret.bytecode.append(self.allocator, tag_push);
@@ -757,7 +757,7 @@ pub const Assembly = struct {
                     const width = @max(@as(usize, 1), Numeric.numberEncodingSize(usize, size));
                     try ret.bytecode.append(
                         self.allocator,
-                        @intFromEnum(InstructionModule.pushInstruction(@intCast(width))),
+                        @backingInt(InstructionModule.pushInstruction(@intCast(width))),
                     );
                     try appendBigEndian(self.allocator, &ret.bytecode, width, size);
                 },
@@ -767,7 +767,7 @@ pub const Assembly = struct {
                     try ret.bytecode.appendNTimes(self.allocator, 0, bytes_per_data_ref);
                 },
                 .PushLibraryAddress => {
-                    try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.PUSH20));
+                    try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.PUSH20));
                     try ret.putLinkReference(
                         self.allocator,
                         ret.bytecode.items.len,
@@ -776,7 +776,7 @@ pub const Assembly = struct {
                     try ret.bytecode.appendNTimes(self.allocator, 0, 20);
                 },
                 .PushImmutable => {
-                    try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.PUSH32));
+                    try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.PUSH32));
                     try appendImmutableReference(
                         self.allocator,
                         ret,
@@ -791,31 +791,31 @@ pub const Assembly = struct {
                     const offsets = immutableOffsets(immutable_by_sub.items, item.data_value);
                     for (offsets, 0..) |offset, index| {
                         if (index != offsets.len - 1) {
-                            try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.DUP2));
+                            try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.DUP2));
                             try emitLocation(self.allocator, &code_locations, item_index, &location_start, ret.bytecode.items.len);
-                            try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.DUP2));
+                            try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.DUP2));
                             try emitLocation(self.allocator, &code_locations, item_index, &location_start, ret.bytecode.items.len);
                         }
                         const width = @max(@as(usize, 1), Numeric.numberEncodingSize(usize, offset));
                         try ret.bytecode.append(
                             self.allocator,
-                            @intFromEnum(InstructionModule.pushInstruction(@intCast(width))),
+                            @backingInt(InstructionModule.pushInstruction(@intCast(width))),
                         );
                         try appendBigEndian(self.allocator, &ret.bytecode, width, offset);
                         try emitLocation(self.allocator, &code_locations, item_index, &location_start, ret.bytecode.items.len);
-                        try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.ADD));
+                        try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.ADD));
                         try emitLocation(self.allocator, &code_locations, item_index, &location_start, ret.bytecode.items.len);
-                        try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.MSTORE));
+                        try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.MSTORE));
                     }
                     if (offsets.len == 0) {
-                        try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.POP));
+                        try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.POP));
                         try emitLocation(self.allocator, &code_locations, item_index, &location_start, ret.bytecode.items.len);
-                        try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.POP));
+                        try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.POP));
                     }
                     removeImmutableReference(&immutable_by_sub, item.data_value);
                 },
                 .PushDeployTimeAddress => {
-                    try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.PUSH20));
+                    try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.PUSH20));
                     try ret.bytecode.appendNTimes(self.allocator, 0, 20);
                 },
                 .Tag => try self.assembleTag(item, ret.bytecode.items.len, true, &ret.bytecode),
@@ -830,7 +830,7 @@ pub const Assembly = struct {
 
         if (immutable_by_sub.items.len != 0) return error.UnassignedImmutable;
         if (self.subs.items.len != 0 or self.data_entries.items.len != 0 or self.auxiliary_data.items.len != 0)
-            try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.INVALID));
+            try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.INVALID));
 
         const SubOffset = struct { object: *const LinkerObject, offset: usize };
         var sub_offsets: std.ArrayList(SubOffset) = .empty;
@@ -917,7 +917,7 @@ pub const Assembly = struct {
             return error.DuplicateTagPosition;
         self.tag_positions_in_bytecode.items[split[1]] = position;
         if (add_jump_dest)
-            try bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.JUMPDEST));
+            try bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.JUMPDEST));
     }
 
     pub fn encodeSubPath(self: *Assembly, path: []const SubAssemblyID) AssemblyError!SubAssemblyID {
@@ -1178,7 +1178,7 @@ pub const Assembly = struct {
             }
             for (self.subs.items, 0..) |sub_assembly, index| {
                 try output.print("\n{s}sub_{d}: assembly {{\n", .{ prefix, index });
-                const child_prefix = try std.fmt.allocPrint(allocator, "{s}    ", .{prefix});
+                const child_prefix = try allocator.print("{s}    ", .{prefix});
                 defer allocator.free(child_prefix);
                 try sub_assembly.appendAssemblyText(allocator, output, selection, child_prefix, source_codes);
                 try output.print("{s}}}\n", .{prefix});
@@ -1239,7 +1239,7 @@ fn buildAssemblyJSON(
             try data.object.put(allocator, key, .{ .string = value });
         }
         for (assembly.subs.items, 0..) |sub_assembly, index| {
-            const key = try std.fmt.allocPrint(allocator, "{x}", .{index});
+            const key = try allocator.print("{x}", .{index});
             try data.object.put(
                 allocator,
                 key,
@@ -1704,7 +1704,7 @@ fn appendPush(
 ) std.mem.Allocator.Error!void {
     var width = Numeric.numberEncodingSize(u256, value);
     if (width == 0 and !evm_version.hasPush0()) width = 1;
-    try bytecode.append(allocator, @intFromEnum(InstructionModule.pushInstruction(@intCast(width))));
+    try bytecode.append(allocator, @backingInt(InstructionModule.pushInstruction(@intCast(width))));
     try appendBigEndian(allocator, bytecode, width, value);
 }
 
@@ -2048,8 +2048,7 @@ test "assembly JSON preserves code, source names, data, and subassemblies" {
 test "assembly JSON tag integers use decimal octal and hexadecimal prefixes" {
     const allocator = std.testing.allocator;
     for ([_][]const u8{ "8", "010", "0x8", "0X8" }) |tag| {
-        const input = try std.fmt.allocPrint(
-            allocator,
+        const input = try allocator.print(
             "{{\".code\":[{{\"name\":\"PUSH [tag]\",\"value\":\"8\"}},{{\"name\":\"JUMP\"}},{{\"name\":\"tag\",\"value\":\"{s}\"}},{{\"name\":\"JUMPDEST\"}},{{\"name\":\"STOP\"}}]}}",
             .{tag},
         );
@@ -2068,8 +2067,7 @@ test "assembly JSON tag integers use decimal octal and hexadecimal prefixes" {
 test "assembly JSON PUSH values require unprefixed hex digits" {
     const allocator = std.testing.allocator;
     for ([_][]const u8{ "0x10", "0X10", "1_0", "+10" }) |value| {
-        const input = try std.fmt.allocPrint(
-            allocator,
+        const input = try allocator.print(
             "{{\".code\":[{{\"name\":\"PUSH\",\"value\":\"{s}\"}}]}}",
             .{value},
         );
@@ -2090,8 +2088,7 @@ test "assembly JSON data aliases use lexicographic key order" {
         "{\"" ++ lower ++ "\":\"11\",\"" ++ upper ++ "\":\"22\"}",
         "{\"" ++ upper ++ "\":\"22\",\"" ++ lower ++ "\":\"11\"}",
     }) |data| {
-        const input = try std.fmt.allocPrint(
-            allocator,
+        const input = try allocator.print(
             "{{\".code\":[{{\"name\":\"PUSH data\",\"value\":\"{s}\"}}],\".data\":{s}}}",
             .{ lower, data },
         );
@@ -2262,7 +2259,8 @@ test "assembly immutable references preserve child owners across allocation fail
             };
             if (parent.assemble()) |object| {
                 try std.testing.expect(expected_error == null);
-                const runtime_hex = ("7f" ++ "00" ** 32 ++ "50") ** 3 ++ "00";
+                const runtime_push = "7f" ++ @as([64]u8, @splat('0')) ++ "50";
+                const runtime_hex = runtime_push ++ runtime_push ++ runtime_push ++ "00";
                 const expected = if (case == .complete)
                     "602a600081816001015260450152602b600060230152602c60005050602d600050506100285000fe" ++ runtime_hex
                 else
@@ -2365,8 +2363,10 @@ test "assembly CSE scratch releases nested analyses before output use" {
             const linker = try reference.assemble();
             const text = try reference.assemblyStringAlloc(allocator, .defaultValue(), &sources);
             defer allocator.free(text);
+            // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+            var deterministic = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
             for ([_]bool{ false, true }) |separate_scratch|
-                try std.testing.checkAllAllocationFailures(allocator, Check.run, .{
+                try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{
                     version, enable_cse, separate_scratch, @as(usize, 1), linker.bytecode.items, text,
                 });
         }

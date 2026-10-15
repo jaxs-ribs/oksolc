@@ -99,7 +99,7 @@ pub const VariableOccurrence = struct {
         const lhs_id = ASTAnnotations.compatibilityId(lhs.declaration);
         const rhs_id = ASTAnnotations.compatibilityId(rhs.declaration);
         if (lhs_id != rhs_id) return lhs_id < rhs_id;
-        return @intFromEnum(lhs.kind) < @intFromEnum(rhs.kind);
+        return @backingInt(lhs.kind) < @backingInt(rhs.kind);
     }
 };
 

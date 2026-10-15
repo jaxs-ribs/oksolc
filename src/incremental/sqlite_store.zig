@@ -260,7 +260,7 @@ const PersistentState = struct {
 const ArtifactRefContext = struct {
     pub fn hash(_: ArtifactRefContext, reference: ArtifactRef) u64 {
         var hasher = std.hash.Wyhash.init(0);
-        hasher.update(&.{@intFromEnum(reference.kind)});
+        hasher.update(&.{@backingInt(reference.kind)});
         hasher.update(reference.key.bytes());
         return hasher.final();
     }
@@ -1225,7 +1225,7 @@ pub const SqliteStore = struct {
     fn lock(self: *SqliteStore) void {
         if (self.mutex.tryLock()) return;
         const start = std.Io.Clock.awake.now(self.io).nanoseconds;
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         const end = std.Io.Clock.awake.now(self.io).nanoseconds;
         if (end > start) {
             const elapsed = std.math.cast(u64, end - start) orelse std.math.maxInt(u64);
@@ -1482,7 +1482,7 @@ const Statement = struct {
         index: c_int,
         value: anytype,
     ) StoreError!void {
-        const integer = std.math.cast(c_int, @intFromEnum(value)) orelse
+        const integer = std.math.cast(c_int, @backingInt(value)) orelse
             return error.Corrupt;
         return self.bindInt(index, integer);
     }
@@ -1721,13 +1721,13 @@ fn artifactAuthentication(
 ) AuthenticationTag {
     var authentication = HmacSha256.init(&key);
     authentication.update(artifact_authentication_domain);
-    authentication.update(&.{@intFromEnum(reference.kind)});
+    authentication.update(&.{@backingInt(reference.kind)});
     authentication.update(reference.key.bytes());
     updateAuthenticationLength(&authentication, payload.len);
     authentication.update(payload);
     updateAuthenticationLength(&authentication, dependencies.len);
     for (dependencies) |dependency| {
-        authentication.update(&.{@intFromEnum(dependency.kind)});
+        authentication.update(&.{@backingInt(dependency.kind)});
         authentication.update(dependency.key.bytes());
     }
     var result: AuthenticationTag = undefined;
@@ -1800,14 +1800,13 @@ fn mapInitError(err: (StoreError || SqliteStore.InitError)) SqliteStore.InitErro
 }
 
 fn testPathAlloc(allocator: std.mem.Allocator, temporary: *const std.testing.TmpDir) ![]u8 {
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         ".zig-cache/tmp/{s}/cache.sqlite",
         .{&temporary.sub_path},
     );
 }
 
-const test_authentication_key: AuthenticationKey = [_]u8{0x5a} ** 32;
+const test_authentication_key: AuthenticationKey = @splat(0x5a);
 
 fn testStoreInit(
     allocator: std.mem.Allocator,
@@ -1946,7 +1945,7 @@ test "SQLite artifact store rejects a database from another trust domain" {
         std.testing.allocator,
         std.testing.io,
         path,
-        [_]u8{0x11} ** 32,
+        @splat(0x11),
     );
     trusted.deinit();
     try std.testing.expectError(
@@ -1955,7 +1954,7 @@ test "SQLite artifact store rejects a database from another trust domain" {
             std.testing.allocator,
             std.testing.io,
             path,
-            [_]u8{0x22} ** 32,
+            @splat(0x22),
         ),
     );
 }
@@ -2699,8 +2698,7 @@ test "SQLite artifact store rejects wrong and corrupt schemas" {
         .sub_path = "corrupt.sqlite",
         .data = "not a SQLite database",
     });
-    const corrupt_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const corrupt_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/corrupt.sqlite",
         .{&temporary.sub_path},
     );
@@ -2739,8 +2737,7 @@ test "SQLite artifact store restricts database and WAL sidecar permissions" {
     );
 
     for ([_][]const u8{ "-wal", "-shm" }) |suffix| {
-        const sidecar_path = try std.fmt.allocPrint(
-            std.testing.allocator,
+        const sidecar_path = try std.testing.allocator.print(
             "{s}{s}",
             .{ path, suffix },
         );
@@ -2836,8 +2833,7 @@ test "SQLite artifact store rejects a substituted payload with a recomputed dige
     var digest_bytes: [H256.size]u8 = undefined;
     @memcpy(&digest_bytes, digest.bytes());
     const digest_hex = std.fmt.bytesToHex(digest_bytes, .lower);
-    const sql = try std.fmt.allocPrintSentinel(
-        std.testing.allocator,
+    const sql = try std.testing.allocator.printSentinel(
         "UPDATE artifact SET payload=x'{s}',size={d},payload_digest=x'{s}';",
         .{ payload_hex, substituted.len, digest_hex },
         0,

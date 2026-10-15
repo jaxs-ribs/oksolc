@@ -18,8 +18,8 @@ pub const ArtifactRef = struct {
     }
 
     pub fn lessThan(_: void, left: ArtifactRef, right: ArtifactRef) bool {
-        const left_kind = @intFromEnum(left.kind);
-        const right_kind = @intFromEnum(right.kind);
+        const left_kind = @backingInt(left.kind);
+        const right_kind = @backingInt(right.kind);
         if (left_kind != right_kind) return left_kind < right_kind;
         return left.key.lessThan(&right.key);
     }
@@ -134,7 +134,7 @@ pub const MemoryStoreStatistics = struct {
 const ArtifactRefContext = struct {
     pub fn hash(_: ArtifactRefContext, reference: ArtifactRef) u64 {
         var hasher = std.hash.Wyhash.init(0);
-        hasher.update(&.{@intFromEnum(reference.kind)});
+        hasher.update(&.{@backingInt(reference.kind)});
         hasher.update(reference.key.bytes());
         return hasher.final();
     }
@@ -338,7 +338,7 @@ pub const MemoryArtifactStore = struct {
     }
 
     fn lock(self: *MemoryArtifactStore) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
     }
 
     fn unlock(self: *MemoryArtifactStore) void {

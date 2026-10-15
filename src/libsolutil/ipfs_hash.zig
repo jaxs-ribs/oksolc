@@ -11,7 +11,7 @@ pub const multihash_size: usize = 34;
 pub const Multihash = [multihash_size]u8;
 
 const Chunk = struct {
-    hash: Multihash = [_]u8{0} ** multihash_size,
+    hash: Multihash = @splat(0),
     size: usize = 0,
     block_size: usize = 0,
 };

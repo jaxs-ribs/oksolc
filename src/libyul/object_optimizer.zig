@@ -146,7 +146,7 @@ pub const ObjectOptimizer = struct {
     compiler_fingerprint: PhaseKey.CompilerFingerprint,
     backing_store: ?ArtifactStoreModule.ArtifactStore = null,
     memory_limits: ArtifactStoreModule.CacheLimits,
-    shards: [shard_count]Shard = [_]Shard{.{}} ** shard_count,
+    shards: [shard_count]Shard = @splat(.{}),
     eviction_mutex: std.Io.Mutex = .init,
     access_epoch: std.atomic.Value(u64) = .init(0),
     memory_hit_count: std.atomic.Value(u64) = .init(0),
@@ -419,7 +419,7 @@ pub const ObjectOptimizer = struct {
         cache_key: CacheKey,
     ) std.mem.Allocator.Error!EntryLease {
         const shard = &self.shards[shardIndex(cache_key)];
-        std.Io.Threaded.mutexLock(&shard.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&shard.mutex);
         const existing = shard.entries.get(cache_key);
         if (existing) |entry| {
             _ = entry.reference_count.fetchAdd(1, .monotonic);
@@ -434,14 +434,14 @@ pub const ObjectOptimizer = struct {
         candidate.* = .{};
         candidate.reference_count.store(2, .monotonic);
         candidate.last_used_epoch.store(self.nextAccessEpoch(), .monotonic);
-        std.Io.Threaded.mutexLock(&candidate.gate);
+        std.Io.Threaded.mutexLockUncancelable(&candidate.gate);
         errdefer {
             std.Io.Threaded.mutexUnlock(&candidate.gate);
             allocator.destroy(candidate);
         }
 
         const race_winner = winner: {
-            std.Io.Threaded.mutexLock(&shard.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&shard.mutex);
             defer std.Io.Threaded.mutexUnlock(&shard.mutex);
             const result = try shard.entries.getOrPut(allocator, cache_key);
             if (result.found_existing) {
@@ -461,7 +461,7 @@ pub const ObjectOptimizer = struct {
     fn acquireExisting(self: *ObjectOptimizer, entry: *CacheEntry) EntryLease {
         if (!entry.gate.tryLock()) {
             _ = self.single_flight_wait_count.fetchAdd(1, .monotonic);
-            std.Io.Threaded.mutexLock(&entry.gate);
+            std.Io.Threaded.mutexLockUncancelable(&entry.gate);
         }
         entry.last_used_epoch.store(self.nextAccessEpoch(), .monotonic);
         return .{ .cache = self, .entry = entry, .owner = false };
@@ -490,7 +490,7 @@ pub const ObjectOptimizer = struct {
         const shard = &self.shards[shardIndex(cache_key)];
         var retired = false;
         var ready_size: u64 = not_ready_size;
-        std.Io.Threaded.mutexLock(&shard.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&shard.mutex);
         if (shard.entries.get(cache_key)) |current| {
             if (current == expected) {
                 const removed = shard.entries.fetchRemove(cache_key).?;
@@ -519,7 +519,7 @@ pub const ObjectOptimizer = struct {
         {
             return;
         }
-        std.Io.Threaded.mutexLock(&self.eviction_mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.eviction_mutex);
         defer std.Io.Threaded.mutexUnlock(&self.eviction_mutex);
         while (self.entry_count.load(.monotonic) > self.memory_limits.max_entries or
             self.resident_byte_count.load(.monotonic) > self.memory_limits.max_bytes)
@@ -538,7 +538,7 @@ pub const ObjectOptimizer = struct {
         var oldest: ?EvictionCandidate = null;
         for (&self.shards) |*shard| {
             var shard_oldest: ?EvictionCandidate = null;
-            std.Io.Threaded.mutexLock(&shard.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&shard.mutex);
             var iterator = shard.entries.iterator();
             while (iterator.next()) |item| {
                 const entry = item.value_ptr.*;
@@ -858,7 +858,7 @@ test "object optimizer evicts least recently used ready entries" {
             entry.ready_size.store(@intCast(owned.residentBytes()), .monotonic);
             entry.last_used_epoch.store(epoch, .monotonic);
             const shard = &optimizer.shards[shardIndex(key)];
-            std.Io.Threaded.mutexLock(&shard.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&shard.mutex);
             defer std.Io.Threaded.mutexUnlock(&shard.mutex);
             try shard.entries.put(allocator, key, entry);
             _ = optimizer.entry_count.fetchAdd(1, .monotonic);
@@ -867,7 +867,7 @@ test "object optimizer evicts least recently used ready entries" {
 
         fn contains(optimizer: *ObjectOptimizer, key: CacheKey) bool {
             const shard = &optimizer.shards[shardIndex(key)];
-            std.Io.Threaded.mutexLock(&shard.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&shard.mutex);
             defer std.Io.Threaded.mutexUnlock(&shard.mutex);
             return shard.entries.contains(key);
         }
@@ -920,7 +920,7 @@ test "object optimizer eviction cannot retire a replacement entry" {
             entry.* = .{ .state = .{ .ready = owned } };
             entry.ready_size.store(@intCast(owned.residentBytes()), .monotonic);
             const shard = &optimizer.shards[shardIndex(key)];
-            std.Io.Threaded.mutexLock(&shard.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&shard.mutex);
             defer std.Io.Threaded.mutexUnlock(&shard.mutex);
             try shard.entries.put(allocator, key, entry);
             _ = optimizer.entry_count.fetchAdd(1, .monotonic);
@@ -930,7 +930,7 @@ test "object optimizer eviction cannot retire a replacement entry" {
 
         fn mappedEntry(optimizer: *ObjectOptimizer, key: CacheKey) ?*CacheEntry {
             const shard = &optimizer.shards[shardIndex(key)];
-            std.Io.Threaded.mutexLock(&shard.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&shard.mutex);
             defer std.Io.Threaded.mutexUnlock(&shard.mutex);
             return shard.entries.get(key);
         }
@@ -956,7 +956,7 @@ test "object optimizer eviction cannot retire a replacement entry" {
     const io = threaded.io();
     var group: std.Io.Group = .init;
     const final_shard = &optimizer.shards[shard_count - 1];
-    std.Io.Threaded.mutexLock(&final_shard.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&final_shard.mutex);
     var final_shard_locked = true;
     var group_pending = true;
     defer {

@@ -281,21 +281,18 @@ pub const ReferencesResolver = struct {
                     "Undeclared identifier.",
                 );
             } else {
-                const exact = try std.fmt.allocPrint(
-                    self.tree.backing_allocator,
+                const exact = try self.tree.backing_allocator.print(
                     "\"{s}\"",
                     .{name},
                 );
                 defer self.tree.backing_allocator.free(exact);
                 message = if (std.mem.eql(u8, exact, suggestions))
-                    try std.fmt.allocPrint(
-                        self.tree.backing_allocator,
+                    try self.tree.backing_allocator.print(
                         "Undeclared identifier. {s} is not (or not yet) visible at this point.",
                         .{suggestions},
                     )
                 else
-                    try std.fmt.allocPrint(
-                        self.tree.backing_allocator,
+                    try self.tree.backing_allocator.print(
                         "Undeclared identifier. Did you mean {s}?",
                         .{suggestions},
                     );
@@ -408,8 +405,7 @@ pub const ReferencesResolver = struct {
         var iterator = std.mem.splitScalar(u8, content, '.');
         while (iterator.next()) |component| {
             if (component.len == 0) {
-                const message = try std.fmt.allocPrint(
-                    self.tree.backing_allocator,
+                const message = try self.tree.backing_allocator.print(
                     "Documentation tag @inheritdoc reference \"{s}\" is malformed.",
                     .{content},
                 );
@@ -431,8 +427,7 @@ pub const ReferencesResolver = struct {
         );
         defer self.tree.backing_allocator.free(declarations);
         if (declarations.len == 0) {
-            const message = try std.fmt.allocPrint(
-                self.tree.backing_allocator,
+            const message = try self.tree.backing_allocator.print(
                 "Documentation tag @inheritdoc references inexistent contract \"{s}\".",
                 .{content},
             );
@@ -446,8 +441,7 @@ pub const ReferencesResolver = struct {
         }
         const result = declarations[declarations.len - 1];
         if (result.nodeKind() != .contract_definition) {
-            const message = try std.fmt.allocPrint(
-                self.tree.backing_allocator,
+            const message = try self.tree.backing_allocator.print(
                 "Documentation tag @inheritdoc reference \"{s}\" is not a contract.",
                 .{content},
             );
@@ -799,8 +793,7 @@ pub const ReferencesResolver = struct {
             std.mem.eql(u8, name, "super") or
             std.mem.eql(u8, name, "_"))
         {
-            const message = try std.fmt.allocPrint(
-                self.tree.backing_allocator,
+            const message = try self.tree.backing_allocator.print(
                 "The identifier name \"{s}\" is reserved.",
                 .{name},
             );

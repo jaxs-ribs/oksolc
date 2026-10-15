@@ -40,8 +40,8 @@ pub const EVMVersion = struct {
 
     pub fn allVersions() [16]EVMVersion {
         var result: [16]EVMVersion = undefined;
-        inline for (std.meta.fields(Version)[0..16], 0..) |field, index| {
-            result[index] = .{ .version = @enumFromInt(field.value) };
+        inline for (std.enums.values(Version)[0..16], 0..) |version, index| {
+            result[index] = .{ .version = version };
         }
         return result;
     }
@@ -81,15 +81,15 @@ pub const EVMVersion = struct {
     }
 
     pub fn before(self: EVMVersion, other: EVMVersion) bool {
-        return @intFromEnum(self.version) < @intFromEnum(other.version);
+        return @backingInt(self.version) < @backingInt(other.version);
     }
 
     pub fn atLeast(self: EVMVersion, version: Version) bool {
-        return @intFromEnum(self.version) >= @intFromEnum(version);
+        return @backingInt(self.version) >= @backingInt(version);
     }
 
     pub fn after(self: EVMVersion, other: EVMVersion) bool {
-        return @intFromEnum(self.version) > @intFromEnum(other.version);
+        return @backingInt(self.version) > @backingInt(other.version);
     }
 
     pub fn supportsReturndata(self: EVMVersion) bool {

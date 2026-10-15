@@ -9,20 +9,20 @@ const package = @import("build.zig.zon");
 
 const required_zig_version: std.SemanticVersion = .{
     .major = 0,
-    .minor = 16,
+    .minor = 17,
     .patch = 0,
 };
 
 comptime {
     if (builtin.zig_version.order(required_zig_version) != .eq) {
         @compileError(
-            "solidity-zig requires Zig 0.16.0; found " ++
+            "solidity-zig requires Zig 0.17.0; found " ++
                 builtin.zig_version_string,
         );
     }
 }
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const browser_enabled = b.option(
@@ -238,7 +238,7 @@ pub fn build(b: *std.Build) void {
     });
     cli_module.addOptions("cli_options", cli_options);
     if (browser_enabled) {
-        const httpz_dependency = b.lazyDependency("httpz", .{ .target = target, .optimize = optimize }) orelse return;
+        const httpz_dependency = try b.dependencyLazy("httpz", .{ .target = target, .optimize = optimize });
         cli_module.addImport("httpz", httpz_dependency.module("httpz"));
     }
     @import("build_support/browser.zig").build(b, if (browser_enabled) cli_module else null);
@@ -1339,14 +1339,9 @@ pub fn build(b: *std.Build) void {
         });
         builder.addRule(.{ .builtin = .no_unused }, .{ .container_declaration = .@"error" });
         builder.addRule(.{ .builtin = .require_errdefer_dealloc }, .{ .severity = .@"error" });
-        builder.addPaths(.{
-            .include = &.{
-                b.path("build.zig"),
-                b.path("src"),
-                b.path("test/zig"),
-                b.path("test/benchmarks"),
-            },
-        });
+        builder.addSource(.{ .file_path = b.path("build.zig") });
+        for ([_][]const u8{ "src", "test/zig", "test/benchmarks" }) |path|
+            builder.addSource(.{ .dir_path = b.path(path) });
         break :step builder.build();
     });
 
@@ -1377,8 +1372,13 @@ const DetectedCompilerBuild = struct {
 /// Hash actual compiler inputs, including uncommitted and source-archive
 /// contents. Product assets, documentation and Git metadata are not inputs.
 fn detectCompilerBuildIdentity(b: *std.Build) DetectedCompilerBuild {
-    const identity = @import("build_support/compiler_identity.zig").digest(b.allocator, b.graph.io, b.build_root.handle) catch return .{};
-    const owned = b.dupe(&identity);
+    // The digest reads source bytes and directory entries at configure time.
+    // Reconfigure on every invocation so edits and new files change the identity.
+    b.graph.poisonCache();
+    var root = b.root.openDir(b.graph.io, ".", .{}) catch return .{};
+    defer root.close(b.graph.io);
+    const identity = @import("build_support/compiler_identity.zig").digest(b.allocator, b.graph.io, root) catch return .{};
+    const owned = b.graph.dupeString(&identity);
     return .{ .identity = owned, .available = true, .validation_identity = owned };
 }
 
@@ -1398,7 +1398,7 @@ fn addCompilerBuildIdentityValidation(
     });
     const validation = b.addRunArtifact(validator);
     validation.has_side_effects = true;
-    validation.addArg(b.pathFromRoot("."));
+    validation.addDirectoryArg(b.path("."));
     validation.addArg(identity);
     validation.setName(b.fmt("validate {s} compiler content identity", .{artifact.name}));
     validation.step.dependOn(&artifact.step);
@@ -1410,31 +1410,40 @@ fn dependOnValidation(step: *std.Build.Step, validation: ?*std.Build.Step) void 
 }
 
 fn isolateCliSmokeEnvironment(b: *std.Build, run: *std.Build.Step.Run) void {
+    const authentication_key = std.fmt.bytesToHex(@as([32]u8, @splat(0x5a)), .lower);
     run.setEnvironmentVariable(
         "XDG_CONFIG_HOME",
-        b.pathFromRoot("test/zig/cli/config-home"),
+        b.root.joinString(b.allocator, "test/zig/cli/config-home") catch @panic("out of memory"),
     );
     run.setEnvironmentVariable(
         "OKSOLC_CACHE_AUTH_KEY",
-        "5a" ** 32,
+        &authentication_key,
     );
-    run.setEnvironmentVariable(
+    setCliSmokeDirectory(
+        b,
+        run,
         "XDG_CACHE_HOME",
-        b.pathFromRoot(b.graph.global_cache_root.join(
-            b.allocator,
-            &.{"oksolc-cli-smoke-cache-v2"},
-        ) catch @panic("out of memory")),
+        "oksolc-cli-smoke-cache-v2",
     );
 }
 
 fn enableCliSmokeCache(b: *std.Build, run: *std.Build.Step.Run) void {
-    run.setEnvironmentVariable(
+    setCliSmokeDirectory(
+        b,
+        run,
         "XDG_CONFIG_HOME",
-        b.pathFromRoot(b.graph.global_cache_root.join(
-            b.allocator,
-            &.{"oksolc-cli-smoke-config-v2"},
-        ) catch @panic("out of memory")),
+        "oksolc-cli-smoke-config-v2",
     );
+}
+
+fn setCliSmokeDirectory(b: *std.Build, run: *std.Build.Step.Run, name: []const u8, sub_path: []const u8) void {
+    const command = run.argv.toOwnedSlice(b.allocator) catch @panic("out of memory");
+    run.addArg("/usr/bin/env");
+    run.addDirectoryArg2(b.graph.path(.global_cache, sub_path), .{
+        .prefix = b.fmt("{s}=", .{name}),
+        .make_absolute = true,
+    });
+    run.argv.appendSlice(b.allocator, command) catch @panic("out of memory");
 }
 
 fn addReferenceCheck(b: *std.Build, reference_solc: []const u8) void {
@@ -1497,7 +1506,7 @@ fn addReferenceCheck(b: *std.Build, reference_solc: []const u8) void {
 fn addBenchmarks(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     benchmark_runs: u32,
     benchmark_warmups: u32,
     reference_solc: []const u8,
@@ -1606,7 +1615,7 @@ fn addBenchmarks(
             "bash",
             "test/benchmarks/external-compare.sh",
         });
-        if (b.args) |args| benchmark_external.addArgs(args);
+        benchmark_external.addPassthruArgs();
         benchmark_external.addArg(reference_solc);
         benchmark_external.addArtifactArg(cli);
         dependOnValidation(&benchmark_external.step, cli_identity_validation);
@@ -1647,10 +1656,10 @@ fn benchmarkGuard(
     b: *std.Build,
     step: *std.Build.Step,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     runs: u32,
 ) bool {
-    if (optimize != .ReleaseFast) {
+    if (optimize != .fast) {
         step.dependOn(&b.addFail("benchmark requires -Doptimize=ReleaseFast").step);
         return false;
     }

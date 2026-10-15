@@ -1039,8 +1039,7 @@ test "compiler session periodically rebases semantic overlays" {
     var maximum_retained_syntax: usize = 0;
 
     for (0..SemanticRevisionModule.max_overlay_depth + 2) |revision_index| {
-        const input = try std.fmt.allocPrint(
-            std.testing.allocator,
+        const input = try std.testing.allocator.print(
             "{s} {d}{s}",
             .{ input_prefix, revision_index, input_suffix },
         );
@@ -1609,15 +1608,14 @@ test "Solidity progress callbacks can read committed session statistics" {
 
 test "compiler session reloads an exact response after process-style restart" {
     const SqliteStore = @import("sqlite_store.zig").SqliteStore;
-    const authentication_key = [_]u8{0x41} ** 32;
+    const authentication_key: [32]u8 = @splat(0x41);
     const input =
         \\{"language":"Yul","sources":{"A.yul":{"content":"object \"A\" { code { stop() } }"}},"settings":{"outputSelection":{"*":{"*":["evm.bytecode.object"]}}}}
     ;
     const fingerprint = PhaseKey.CompilerFingerprint.init("persistent-session-test");
     var temporary = std.testing.tmpDir(.{});
     defer temporary.cleanup();
-    const cache_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const cache_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/session-cache.sqlite",
         .{&temporary.sub_path},
     );
@@ -1669,7 +1667,7 @@ test "compiler session reloads an exact response after process-style restart" {
 
 test "compiler session reloads optimized Yul across process-style restart" {
     const SqliteStore = @import("sqlite_store.zig").SqliteStore;
-    const authentication_key = [_]u8{0x42} ** 32;
+    const authentication_key: [32]u8 = @splat(0x42);
     const first_input =
         \\{"language":"Yul","sources":{"A.yul":{"content":"object \"A\" { code { let x := add(1, 2) mstore(0, x) return(0, 32) } }"}},"settings":{"optimizer":{"enabled":true},"outputSelection":{"*":{"*":["evm.bytecode.object"]}}}}
     ;
@@ -1679,8 +1677,7 @@ test "compiler session reloads optimized Yul across process-style restart" {
     const fingerprint = PhaseKey.CompilerFingerprint.init("persistent-optimizer-test");
     var temporary = std.testing.tmpDir(.{});
     defer temporary.cleanup();
-    const cache_path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const cache_path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/optimizer-cache.sqlite",
         .{&temporary.sub_path},
     );

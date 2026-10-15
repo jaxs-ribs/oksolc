@@ -187,8 +187,7 @@ pub const Parser = struct {
             defer self.allocator.free(expected_name);
             const actual_name = try self.base.tokenNameAlloc(actual);
             defer self.allocator.free(actual_name);
-            const description = try std.fmt.allocPrint(
-                self.allocator,
+            const description = try self.allocator.print(
                 "Expected {s} but got {s}",
                 .{ expected_name, actual_name },
             );
@@ -388,8 +387,7 @@ pub const Parser = struct {
                     switch (elementary) {
                         .literal => {
                             const token = if (self.currentToken() == .Comma) "," else ":=";
-                            const description = try std.fmt.allocPrint(
-                                self.allocator,
+                            const description = try self.allocator.print(
                                 "Variable name must precede \"{s}\"{s}",
                                 .{ token, if (self.currentToken() == .Comma) " in multiple assignment." else " in assignment." },
                             );
@@ -398,8 +396,7 @@ pub const Parser = struct {
                         },
                         .builtin => |builtin| {
                             const name = (self.dialect.builtin(builtin.handle) catch return error.UnknownBuiltin).name;
-                            const description = try std.fmt.allocPrint(
-                                self.allocator,
+                            const description = try self.allocator.print(
                                 "Cannot assign to builtin function \"{s}\".",
                                 .{name},
                             );
@@ -497,8 +494,7 @@ pub const Parser = struct {
                 .{ .function_call = try self.parseCall(&elementary) }
             else blk: {
                 const name = (self.dialect.builtin(builtin.handle) catch return error.UnknownBuiltin).name;
-                const description = try std.fmt.allocPrint(
-                    self.allocator,
+                const description = try self.allocator.print(
                     "Builtin function \"{s}\" must be called.",
                     .{name},
                 );
@@ -568,8 +564,7 @@ pub const Parser = struct {
                 return .{ .literal = literal };
             },
             .Illegal => {
-                const description = try std.fmt.allocPrint(
-                    self.allocator,
+                const description = try self.allocator.print(
                     "Illegal token: {s}",
                     .{ScannerModule.errorMessage(self.base.scanner.currentError())},
                 );
@@ -708,8 +703,7 @@ pub const Parser = struct {
     fn expectAsmIdentifier(self: *Parser) ParseError!YulName {
         const name = try YulName.init(self.currentLiteral());
         if (self.currentToken() == .Identifier and self.dialect.findBuiltin(try name.str()) != null) {
-            const description = try std.fmt.allocPrint(
-                self.allocator,
+            const description = try self.allocator.print(
                 "Cannot use builtin function name \"{s}\" as identifier name.",
                 .{try name.str()},
             );
@@ -733,8 +727,7 @@ pub const Parser = struct {
             .for_loop_post => 2461,
             .for_loop_body => unreachable,
         };
-        const description = try std.fmt.allocPrint(
-            self.allocator,
+        const description = try self.allocator.print(
             "Keyword \"{s}\"{s}",
             .{ which, suffix },
         );
@@ -1015,7 +1008,7 @@ test "inline parser restores Solidity lookahead and propagates allocation failur
 fn exerciseInlineParserRestoration(allocator: std.mem.Allocator) !void {
     // Yul scans a dotted name as one token. Solidity splits it into three,
     // forcing the restored lookahead to allocate a long identifier buffer.
-    const source = "{ let x := 1 x := add(x, 1) if x {} for {} x {} {} } a." ++ "b" ** 256 ++ " c d";
+    const source = "{ let x := 1 x := add(x, 1) if x {} for {} x {} {} } a." ++ @as([256]u8, @splat('b')) ++ " c d";
     var stream = ScannerModule.CharStream.initBorrowed(source, "inline.sol");
     var scanner = try ScannerModule.Scanner.init(allocator, &stream, .Solidity);
     defer scanner.deinit();

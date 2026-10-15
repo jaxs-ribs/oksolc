@@ -470,8 +470,7 @@ pub const ABIFunctions = struct {
         defer self.allocator.free(given_identifier);
         const target_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, target_type);
         defer self.allocator.free(target_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "abi_encodeUpdatedPos_{s}_to_{s}{s}",
             .{ given_identifier, target_identifier, suffix },
         );
@@ -510,8 +509,7 @@ pub const ABIFunctions = struct {
         defer self.allocator.free(identifier);
         const suffix = try options.suffixAlloc(self.allocator);
         defer self.allocator.free(suffix);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "array_storeLengthForEncoding_{s}{s}",
             .{ identifier, suffix },
         );
@@ -1225,8 +1223,7 @@ pub const ABIFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "abi_decode_{s}{s}",
             .{ identifier, if (from_memory) "_fromMemory" else "" },
         );
@@ -1310,8 +1307,7 @@ pub const ABIFunctions = struct {
         if (stride == 0) return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "abi_decode_available_length_{s}{s}",
             .{ identifier, if (from_memory) "_fromMemory" else "" },
         );
@@ -1431,8 +1427,7 @@ pub const ABIFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "abi_decode_available_length_{s}{s}",
             .{ identifier, if (from_memory) "_fromMemory" else "" },
         );
@@ -1633,8 +1628,7 @@ pub const ABIFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "calldata_access_{s}",
             .{identifier},
         );
@@ -1722,8 +1716,7 @@ pub const ABIFunctions = struct {
             target_type,
         );
         defer self.allocator.free(target_identifier);
-        return std.fmt.allocPrint(
-            self.allocator,
+        return self.allocator.print(
             "abi_encode_{s}_to_{s}{s}",
             .{ given_identifier, target_identifier, suffix },
         );
@@ -1737,8 +1730,7 @@ pub const ABIFunctions = struct {
     ) ABIError![]u8 {
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        return std.fmt.allocPrint(
-            self.allocator,
+        return self.allocator.print(
             "abi_decode_{s}{s}{s}",
             .{
                 identifier,
@@ -2168,7 +2160,7 @@ fn expectCanonicalHelpers(code: []const u8, expected: []const u8) !void {
     const Errors = @import("../../liblangutil/error_reporter.zig");
     const Parser = @import("../../libyul/asm_parser.zig").Parser;
     const Dialect = @import("../../libyul/backends/evm/evm_dialect.zig").EVMDialect;
-    const wrapped = try std.fmt.allocPrint(allocator, "{{{s}}}", .{code});
+    const wrapped = try allocator.print("{{{s}}}", .{code});
     defer allocator.free(wrapped);
     var errors = Errors.ErrorReporter.init(allocator);
     defer errors.deinit();

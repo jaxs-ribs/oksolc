@@ -16,32 +16,32 @@ pub const EndVisitFn = *const fn (?*anyopaque, *const AST.Node) void;
 pub const MutableVisitFn = *const fn (?*anyopaque, *AST.Node) bool;
 pub const MutableEndVisitFn = *const fn (?*anyopaque, *AST.Node) void;
 
-const kind_count = std.meta.fields(AST.Kind).len;
+const kind_count = @typeInfo(AST.Kind).@"enum".field_names.len;
 
 pub const ASTConstVisitor = struct {
     context: ?*anyopaque = null,
     visit_node: ?VisitFn = null,
     end_visit_node: ?EndVisitFn = null,
-    visits: [kind_count]?VisitFn = [_]?VisitFn{null} ** kind_count,
-    end_visits: [kind_count]?EndVisitFn = [_]?EndVisitFn{null} ** kind_count,
+    visits: [kind_count]?VisitFn = @splat(null),
+    end_visits: [kind_count]?EndVisitFn = @splat(null),
 
     pub fn setVisit(self: *ASTConstVisitor, kind: AST.Kind, function: VisitFn) void {
-        self.visits[@intFromEnum(kind)] = function;
+        self.visits[@backingInt(kind)] = function;
     }
 
     pub fn setEndVisit(self: *ASTConstVisitor, kind: AST.Kind, function: EndVisitFn) void {
-        self.end_visits[@intFromEnum(kind)] = function;
+        self.end_visits[@backingInt(kind)] = function;
     }
 
     pub fn visit(self: *ASTConstVisitor, node: *const AST.Node) bool {
-        if (self.visits[@intFromEnum(node.nodeKind())]) |function|
+        if (self.visits[@backingInt(node.nodeKind())]) |function|
             return function(self.context, node);
         if (self.visit_node) |function| return function(self.context, node);
         return true;
     }
 
     pub fn endVisit(self: *ASTConstVisitor, node: *const AST.Node) void {
-        if (self.end_visits[@intFromEnum(node.nodeKind())]) |function| {
+        if (self.end_visits[@backingInt(node.nodeKind())]) |function| {
             function(self.context, node);
             return;
         }
@@ -53,26 +53,26 @@ pub const ASTVisitor = struct {
     context: ?*anyopaque = null,
     visit_node: ?MutableVisitFn = null,
     end_visit_node: ?MutableEndVisitFn = null,
-    visits: [kind_count]?MutableVisitFn = [_]?MutableVisitFn{null} ** kind_count,
-    end_visits: [kind_count]?MutableEndVisitFn = [_]?MutableEndVisitFn{null} ** kind_count,
+    visits: [kind_count]?MutableVisitFn = @splat(null),
+    end_visits: [kind_count]?MutableEndVisitFn = @splat(null),
 
     pub fn setVisit(self: *ASTVisitor, kind: AST.Kind, function: MutableVisitFn) void {
-        self.visits[@intFromEnum(kind)] = function;
+        self.visits[@backingInt(kind)] = function;
     }
 
     pub fn setEndVisit(self: *ASTVisitor, kind: AST.Kind, function: MutableEndVisitFn) void {
-        self.end_visits[@intFromEnum(kind)] = function;
+        self.end_visits[@backingInt(kind)] = function;
     }
 
     pub fn visit(self: *ASTVisitor, node: *AST.Node) bool {
-        if (self.visits[@intFromEnum(node.nodeKind())]) |function|
+        if (self.visits[@backingInt(node.nodeKind())]) |function|
             return function(self.context, node);
         if (self.visit_node) |function| return function(self.context, node);
         return true;
     }
 
     pub fn endVisit(self: *ASTVisitor, node: *AST.Node) void {
-        if (self.end_visits[@intFromEnum(node.nodeKind())]) |function| {
+        if (self.end_visits[@backingInt(node.nodeKind())]) |function| {
             function(self.context, node);
             return;
         }

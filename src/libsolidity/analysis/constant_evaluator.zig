@@ -230,8 +230,7 @@ pub const ConstantEvaluator = struct {
                 false,
             );
             defer self.allocator.free(right_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Operator {s} not compatible with types {s} and {s}",
                 .{
                     TokenModule.toString(operation.operator) orelse
@@ -317,8 +316,7 @@ pub const ConstantEvaluator = struct {
         if (function_type.kind != .ERC7201) return .{};
 
         if (call.arguments.len != 1) {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "erc7201 function expects 1 parameter, but {d} were given.",
                 .{call.arguments.len},
             );

@@ -16,16 +16,14 @@ pub fn stackSlotToStringAlloc(
     dialect: @import("../../ast.zig").Dialect,
 ) ![]u8 {
     return switch (slot) {
-        .function_call_return_label => |value| std.fmt.allocPrint(
-            allocator,
+        .function_call_return_label => |value| allocator.print(
             "RET[{s}]",
             .{try Utilities.resolveFunctionName(&value.call.function_name, dialect)},
         ),
         .function_return_label => allocator.dupe(u8, "RET"),
         .variable => |value| allocator.dupe(u8, try value.variable.name.str()),
         .literal => |value| Numeric.toCompactHexWithPrefixAlloc(u256, allocator, value.value),
-        .temporary => |value| std.fmt.allocPrint(
-            allocator,
+        .temporary => |value| allocator.print(
             "TMP[{s}, {d}]",
             .{ try Utilities.resolveFunctionName(&value.call.function_name, dialect), value.index },
         ),

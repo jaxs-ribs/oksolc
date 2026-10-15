@@ -174,11 +174,11 @@ pub fn formatLiteralAlloc(
         return allocator.dupe(u8, representation);
     if (literal.kind == .Boolean)
         return allocator.dupe(u8, if (literal.value.numeric_value.? == 0) "false" else "true");
-    return std.fmt.allocPrint(allocator, "{d}", .{literal.value.numeric_value.?});
+    return allocator.print("{d}", .{literal.value.numeric_value.?});
 }
 
 pub fn literalLessThan(left: *const AST.Literal, right: *const AST.Literal) bool {
-    if (left.kind != right.kind) return @intFromEnum(left.kind) < @intFromEnum(right.kind);
+    if (left.kind != right.kind) return @backingInt(left.kind) < @backingInt(right.kind);
     return left.value.lessThan(&right.value);
 }
 

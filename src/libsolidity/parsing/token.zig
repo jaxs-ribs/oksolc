@@ -14,8 +14,8 @@ pub const ElementaryTypeNameToken = shared.ElementaryTypeNameToken;
 test "frontend parser token aliases preserve the shared enum ABI" {
     try std.testing.expect(Token == shared.Token);
     try std.testing.expectEqual(
-        @intFromEnum(shared.Token.Function),
-        @intFromEnum(Token.Function),
+        @backingInt(shared.Token.Function),
+        @backingInt(Token.Function),
     );
     try std.testing.expectEqualStrings("function", TokenTraits.friendlyName(.Function));
 }

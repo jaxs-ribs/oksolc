@@ -512,7 +512,7 @@ pub const SemanticRevision = struct {
 test "semantic revision owns annotations and one type generation" {
     const semantic = try SemanticRevision.create(
         std.testing.allocator,
-        @enumFromInt(9),
+        @fromBackingInt(@intCast(9)),
     );
     defer semantic.destroy();
     var tree = try AST.Tree.initWithSourceId(
@@ -534,7 +534,7 @@ test "semantic revision owns annotations and one type generation" {
 test "semantic child revisions share types and copy dirty annotations" {
     const parent = try SemanticRevision.create(
         std.testing.allocator,
-        @enumFromInt(17),
+        @fromBackingInt(@intCast(17)),
     );
     defer parent.destroy();
     var clean_tree = try AST.Tree.initWithSourceId(
@@ -586,7 +586,7 @@ test "semantic child revisions share types and copy dirty annotations" {
 test "semantic overlay chains have a fixed maximum depth" {
     var current = try SemanticRevision.create(
         std.testing.allocator,
-        @enumFromInt(31),
+        @fromBackingInt(@intCast(31)),
     );
     defer {
         current.destroy();
@@ -618,7 +618,7 @@ test "semantic overlay chains have a fixed maximum depth" {
 test "discarded semantic children prevent further domain extension" {
     const parent = try SemanticRevision.create(
         std.testing.allocator,
-        @enumFromInt(47),
+        @fromBackingInt(@intCast(47)),
     );
     defer parent.destroy();
     try parent.beginAnalysis(EVMVersion.current());

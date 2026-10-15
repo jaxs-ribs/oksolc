@@ -167,7 +167,9 @@ pub const Capture = struct {
 };
 
 test "browser source capture owns callback bytes and rejects inconsistent rereads" {
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, struct {
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), struct {
         fn run(allocator: std.mem.Allocator) !void {
             var fixture: Fixture = .{};
             var capture: Capture = .{ .allocator = allocator, .loader = .{ .context = &fixture, .read_fn = Fixture.read } };
@@ -201,7 +203,8 @@ test "browser source capture owns callback bytes and rejects inconsistent reread
 }
 
 test "read-set manifests replay failures and unsupported reads with owned bytes" {
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, struct {
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), struct {
         const Fixture = struct {
             installed: bool = false,
             fn read(context: ?*anyopaque, allocator: std.mem.Allocator, _: []const u8, path: []const u8) solidity.standard_json.SourceReadError!solidity.standard_json.SourceReadResult {
@@ -248,7 +251,7 @@ test "read-set manifests reject coerced fields and malformed entries before repl
     const hash = digest("contract C {}");
     const hash_string = try std.json.Stringify.valueAlloc(allocator, &hash, .{});
     const hash_array = try std.json.Stringify.valueAlloc(allocator, &hash, .{ .emit_strings_as_arrays = true });
-    const valid = try std.fmt.allocPrint(allocator, "{{\"name\":\"C.sol\",\"kind\":\"contents\",\"sha256\":{s}}}", .{hash_string});
+    const valid = try allocator.print("{{\"name\":\"C.sol\",\"kind\":\"contents\",\"sha256\":{s}}}", .{hash_string});
     const Field = struct { name: []const u8 = "\"C.sol\"", kind: []const u8 = "\"contents\"", sha256: []const u8 };
     const fields = [_]Field{
         .{ .kind = "0", .sha256 = hash_string },
@@ -261,11 +264,11 @@ test "read-set manifests reject coerced fields and malformed entries before repl
         .{ .sha256 = "42" },
     };
     for (fields) |field| {
-        const entry = try std.fmt.allocPrint(allocator, "{{\"name\":{s},\"kind\":{s},\"sha256\":{s}}}", .{ field.name, field.kind, field.sha256 });
-        try expectRejectedManifest(try std.fmt.allocPrint(allocator, "[{s}]", .{entry}));
+        const entry = try allocator.print("{{\"name\":{s},\"kind\":{s},\"sha256\":{s}}}", .{ field.name, field.kind, field.sha256 });
+        try expectRejectedManifest(try allocator.print("[{s}]", .{entry}));
         // A later malformed entry must fail decoding before any earlier entry
         // invokes the source callback.
-        try expectRejectedManifest(try std.fmt.allocPrint(allocator, "[{s},{s}]", .{ valid, entry }));
+        try expectRejectedManifest(try allocator.print("[{s},{s}]", .{ valid, entry }));
     }
     for ([_][]const u8{
         "null",
@@ -280,7 +283,8 @@ test "read-set manifests reject coerced fields and malformed entries before repl
 }
 
 fn expectRejectedManifest(manifest: []const u8) !void {
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, struct {
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), struct {
         const Fixture = struct {
             reads: usize = 0,
 

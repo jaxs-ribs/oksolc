@@ -343,11 +343,10 @@ pub const AsmJsonConverter = struct {
         else
             -1;
         const source_index = if (self.source_index) |index|
-            try std.fmt.allocPrint(self.allocator, "{d}", .{index})
+            try self.allocator.print("{d}", .{index})
         else
             try self.allocator.dupe(u8, "-1");
-        const value = try std.fmt.allocPrint(
-            self.allocator,
+        const value = try self.allocator.print(
             "{d}:{d}:{s}",
             .{ location.start, length, source_index },
         );

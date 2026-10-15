@@ -134,7 +134,7 @@ pub const YulUtilFunctions = struct {
     }
 
     pub fn copyToMemoryFunction(self: *YulUtilFunctions, from_calldata: bool, cleanup: bool) UtilError![]u8 {
-        const name = try std.fmt.allocPrint(self.allocator, "copy_{s}_to_memory{s}", .{ if (from_calldata) "calldata" else "memory", if (cleanup) "_with_cleanup" else "" });
+        const name = try self.allocator.print("copy_{s}_to_memory{s}", .{ if (from_calldata) "calldata" else "memory", if (cleanup) "_with_cleanup" else "" });
         defer self.allocator.free(name);
         if (!(try self.function_collector.beginFunction(name))) return self.function_collector.copyFunctionName(name);
         errdefer self.function_collector.abortFunction(name);
@@ -161,8 +161,7 @@ pub const YulUtilFunctions = struct {
     ) UtilError![]u8 {
         const digest = Keccak256.keccak256(literal);
         const digest_hex = digest.hex();
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "store_literal_in_memory_{s}",
             .{&digest_hex},
         );
@@ -200,8 +199,7 @@ pub const YulUtilFunctions = struct {
     ) UtilError![]u8 {
         const digest = Keccak256.keccak256(literal);
         const digest_hex = digest.hex();
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "copy_literal_to_memory_{s}",
             .{&digest_hex},
         );
@@ -230,8 +228,7 @@ pub const YulUtilFunctions = struct {
     ) UtilError![]u8 {
         const digest = Keccak256.keccak256(literal);
         const digest_hex = digest.hex();
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "copy_literal_to_storage_{s}",
             .{&digest_hex},
         );
@@ -293,8 +290,7 @@ pub const YulUtilFunctions = struct {
     ) UtilError![]u8 {
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "leftAlign_{s}",
             .{identifier},
         );
@@ -378,8 +374,7 @@ pub const YulUtilFunctions = struct {
         const array = type_ref.asArray() orelse return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "array_length_{s}",
             .{identifier},
         );
@@ -447,8 +442,7 @@ pub const YulUtilFunctions = struct {
         if (array.reference.location != .Memory) return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "array_allocation_size_{s}",
             .{identifier},
         );
@@ -487,8 +481,7 @@ pub const YulUtilFunctions = struct {
         const array = type_ref.asArray() orelse return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "array_dataslot_{s}",
             .{identifier},
         );
@@ -522,8 +515,7 @@ pub const YulUtilFunctions = struct {
         };
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "array_convert_length_to_size_{s}",
             .{identifier},
         );
@@ -610,8 +602,7 @@ pub const YulUtilFunctions = struct {
         if (storage_bytes == 0 or storage_bytes > 32) return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "storage_array_index_access_{s}",
             .{identifier},
         );
@@ -674,8 +665,7 @@ pub const YulUtilFunctions = struct {
         if (array.reference.location != .Memory) return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "memory_array_index_access_{s}",
             .{identifier},
         );
@@ -712,8 +702,7 @@ pub const YulUtilFunctions = struct {
         if (array.reference.location != .CallData) return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "calldata_array_index_access_{s}",
             .{identifier},
         );
@@ -760,8 +749,7 @@ pub const YulUtilFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "calldata_array_index_range_access_{s}",
             .{identifier},
         );
@@ -792,8 +780,7 @@ pub const YulUtilFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "access_calldata_tail_{s}",
             .{identifier},
         );
@@ -851,8 +838,7 @@ pub const YulUtilFunctions = struct {
         defer self.allocator.free(advance);
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "array_nextElement_{s}",
             .{identifier},
         );
@@ -882,8 +868,7 @@ pub const YulUtilFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, from_type);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "copy_array_from_storage_to_memory_{s}",
             .{identifier},
         );
@@ -1023,8 +1008,7 @@ pub const YulUtilFunctions = struct {
         defer self.allocator.free(from_identifier);
         const to_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, to_type);
         defer self.allocator.free(to_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "copy_array_to_storage_from_{s}_to_{s}",
             .{ from_identifier, to_identifier },
         );
@@ -1144,8 +1128,7 @@ pub const YulUtilFunctions = struct {
         defer self.allocator.free(from_identifier);
         const to_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, to_type);
         defer self.allocator.free(to_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "copy_byte_array_to_storage_from_{s}_to_{s}",
             .{ from_identifier, to_identifier },
         );
@@ -1273,8 +1256,7 @@ pub const YulUtilFunctions = struct {
         defer self.allocator.free(from_identifier);
         const to_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, to_type);
         defer self.allocator.free(to_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "copy_array_to_storage_from_{s}_to_{s}",
             .{ from_identifier, to_identifier },
         );
@@ -1454,8 +1436,7 @@ pub const YulUtilFunctions = struct {
         defer self.allocator.free(from_identifier);
         const to_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, to_type);
         defer self.allocator.free(to_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "copy_struct_to_storage_from_{s}_to_{s}",
             .{ from_identifier, to_identifier },
         );
@@ -1622,8 +1603,7 @@ pub const YulUtilFunctions = struct {
         defer self.allocator.free(from_identifier);
         const to_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, to_type);
         defer self.allocator.free(to_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "convert_bytes_to_fixedbytes_from_{s}_to_{s}",
             .{ from_identifier, to_identifier },
         );
@@ -1708,8 +1688,7 @@ pub const YulUtilFunctions = struct {
         defer self.allocator.free(from_identifier);
         const to_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, to_type);
         defer self.allocator.free(to_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "convert_{s}_to_{s}",
             .{ from_identifier, to_identifier },
         );
@@ -1834,8 +1813,7 @@ pub const YulUtilFunctions = struct {
         defer self.allocator.free(from_identifier);
         const to_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, to_type);
         defer self.allocator.free(to_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "convert_array_{s}_to_{s}",
             .{ from_identifier, to_identifier },
         );
@@ -1921,8 +1899,7 @@ pub const YulUtilFunctions = struct {
         defer self.allocator.free(from_identifier);
         const to_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, to_type);
         defer self.allocator.free(to_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "copy_calldata_array_to_memory_from_{s}_to_{s}",
             .{ from_identifier, to_identifier },
         );
@@ -2051,8 +2028,7 @@ pub const YulUtilFunctions = struct {
         defer self.allocator.free(from_identifier);
         const to_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, to_type);
         defer self.allocator.free(to_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "copy_calldata_struct_to_memory_from_{s}_to_{s}",
             .{ from_identifier, to_identifier },
         );
@@ -2291,8 +2267,7 @@ pub const YulUtilFunctions = struct {
             defer self.allocator.free(from_identifier);
             const to_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, to);
             defer self.allocator.free(to_identifier);
-            const name = try std.fmt.allocPrint(
-                self.allocator,
+            const name = try self.allocator.print(
                 "convert_{s}_to_{s}",
                 .{ from_identifier, to_identifier },
             );
@@ -2333,8 +2308,7 @@ pub const YulUtilFunctions = struct {
             defer self.allocator.free(from_identifier);
             const to_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, to);
             defer self.allocator.free(to_identifier);
-            const name = try std.fmt.allocPrint(
-                self.allocator,
+            const name = try self.allocator.print(
                 "convert_{s}_to_{s}",
                 .{ from_identifier, to_identifier },
             );
@@ -2383,8 +2357,7 @@ pub const YulUtilFunctions = struct {
         defer self.allocator.free(from_identifier);
         const to_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, to);
         defer self.allocator.free(to_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "convert_{s}_to_{s}",
             .{ from_identifier, to_identifier },
         );
@@ -2544,7 +2517,7 @@ pub const YulUtilFunctions = struct {
         bits: usize,
     ) UtilError![]u8 {
         if (bits >= 256) return error.InvalidType;
-        const name = try std.fmt.allocPrint(self.allocator, "shift_left_{d}", .{bits});
+        const name = try self.allocator.print("shift_left_{d}", .{bits});
         defer self.allocator.free(name);
         if (!(try self.function_collector.beginFunction(name)))
             return self.function_collector.copyFunctionName(name);
@@ -2569,8 +2542,7 @@ pub const YulUtilFunctions = struct {
         bits: usize,
     ) UtilError![]u8 {
         if (bits >= 256) return error.InvalidType;
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "shift_right_{d}_unsigned",
             .{bits},
         );
@@ -2643,8 +2615,7 @@ pub const YulUtilFunctions = struct {
         defer self.allocator.free(type_identifier);
         const amount_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, amount_type);
         defer self.allocator.free(amount_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "shift_{s}_{s}_{s}",
             .{ if (right) "right" else "left", type_identifier, amount_identifier },
         );
@@ -2693,8 +2664,7 @@ pub const YulUtilFunctions = struct {
         bytes: usize,
     ) UtilError![]u8 {
         if (bytes > 32) return error.InvalidType;
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "mask_lower_order_bytes_{d}",
             .{bytes},
         );
@@ -2840,8 +2810,7 @@ pub const YulUtilFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "zero_memory_chunk_{s}",
             .{identifier},
         );
@@ -2869,8 +2838,7 @@ pub const YulUtilFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, array_type);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "zero_complex_memory_array_{s}",
             .{identifier},
         );
@@ -2900,8 +2868,7 @@ pub const YulUtilFunctions = struct {
         if (array.reference.location != .Memory) return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, array_type);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "allocate_memory_array_{s}",
             .{identifier},
         );
@@ -2941,8 +2908,7 @@ pub const YulUtilFunctions = struct {
         if (array.reference.location != .Memory) return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, array_type);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "allocate_and_zero_memory_array_{s}",
             .{identifier},
         );
@@ -2980,8 +2946,7 @@ pub const YulUtilFunctions = struct {
         _ = structure;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, struct_type);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "allocate_memory_struct_{s}",
             .{identifier},
         );
@@ -3012,8 +2977,7 @@ pub const YulUtilFunctions = struct {
         if (structure.reference.location != .Memory) return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, struct_type);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "allocate_and_zero_memory_struct_{s}",
             .{identifier},
         );
@@ -3079,8 +3043,7 @@ pub const YulUtilFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "read_from_{s}{s}",
             .{ if (from_calldata) "calldata" else "memory", identifier },
         );
@@ -3146,8 +3109,7 @@ pub const YulUtilFunctions = struct {
         if (type_ref.category() == .StringLiteral) return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "write_to_memory_{s}",
             .{identifier},
         );
@@ -3210,8 +3172,7 @@ pub const YulUtilFunctions = struct {
         defer self.allocator.free(mapping_identifier);
         const key_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, key_type);
         defer self.allocator.free(key_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "mapping_index_access_{s}_of_{s}",
             .{ mapping_identifier, key_identifier },
         );
@@ -3269,7 +3230,7 @@ pub const YulUtilFunctions = struct {
         }
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(self.allocator, "cleanup_{s}", .{identifier});
+        const name = try self.allocator.print("cleanup_{s}", .{identifier});
         defer self.allocator.free(name);
         if (!(try self.function_collector.beginFunction(name)))
             return self.function_collector.copyFunctionName(name);
@@ -3383,8 +3344,7 @@ pub const YulUtilFunctions = struct {
         if (!TypeBehavior.isValueType(type_ref)) return error.UnsupportedType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "cleanup_from_storage_{s}",
             .{identifier},
         );
@@ -3424,8 +3384,7 @@ pub const YulUtilFunctions = struct {
     ) UtilError![]u8 {
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "extract_from_storage_value_dynamic{s}",
             .{identifier},
         );
@@ -3453,8 +3412,7 @@ pub const YulUtilFunctions = struct {
         if (!TypeBehavior.isValueType(type_ref)) return error.UnsupportedType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "read_from_storage_split_dynamic_{s}",
             .{identifier},
         );
@@ -3480,8 +3438,7 @@ pub const YulUtilFunctions = struct {
     ) UtilError![]u8 {
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "extract_from_storage_value_offset_{d}_{s}",
             .{ offset, identifier },
         );
@@ -3510,8 +3467,7 @@ pub const YulUtilFunctions = struct {
         if (!TypeBehavior.isValueType(type_ref)) return error.UnsupportedType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "read_from_storage_split_offset_{d}_{s}",
             .{ offset, identifier },
         );
@@ -3564,8 +3520,7 @@ pub const YulUtilFunctions = struct {
         if (location == .Transient) return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "read_from_storage__dynamic_{s}{s}",
             .{ if (split_function_types) "split_" else "", identifier },
         );
@@ -3599,14 +3554,13 @@ pub const YulUtilFunctions = struct {
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
         const offset_name = if (offset) |value|
-            try std.fmt.allocPrint(self.allocator, "offset_{d}", .{value})
+            try self.allocator.print("offset_{d}", .{value})
         else
             try self.allocator.dupe(u8, "dynamic");
         defer self.allocator.free(offset_name);
         const external_split = split_function_types and type_ref.asFunction() != null and
             type_ref.payload.Function.kind == .External;
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "read_from_{s}storage_{s}{s}_{s}",
             .{
                 if (location == .Transient) "transient_" else "",
@@ -3682,8 +3636,7 @@ pub const YulUtilFunctions = struct {
         if (structure.reference.location != .Memory) return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "read_from_storage_reference_type_{s}",
             .{identifier},
         );
@@ -3777,8 +3730,7 @@ pub const YulUtilFunctions = struct {
         if (num_bytes > 32 or shift_bytes > 32 or
             @as(u32, num_bytes) + shift_bytes > 32)
             return error.InvalidType;
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "update_byte_slice_{d}_shift_{d}",
             .{ num_bytes, shift_bytes },
         );
@@ -3811,8 +3763,7 @@ pub const YulUtilFunctions = struct {
         num_bytes: u8,
     ) UtilError![]u8 {
         if (num_bytes > 32) return error.InvalidType;
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "update_byte_slice_dynamic{d}",
             .{num_bytes},
         );
@@ -3845,8 +3796,7 @@ pub const YulUtilFunctions = struct {
         if (!TypeBehavior.isValueType(type_ref)) return error.UnsupportedType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "prepare_store_{s}",
             .{identifier},
         );
@@ -3914,12 +3864,11 @@ pub const YulUtilFunctions = struct {
         const to_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, to_type);
         defer self.allocator.free(to_identifier);
         const offset_part = if (offset) |value|
-            try std.fmt.allocPrint(self.allocator, "offset_{d}_", .{value})
+            try self.allocator.print("offset_{d}_", .{value})
         else
             try self.allocator.alloc(u8, 0);
         defer self.allocator.free(offset_part);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "update_{s}storage_value_{s}{s}_to_{s}",
             .{
                 if (location == .Transient) "transient_" else "",
@@ -4055,8 +4004,7 @@ pub const YulUtilFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "{s}storage_set_to_zero_{s}",
             .{ if (location == .Transient) "transient_" else "", identifier },
         );
@@ -4127,7 +4075,7 @@ pub const YulUtilFunctions = struct {
             return self.storageByteArrayPopFunction(type_ref);
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(self.allocator, "array_pop_{s}", .{identifier});
+        const name = try self.allocator.print("array_pop_{s}", .{identifier});
         defer self.allocator.free(name);
         if (!(try self.function_collector.beginFunction(name)))
             return self.function_collector.copyFunctionName(name);
@@ -4174,8 +4122,7 @@ pub const YulUtilFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "byte_array_pop_{s}",
             .{identifier},
         );
@@ -4235,8 +4182,7 @@ pub const YulUtilFunctions = struct {
         defer self.allocator.free(from_identifier);
         const to_identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(to_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "array_push_from_{s}_to_{s}",
             .{ from_identifier, to_identifier },
         );
@@ -4335,8 +4281,7 @@ pub const YulUtilFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "array_push_zero_{s}",
             .{identifier},
         );
@@ -4408,8 +4353,7 @@ pub const YulUtilFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "clear_storage_range_{s}",
             .{identifier},
         );
@@ -4444,8 +4388,7 @@ pub const YulUtilFunctions = struct {
         if (array.reference.location != .Storage) return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "clear_storage_array_{s}",
             .{identifier},
         );
@@ -4495,8 +4438,7 @@ pub const YulUtilFunctions = struct {
         if (structure.reference.location != .Storage) return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "clear_struct_storage_{s}",
             .{identifier},
         );
@@ -4565,7 +4507,7 @@ pub const YulUtilFunctions = struct {
             return self.resizeDynamicByteArrayFunction(type_ref);
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(self.allocator, "resize_array_{s}", .{identifier});
+        const name = try self.allocator.print("resize_array_{s}", .{identifier});
         defer self.allocator.free(name);
         if (!(try self.function_collector.beginFunction(name)))
             return self.function_collector.copyFunctionName(name);
@@ -4617,8 +4559,7 @@ pub const YulUtilFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "cleanup_storage_array_end_{s}",
             .{identifier},
         );
@@ -4668,7 +4609,7 @@ pub const YulUtilFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(self.allocator, "resize_array_{s}", .{identifier});
+        const name = try self.allocator.print("resize_array_{s}", .{identifier});
         defer self.allocator.free(name);
         if (!(try self.function_collector.beginFunction(name)))
             return self.function_collector.copyFunctionName(name);
@@ -4701,8 +4642,7 @@ pub const YulUtilFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "clean_up_bytearray_end_slots_{s}",
             .{identifier},
         );
@@ -4755,8 +4695,7 @@ pub const YulUtilFunctions = struct {
             return error.InvalidType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "transit_byte_array_long_to_short_{s}",
             .{identifier},
         );
@@ -4783,8 +4722,7 @@ pub const YulUtilFunctions = struct {
     ) UtilError![]u8 {
         const identifier = try self.storageByteArrayIdentifierAlloc(type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "byte_array_increase_size_{s}",
             .{identifier},
         );
@@ -4825,8 +4763,7 @@ pub const YulUtilFunctions = struct {
     ) UtilError![]u8 {
         const identifier = try self.storageByteArrayIdentifierAlloc(type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "byte_array_decrease_size_{s}",
             .{identifier},
         );
@@ -4929,8 +4866,7 @@ pub const YulUtilFunctions = struct {
     ) UtilError![]u8 {
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "validator_{s}_{s}",
             .{ if (revert_on_failure) "revert" else "assert", identifier },
         );
@@ -5001,8 +4937,7 @@ pub const YulUtilFunctions = struct {
         if (type_ref.category() == .Mapping) return error.UnsupportedType;
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "zero_value_for_{s}{s}",
             .{ if (split_function_types) "split_" else "", identifier },
         );
@@ -5080,11 +5015,10 @@ pub const YulUtilFunctions = struct {
         self: *YulUtilFunctions,
         panic_code: PanicCode,
     ) UtilError![]u8 {
-        const code_value: u32 = @intCast(@intFromEnum(panic_code));
+        const code_value: u32 = @intCast(@backingInt(panic_code));
         const rendered_code = try compactHex(self.allocator, code_value);
         defer self.allocator.free(rendered_code);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "panic_error_{s}",
             .{rendered_code},
         );
@@ -5223,8 +5157,7 @@ pub const YulUtilFunctions = struct {
         return_parameters: []const []const u8,
         decoder_name: []const u8,
     ) UtilError![]u8 {
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "copy_arguments_for_constructor_{d}_object_{s}_{d}",
             .{ constructor_id, contract_name, contract_id },
         );
@@ -5393,8 +5326,7 @@ pub const YulUtilFunctions = struct {
         const selector_hex = std.fmt.bytesToHex(Numeric.toBigEndian256(selector_value), .lower);
         const selector_digits = @max(Numeric.numberEncodingSize(u256, selector_value), 1) * 2;
         var selector = generator.number(selector_value);
-        selector.literal.value.string_value = try std.fmt.allocPrint(
-            generator.allocator(),
+        selector.literal.value.string_value = try generator.allocator().print(
             "0x{s}",
             .{selector_hex[selector_hex.len - selector_digits ..]},
         );
@@ -5412,8 +5344,7 @@ pub const YulUtilFunctions = struct {
     ) UtilError![]u8 {
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, message_type);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "require_helper_{s}",
             .{identifier},
         );
@@ -5488,8 +5419,7 @@ pub const YulUtilFunctions = struct {
     ) UtilError![]u8 {
         const digest = Keccak256.keccak256(message);
         const hex = digest.hex();
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "revert_error_{s}",
             .{&hex},
         );
@@ -5515,7 +5445,7 @@ pub const YulUtilFunctions = struct {
     ) UtilError!Yul.Block {
         const generator = try self.function_collector.generator(self.evm_version);
 
-        if (@intFromEnum(self.revert_strings) < @intFromEnum(DebugSettings.RevertStrings.Debug) or
+        if (@backingInt(self.revert_strings) < @backingInt(DebugSettings.RevertStrings.Debug) or
             message.len == 0)
             return generator.statements("revert(0, 0)", .{});
         const allocate = try self.allocateUnboundedFunction();
@@ -5531,7 +5461,7 @@ pub const YulUtilFunctions = struct {
         );
         const words = (message.len + 31) / 32;
         for (0..words) |word_index| {
-            var word: [32]u8 = [_]u8{0} ** 32;
+            var word: [32]u8 = @splat(0);
             const start = word_index * 32;
             const count = @min(@as(usize, 32), message.len - start);
             @memcpy(word[0..count], message[start .. start + count]);
@@ -5629,8 +5559,7 @@ pub const YulUtilFunctions = struct {
             &exponent_type,
         );
         defer self.allocator.free(exponent_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "checked_exp_{s}_{s}",
             .{ identifier, exponent_identifier },
         );
@@ -5706,8 +5635,7 @@ pub const YulUtilFunctions = struct {
             &exponent_type_ref,
         );
         defer self.allocator.free(exponent_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "checked_exp_{s}_{s}",
             .{ base_identifier, exponent_identifier },
         );
@@ -5879,8 +5807,7 @@ pub const YulUtilFunctions = struct {
             &exponent_type,
         );
         defer self.allocator.free(exponent_identifier);
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "wrapping_exp_{s}_{s}",
             .{ identifier, exponent_identifier },
         );
@@ -5915,7 +5842,7 @@ pub const YulUtilFunctions = struct {
         const type_ref = Types.Type{ .payload = .{ .Integer = integer } };
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, &type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(self.allocator, "decrement_{s}", .{identifier});
+        const name = try self.allocator.print("decrement_{s}", .{identifier});
         defer self.allocator.free(name);
         if (!(try self.function_collector.beginFunction(name)))
             return self.function_collector.copyFunctionName(name);
@@ -5950,7 +5877,7 @@ pub const YulUtilFunctions = struct {
         const type_ref = Types.Type{ .payload = .{ .Integer = integer } };
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, &type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(self.allocator, "increment_{s}", .{identifier});
+        const name = try self.allocator.print("increment_{s}", .{identifier});
         defer self.allocator.free(name);
         if (!(try self.function_collector.beginFunction(name)))
             return self.function_collector.copyFunctionName(name);
@@ -5986,7 +5913,7 @@ pub const YulUtilFunctions = struct {
         const type_ref = Types.Type{ .payload = .{ .Integer = integer } };
         const identifier = try TypeBehavior.compatibilityIdentifierAlloc(self.allocator, self.compatibility_ids, &type_ref);
         defer self.allocator.free(identifier);
-        const name = try std.fmt.allocPrint(self.allocator, "negate_{s}", .{identifier});
+        const name = try self.allocator.print("negate_{s}", .{identifier});
         defer self.allocator.free(name);
         if (!(try self.function_collector.beginFunction(name)))
             return self.function_collector.copyFunctionName(name);
@@ -6035,7 +5962,7 @@ pub const YulUtilFunctions = struct {
             .increment => "increment_wrapping_",
             .negate => "negate_wrapping_",
         };
-        const name = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ prefix, identifier });
+        const name = try self.allocator.print("{s}{s}", .{ prefix, identifier });
         defer self.allocator.free(name);
         if (!(try self.function_collector.beginFunction(name)))
             return self.function_collector.copyFunctionName(name);
@@ -6088,7 +6015,7 @@ pub const YulUtilFunctions = struct {
             .wrapping_div => "wrapping_div_",
             .modulo => "mod_",
         };
-        const name = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ prefix, identifier });
+        const name = try self.allocator.print("{s}{s}", .{ prefix, identifier });
         defer self.allocator.free(name);
         if (!(try self.function_collector.beginFunction(name)))
             return self.function_collector.copyFunctionName(name);
@@ -6792,7 +6719,7 @@ test "Yul AST scalar helper generation retains structure and published code" {
             var printer = @import("../../libyul/asm_printer.zig").AsmPrinter.init(allocator, collector.dialect.?.dialect(), &.{}, .noneValue(), null);
             const code = try printer.renderFunctionDefinition(&entry);
             defer allocator.free(code);
-            const wrapped = try std.fmt.allocPrint(allocator, "{{{s}}}", .{code});
+            const wrapped = try allocator.print("{{{s}}}", .{code});
             defer allocator.free(wrapped);
             var errors = Diagnostics.ErrorReporter.init(allocator);
             defer errors.deinit();

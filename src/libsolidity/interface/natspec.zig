@@ -315,7 +315,7 @@ fn extractReturnParameterDocs(
         var parameter_name = return_parameter_names[ordinal];
         var content = entry.tag.content;
         if (parameter_name.len == 0) {
-            parameter_name = try std.fmt.allocPrint(allocator, "_{d}", .{ordinal});
+            parameter_name = try allocator.print("_{d}", .{ordinal});
         } else if (firstWhitespace(content)) |name_end| {
             if (!std.mem.eql(u8, content[0..name_end], parameter_name))
                 return error.InvalidAst;

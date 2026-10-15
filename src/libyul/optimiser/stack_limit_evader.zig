@@ -23,8 +23,8 @@ const StackToMemory = @import("stack_to_memory_mover.zig");
 const YulName = @import("../yul_name.zig").YulName;
 
 fn lessFunctionHandle(left: AST.FunctionHandle, right: AST.FunctionHandle) bool {
-    const left_tag = @intFromEnum(left);
-    const right_tag = @intFromEnum(right);
+    const left_tag = @backingInt(left);
+    const right_tag = @backingInt(right);
     if (left_tag != right_tag) return left_tag < right_tag;
     return switch (left) {
         .user => |name| name.lessThan(right.user),
@@ -503,7 +503,9 @@ test "stack limit evasion and stack compression transfer roots and release alloc
                 try std.testing.expectEqualDeep(try Encoding.hashBlock(ast.root()), try Encoding.hashBlock(&transformed));
             }
         };
-        try std.testing.checkAllAllocationFailures(allocator, Check.run, .{&source});
+        // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+        var deterministic = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
+        try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{&source});
     }
 }
 
@@ -707,5 +709,6 @@ test "stack limit evasion prepares a rewritten compressed AST and releases alloc
         }
     };
     try Check.run(allocator, &source);
-    try std.testing.checkAllAllocationFailures(allocator, Check.run, .{&source});
+    var deterministic = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{&source});
 }

@@ -119,7 +119,7 @@ pub const FrontendRevisionState = struct {
     /// Returns the last committed snapshot without acquiring the revision
     /// mutex, so a compiler callback may safely observe session statistics.
     pub fn statistics(self: *FrontendRevisionState) Statistics {
-        std.Io.Threaded.mutexLock(&self.statistics_mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.statistics_mutex);
         defer std.Io.Threaded.mutexUnlock(&self.statistics_mutex);
         return self.statistics_value;
     }
@@ -169,7 +169,7 @@ pub const FrontendRevisionState = struct {
             else
                 false,
         };
-        std.Io.Threaded.mutexLock(&self.statistics_mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.statistics_mutex);
         defer std.Io.Threaded.mutexUnlock(&self.statistics_mutex);
         self.statistics_value = value;
     }
@@ -200,7 +200,7 @@ pub const FrontendRevisionState = struct {
     }
 
     fn lock(self: *FrontendRevisionState) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
     }
 
     fn unlock(self: *FrontendRevisionState) void {
@@ -267,7 +267,7 @@ pub const FrontendRevisionState = struct {
                 );
             } else try SemanticRevision.create(
                 self.state.allocator,
-                @enumFromInt(self.state.registry.currentRevision()),
+                @fromBackingInt(@intCast(self.state.registry.currentRevision())),
             );
             self.candidate_semantic = semantic;
             return semantic;
@@ -633,5 +633,5 @@ test "aborted semantic candidates force a fresh domain" {
 }
 
 fn testFingerprint(byte: u8) FrontendFingerprint {
-    return FrontendFingerprint.fromArray([_]u8{byte} ** FrontendFingerprint.size);
+    return FrontendFingerprint.fromArray(@splat(byte));
 }

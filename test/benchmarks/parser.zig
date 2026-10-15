@@ -79,7 +79,7 @@ fn tokens(allocator: std.mem.Allocator, io: std.Io, input: []const []const u8) !
     const start = std.Io.Clock.awake.now(io);
     for (0..iterations) |_| for (words) |word| {
         const result = Token.fromIdentifierOrKeyword(word);
-        checksum +%= @intFromEnum(result.token) + result.first_number + result.second_number;
+        checksum +%= @backingInt(result.token) + result.first_number + result.second_number;
     };
     report(io, start, iterations * words.len, checksum);
 }
@@ -136,7 +136,9 @@ fn reservedLookup(allocator: std.mem.Allocator, io: std.Io) !void {
 fn parseYul(allocator: std.mem.Allocator, io: std.Io) !void {
     var dialect = try EVMDialect.init(allocator, EVMVersion.current(), true);
     defer dialect.deinit();
-    const source = "{ let total := 0 let value := 7\n" ++ "total := add(total, mul(value, 3))\n" ** 200 ++ "}";
+    const statement = "total := add(total, mul(value, 3))\n";
+    const statements: [200 * statement.len]u8 = @bitCast(@as([200][statement.len]u8, @splat(statement.*)));
+    const source = "{ let total := 0 let value := 7\n" ++ statements ++ "}";
     const iterations = 400;
     var checksum: u64 = 0;
     const start = std.Io.Clock.awake.now(io);

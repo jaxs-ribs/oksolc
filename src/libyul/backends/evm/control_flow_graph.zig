@@ -46,7 +46,7 @@ pub const StackSlot = union(enum) {
     junk: JunkSlot,
 
     pub fn eql(left: StackSlot, right: StackSlot) bool {
-        if (@intFromEnum(left) != @intFromEnum(right)) return false;
+        if (@backingInt(left) != @backingInt(right)) return false;
         return switch (left) {
             .function_call_return_label => |slot| slot.call == right.function_call_return_label.call,
             .function_return_label => |slot| slot.function == right.function_return_label.function,
@@ -58,8 +58,8 @@ pub const StackSlot = union(enum) {
     }
 
     pub fn lessThan(left: StackSlot, right: StackSlot) bool {
-        const left_tag = @intFromEnum(left);
-        const right_tag = @intFromEnum(right);
+        const left_tag = @backingInt(left);
+        const right_tag = @backingInt(right);
         if (left_tag != right_tag) return left_tag < right_tag;
         return switch (left) {
             .function_call_return_label => |slot| @intFromPtr(slot.call) < @intFromPtr(right.function_call_return_label.call),

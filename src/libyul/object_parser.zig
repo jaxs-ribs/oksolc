@@ -12,7 +12,6 @@ const ObjectModule = @import("object.zig");
 const ParserBase = @import("../liblangutil/parser_base.zig");
 const ScannerModule = @import("../liblangutil/scanner.zig");
 const StringUtils = @import("../libsolutil/string_utils.zig");
-const Token = @import("../liblangutil/token.zig").Token;
 
 pub const ParseError = AsmParser.ParseError || ParserBase.ParserFailure || error{
     MissingCodeAfterParseFailure,
@@ -270,8 +269,7 @@ pub const ObjectParser = struct {
                     "Object name cannot be the same as the name of the containing object.",
                 );
             } else if (container.sub_index_by_name.contains(name)) {
-                const description = try std.fmt.allocPrint(
-                    self.allocator,
+                const description = try self.allocator.print(
                     "Object name \"{s}\" already exists inside the containing object.",
                     .{name},
                 );

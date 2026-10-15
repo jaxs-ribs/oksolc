@@ -704,7 +704,7 @@ pub const AsmAnalyzer = struct {
         comptime format: []const u8,
         arguments: anytype,
     ) AnalyzeError!void {
-        const description = try std.fmt.allocPrint(self.allocator, format, arguments);
+        const description = try self.allocator.print(format, arguments);
         defer self.allocator.free(description);
         try self.error_reporter.report(.{ .value = error_id }, error_type, location, description);
     }

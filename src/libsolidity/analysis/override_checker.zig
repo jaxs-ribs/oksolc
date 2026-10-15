@@ -401,8 +401,7 @@ pub const OverrideChecker = struct {
                     path.payload.identifier_path.path,
                 );
                 defer self.allocator.free(dotted);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Duplicate contract \"{s}\" found in override list of \"{s}\".",
                     .{ dotted, item.name() },
                 );
@@ -463,14 +462,12 @@ pub const OverrideChecker = struct {
             !(super.kind() == .function and
                 (try proxyContract(super)).payload.contract_definition.contract_kind == .Interface))
         {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Overriding {s} is missing \"override\" specifier.",
                 .{overriding.nodeName()},
             );
             defer self.allocator.free(message);
-            const secondary = try std.fmt.allocPrint(
-                self.allocator,
+            const secondary = try self.allocator.print(
                 "Overridden {s} is here:",
                 .{overriding.nodeName()},
             );
@@ -479,8 +476,7 @@ pub const OverrideChecker = struct {
         }
 
         if (super.kind() == .variable) {
-            const secondary = try std.fmt.allocPrint(
-                self.allocator,
+            const secondary = try self.allocator.print(
                 "Overriding {s} is here:",
                 .{overriding.nodeName()},
             );
@@ -493,14 +489,12 @@ pub const OverrideChecker = struct {
                 secondary,
             );
         } else if (!(try virtualSemantics(super))) {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Trying to override non-virtual {s}. Did you forget to add \"virtual\"?",
                 .{super.nodeName()},
             );
             defer self.allocator.free(message);
-            const secondary = try std.fmt.allocPrint(
-                self.allocator,
+            const secondary = try self.allocator.print(
                 "Overriding {s} is here:",
                 .{overriding.nodeName()},
             );
@@ -520,14 +514,12 @@ pub const OverrideChecker = struct {
         } else if (overriding.visibility() != super.visibility() and
             !(super.visibility() == .External and overriding.visibility() == .Public))
         {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Overriding {s} visibility differs.",
                 .{overriding.nodeName()},
             );
             defer self.allocator.free(message);
-            const secondary = try std.fmt.allocPrint(
-                self.allocator,
+            const secondary = try self.allocator.print(
                 "Overridden {s} is here:",
                 .{overriding.nodeName()},
             );
@@ -536,8 +528,7 @@ pub const OverrideChecker = struct {
         }
 
         if (overriding.unimplemented() and !super.unimplemented()) {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Overriding an implemented {s} with an unimplemented {s} is not allowed.",
                 .{ super.nodeName(), overriding.nodeName() },
             );
@@ -551,14 +542,12 @@ pub const OverrideChecker = struct {
             !(try self.externalReturnsEqual(overriding, super)))
         {
             returns_differ = true;
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Overriding {s} return types differ.",
                 .{overriding.nodeName()},
             );
             defer self.allocator.free(message);
-            const secondary = try std.fmt.allocPrint(
-                self.allocator,
+            const secondary = try self.allocator.print(
                 "Overridden {s} is here:",
                 .{overriding.nodeName()},
             );
@@ -589,11 +578,10 @@ pub const OverrideChecker = struct {
 
         const overriding_mutability = overriding.stateMutability();
         const super_mutability = super.stateMutability();
-        if ((@intFromEnum(overriding_mutability) > @intFromEnum(super_mutability) or
+        if ((@backingInt(overriding_mutability) > @backingInt(super_mutability) or
             super_mutability == .Payable) and overriding_mutability != super_mutability)
         {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Overriding {s} changes state mutability from \"{s}\" to \"{s}\".",
                 .{
                     overriding.nodeName(),
@@ -619,8 +607,7 @@ pub const OverrideChecker = struct {
         var allocated: ?[]u8 = null;
         defer if (allocated) |value| self.allocator.free(value);
         const label = secondary_message orelse blk: {
-            allocated = try std.fmt.allocPrint(
-                self.allocator,
+            allocated = try self.allocator.print(
                 "Overridden {s} is here:",
                 .{secondary_proxy.nodeName()},
             );
@@ -658,8 +645,7 @@ pub const OverrideChecker = struct {
             try secondary.append(self.allocator, "This contract: ", contract.location);
             try quoted.append(
                 self.allocator,
-                try std.fmt.allocPrint(
-                    self.allocator,
+                try self.allocator.print(
                     "\"{s}\"",
                     .{contract.payload.contract_definition.declaration.name},
                 ),
@@ -668,8 +654,7 @@ pub const OverrideChecker = struct {
         const names = try joinHumanReadable(self.allocator, quoted.items);
         defer self.allocator.free(names);
         const noun = if (sorted.len == 1) "contract " else "contracts ";
-        const message = try std.fmt.allocPrint(
-            self.allocator,
+        const message = try self.allocator.print(
             "{s}{s}{s}{s}.",
             .{ prefix, noun, qualifier, names },
         );
@@ -790,8 +775,7 @@ pub const OverrideChecker = struct {
         defer secondary.deinit(self.allocator);
         for (sorted) |proxy| {
             const owner = try proxyContract(proxy);
-            const label = try std.fmt.allocPrint(
-                self.allocator,
+            const label = try self.allocator.print(
                 "Definition in \"{s}\": ",
                 .{owner.payload.contract_definition.declaration.name},
             );
@@ -800,8 +784,7 @@ pub const OverrideChecker = struct {
         }
         const first = sorted[0];
         const callable_name = if (first.kind() == .variable) "function" else first.nodeName();
-        var message = try std.fmt.allocPrint(
-            self.allocator,
+        var message = try self.allocator.print(
             "Derived contract must override {s} \"{s}\". Two or more base classes define {s} with same {s}.",
             .{ callable_name, first.name(), callable_name, first.distinguishingProperty() },
         );
@@ -812,8 +795,7 @@ pub const OverrideChecker = struct {
             break;
         };
         if (found_variable) {
-            const extended = try std.fmt.allocPrint(
-                self.allocator,
+            const extended = try self.allocator.print(
                 "{s} Since one of the bases defines a public state variable which cannot be overridden, you have to change the inheritance layout or the names of the functions.",
                 .{message},
             );
@@ -895,8 +877,8 @@ pub const OverrideChecker = struct {
         const right_kind = right.functionKind();
         if (left_kind != right_kind)
             return std.math.order(
-                @intFromEnum(left_kind),
-                @intFromEnum(right_kind),
+                @backingInt(left_kind),
+                @backingInt(right_kind),
             );
         if (left_kind != .Function) return .eq;
 
@@ -1071,7 +1053,7 @@ pub const OverrideChecker = struct {
         comptime format: []const u8,
         args: anytype,
     ) CheckError![]const u8 {
-        const value = try std.fmt.allocPrint(self.allocator, format, args);
+        const value = try self.allocator.print(format, args);
         defer self.allocator.free(value);
         return try self.tree.ownString(value);
     }

@@ -161,8 +161,8 @@ pub fn isImplicitlyConvertibleTo(
     return switch (source.payload) {
         .Address => |value| blk: {
             const other = target.asAddress() orelse break :blk false;
-            break :blk @intFromEnum(other.state_mutability) <=
-                @intFromEnum(value.state_mutability);
+            break :blk @backingInt(other.state_mutability) <=
+                @backingInt(value.state_mutability);
         },
         .Integer => |value| blk: {
             if (target.asInteger()) |other|
@@ -482,7 +482,7 @@ fn functionImplicit(source: Types.FunctionType, target: *const Types.Type) bool 
         return false;
     if (source.state_mutability == .Payable and other.state_mutability == .NonPayable)
         return true;
-    return @intFromEnum(source.state_mutability) <= @intFromEnum(other.state_mutability);
+    return @backingInt(source.state_mutability) <= @backingInt(other.state_mutability);
 }
 
 pub fn isExplicitlyConvertibleTo(
@@ -2826,8 +2826,8 @@ fn visibleViaContractName(
         .variable_declaration => switch (access) {
             .local => declaration.effectiveVisibility() != .Private,
             .foreign => false,
-            .library => @intFromEnum(declaration.effectiveVisibility() orelse
-                return false) >= @intFromEnum(AST.Visibility.Internal),
+            .library => @backingInt(declaration.effectiveVisibility() orelse
+                return false) >= @backingInt(AST.Visibility.Internal),
         },
         .struct_definition,
         .enum_definition,
@@ -3101,8 +3101,8 @@ pub fn attachedFunctionsAlloc(
                 for (declaration.payload.contract_definition.sub_nodes) |function| {
                     if (function.nodeKind() != .function_definition or
                         !function.payload.function_definition.ordinary() or
-                        @intFromEnum(function.effectiveVisibility() orelse
-                            continue) < @intFromEnum(AST.Visibility.Internal) or
+                        @backingInt(function.effectiveVisibility() orelse
+                            continue) < @backingInt(AST.Visibility.Internal) or
                         function.payload.function_definition.callable.parameters.payload.parameter_list.parameters.len == 0)
                         continue;
                     try appendAttachedFunction(
@@ -3473,7 +3473,7 @@ fn appendStackItems(
         .Tuple => |tuple| {
             for (tuple.components, 1..) |component, index| {
                 const component_type = component orelse continue;
-                const name = try std.fmt.allocPrint(allocator, "component_{d}", .{index});
+                const name = try allocator.print("component_{d}", .{index});
                 defer allocator.free(name);
                 try appendStackItem(allocator, items, name, component_type);
             }
@@ -4841,7 +4841,7 @@ fn appendDecimal(
     output: *std.ArrayList(u8),
     value: anytype,
 ) std.mem.Allocator.Error!void {
-    const rendered = try std.fmt.allocPrint(allocator, "{d}", .{value});
+    const rendered = try allocator.print("{d}", .{value});
     defer allocator.free(rendered);
     try output.appendSlice(allocator, rendered);
 }
@@ -7020,10 +7020,10 @@ pub const OwnedMemberList = struct {
 };
 
 test "type-system enum ABI and reference invariants" {
-    try std.testing.expectEqual(@as(c_int, 0), @intFromEnum(Category.Address));
-    try std.testing.expectEqual(@as(c_int, 20), @intFromEnum(Category.InaccessibleDynamic));
-    try std.testing.expectEqual(@as(c_int, 0), @intFromEnum(FunctionKind.Internal));
-    try std.testing.expectEqual(@as(c_int, 42), @intFromEnum(FunctionKind.Declaration));
+    try std.testing.expectEqual(@as(c_int, 0), @backingInt(Category.Address));
+    try std.testing.expectEqual(@as(c_int, 20), @backingInt(Category.InaccessibleDynamic));
+    try std.testing.expectEqual(@as(c_int, 0), @backingInt(FunctionKind.Internal));
+    try std.testing.expectEqual(@as(c_int, 42), @backingInt(FunctionKind.Declaration));
     try std.testing.expect((ReferenceData{ .location = .Memory }).isPointer());
     try std.testing.expect(!(ReferenceData{
         .location = .Storage,

@@ -455,7 +455,7 @@ pub fn formatAsStringOrNumberAlloc(
     if (!preferStringLiteral(value)) {
         const hash = fixed_hash.H256.fromBytes(value, .align_left);
         const hex = hash.hex();
-        return std.fmt.allocPrint(allocator, "0x{s}", .{hex});
+        return allocator.print("0x{s}", .{hex});
     }
     return escapeAndQuoteStringAlloc(allocator, value);
 }
@@ -588,9 +588,9 @@ pub fn makeVectorAlloc(
     allocator: std.mem.Allocator,
     values: anytype,
 ) std.mem.Allocator.Error![]T {
-    const fields = std.meta.fields(@TypeOf(values));
-    const output = try allocator.alloc(T, fields.len);
-    inline for (fields, 0..) |field, index| output[index] = @field(values, field.name);
+    const field_names = @typeInfo(@TypeOf(values)).@"struct".field_names;
+    const output = try allocator.alloc(T, field_names.len);
+    inline for (field_names, 0..) |name, index| output[index] = @field(values, name);
     return output;
 }
 

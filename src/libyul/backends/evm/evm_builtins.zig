@@ -202,10 +202,10 @@ pub const EVMBuiltins = struct {
         const Candidate = struct { name: []const u8, instruction: Instruction };
         var candidates: std.ArrayList(Candidate) = .empty;
         defer candidates.deinit(allocator);
-        inline for (std.meta.fields(Instruction)) |field| {
+        inline for (std.enums.values(Instruction)) |instruction| {
             try candidates.append(allocator, .{
-                .name = field.name,
-                .instruction = @enumFromInt(field.value),
+                .name = @tagName(instruction),
+                .instruction = instruction,
             });
         }
         try candidates.append(allocator, .{ .name = "DIFFICULTY", .instruction = .PREVRANDAO });
@@ -288,8 +288,7 @@ pub const EVMBuiltins = struct {
         arguments: usize,
         return_variables: usize,
     ) !BuiltinFunctionForEVM {
-        const name = try std.fmt.allocPrint(
-            allocator,
+        const name = try allocator.print(
             "verbatim_{d}i_{d}o",
             .{ arguments, return_variables },
         );
@@ -403,10 +402,10 @@ fn computeSideEffectsOfInstruction(instruction: Instruction) !SideEffects {
         .can_be_removed = try SemanticInformation.canBeRemoved(instruction),
         .can_be_removed_if_no_msize = try SemanticInformation.canBeRemovedIfNoMSize(instruction),
         .cannot_loop = true,
-        .other_state = @enumFromInt(@intFromEnum(SemanticInformation.otherState(instruction))),
-        .storage = @enumFromInt(@intFromEnum(SemanticInformation.storage(instruction))),
-        .memory = @enumFromInt(@intFromEnum(SemanticInformation.memory(instruction))),
-        .transient_storage = @enumFromInt(@intFromEnum(SemanticInformation.transientStorage(instruction))),
+        .other_state = @fromBackingInt(@intCast(@backingInt(SemanticInformation.otherState(instruction)))),
+        .storage = @fromBackingInt(@intCast(@backingInt(SemanticInformation.storage(instruction)))),
+        .memory = @fromBackingInt(@intCast(@backingInt(SemanticInformation.memory(instruction)))),
+        .transient_storage = @fromBackingInt(@intCast(@backingInt(SemanticInformation.transientStorage(instruction)))),
     };
 }
 
@@ -432,7 +431,7 @@ fn literalTextAlloc(
         return allocator.dupe(u8, hint);
     if (literal.kind == .Boolean)
         return allocator.dupe(u8, if (literal.value.numeric_value.? == 0) "false" else "true");
-    return std.fmt.allocPrint(allocator, "{d}", .{literal.value.numeric_value.?});
+    return allocator.print("{d}", .{literal.value.numeric_value.?});
 }
 
 fn lowerDuplicate(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
