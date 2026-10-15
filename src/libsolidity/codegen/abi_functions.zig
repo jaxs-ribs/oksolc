@@ -1111,7 +1111,7 @@ pub const ABIFunctions = struct {
             const store_literal = try self.utils.storeLiteralInMemoryFunction(literal);
             defer self.allocator.free(store_literal);
             const overall_size = if (options.padded)
-                ((literal.len + 31) / 32) * 32
+                @divCeil(literal.len, 32) * 32
             else
                 literal.len;
             break :blk try generator.functionDefinition(

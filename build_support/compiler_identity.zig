@@ -9,18 +9,39 @@ const std = @import("std");
 const directories = [_][]const u8{ "src", "include", "vendor/sqlite", "build_support" };
 const files = [_][]const u8{ "build.zig", "build.zig.zon" };
 
-pub fn digest(allocator: std.mem.Allocator, io: std.Io, root: std.Io.Dir) ![64]u8 {
-    var paths: std.ArrayList([]const u8) = .empty;
-    defer {
-        for (paths.items) |path| allocator.free(path);
-        paths.deinit(allocator);
+pub const Inputs = struct {
+    files: std.ArrayList([]const u8) = .empty,
+    directories: std.ArrayList([]const u8) = .empty,
+
+    pub fn deinit(self: *Inputs, allocator: std.mem.Allocator) void {
+        for (self.files.items) |path| allocator.free(path);
+        self.files.deinit(allocator);
+        for (self.directories.items) |path| allocator.free(path);
+        self.directories.deinit(allocator);
     }
+
+    /// Track both source bytes and directory entries, so new, removed and
+    /// renamed inputs invalidate Zig's configure cache without poisoning it.
+    pub fn trackConfiguration(self: Inputs, b: *std.Build) void {
+        for (self.files.items) |path| b.dependOnFileContents(b.path(path));
+        for (self.directories.items) |path| b.dependOnDirectoryContents(b.path(path));
+    }
+};
+
+pub fn collectInputs(allocator: std.mem.Allocator, io: std.Io, root: std.Io.Dir) !Inputs {
+    var inputs: Inputs = .{};
+    errdefer inputs.deinit(allocator);
     for (files) |path| {
         const owned = try allocator.dupe(u8, path);
         errdefer allocator.free(owned);
-        try paths.append(allocator, owned);
+        try inputs.files.append(allocator, owned);
     }
     for (directories) |path| {
+        const owned = try allocator.dupe(u8, path);
+        {
+            errdefer allocator.free(owned);
+            try inputs.directories.append(allocator, owned);
+        }
         var directory = try root.openDir(io, path, .{ .iterate = true });
         defer directory.close(io);
         var walker = try directory.walk(allocator);
@@ -34,24 +55,34 @@ pub fn digest(allocator: std.mem.Allocator, io: std.Io, root: std.Io.Dir) ![64]u
                 continue;
             }
             switch (entry.kind) {
-                .directory => {},
-                .file => {
+                .directory, .file => {
                     const full = try std.fs.path.join(allocator, &.{ path, entry.path });
                     errdefer allocator.free(full);
+                    const paths = if (entry.kind == .directory) &inputs.directories else &inputs.files;
                     try paths.append(allocator, full);
                 },
                 else => return error.UnsupportedCompilerInput,
             }
         }
     }
-    std.mem.sort([]const u8, paths.items, {}, struct {
+    std.mem.sort([]const u8, inputs.files.items, {}, struct {
         fn less(_: void, left: []const u8, right: []const u8) bool {
             return std.mem.lessThan(u8, left, right);
         }
     }.less);
+    return inputs;
+}
+
+pub fn digest(allocator: std.mem.Allocator, io: std.Io, root: std.Io.Dir) ![64]u8 {
+    var inputs = try collectInputs(allocator, io, root);
+    defer inputs.deinit(allocator);
+    return digestInputs(allocator, io, root, inputs);
+}
+
+pub fn digestInputs(allocator: std.mem.Allocator, io: std.Io, root: std.Io.Dir, inputs: Inputs) ![64]u8 {
     var hash = std.crypto.hash.sha2.Sha256.init(.{});
     hash.update("oksolc.compiler-content.v1\x00");
-    for (paths.items) |path| {
+    for (inputs.files.items) |path| {
         const content = try root.readFileAlloc(io, path, allocator, .limited(64 * 1024 * 1024));
         defer allocator.free(content);
         var file_hash: [32]u8 = undefined;

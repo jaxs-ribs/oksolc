@@ -358,7 +358,7 @@ fn acquireRecoveryLock(
 fn validateRecoveryLockStat(stat: std.Io.File.Stat) !void {
     if (stat.kind != .file or stat.nlink != 1)
         return error.InvalidRecoveryLock;
-    if (comptime @import("builtin").os.tag != .windows) {
+    if (comptime @import("builtin").target.os.tag != .windows) {
         if (stat.permissions.toMode() & 0o777 != 0o600)
             return error.InsecureRecoveryLockPermissions;
     }
@@ -424,7 +424,7 @@ fn openRecoveryDirectory(io: std.Io, canonical: []const u8) !std.Io.Dir {
     const actual_length = try current.realPath(io, &actual_buffer);
     if (!std.mem.eql(u8, canonical, actual_buffer[0..actual_length]))
         return error.RecoveryDirectoryChanged;
-    if (comptime @import("builtin").os.tag != .windows) {
+    if (comptime @import("builtin").target.os.tag != .windows) {
         const stat = try current.stat(io);
         if (stat.permissions.toMode() & 0o022 != 0)
             return error.InsecureRecoveryDirectory;
@@ -585,7 +585,7 @@ test "SQLite compiler session does not race an active cache recovery" {
 }
 
 test "SQLite recovery lock rejects symlinks without modifying their target" {
-    if (comptime @import("builtin").os.tag == .windows)
+    if (comptime @import("builtin").target.os.tag == .windows)
         return error.SkipZigTest;
 
     var temporary = std.testing.tmpDir(.{});
@@ -659,7 +659,7 @@ test "SQLite recovery lock rejects symlinks without modifying their target" {
 }
 
 test "SQLite recovery lock rejects hard links without modifying their target" {
-    if (comptime @import("builtin").os.tag == .windows)
+    if (comptime @import("builtin").target.os.tag == .windows)
         return error.SkipZigTest;
 
     var temporary = std.testing.tmpDir(.{});

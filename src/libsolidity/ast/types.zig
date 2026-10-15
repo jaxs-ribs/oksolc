@@ -732,7 +732,7 @@ fn rationalIntegerShape(value: Types.RationalNumberType) ?RationalIntegerShape {
     } else value.numerator.clone();
     defer encoded.deinit();
     if (encoded.bitLength() > 256) return null;
-    const bytes = @max(@as(usize, 1), (encoded.bitLength() + 7) / 8);
+    const bytes = @max(@as(usize, 1), @divCeil(encoded.bitLength(), 8));
     return .{
         .bits = @intCast(bytes * 8),
         .modifier = if (value.numerator.isNegative()) .Signed else .Unsigned,
@@ -801,7 +801,7 @@ fn rationalFixedPointShape(
         integral = shifted.take();
     }
     if (integral.bitLength() > 256) return null;
-    const bytes = @max(@as(usize, 1), (integral.bitLength() + 7) / 8);
+    const bytes = @max(@as(usize, 1), @divCeil(integral.bitLength(), 8));
     return .{
         .bits = @intCast(bytes * 8),
         .fractional_digits = fractional_digits,
@@ -4023,7 +4023,7 @@ pub fn calldataEncodedSize(type_ref: *const Types.Type, padded: bool) QueryError
                 .Internal => 8,
                 else => return error.InvalidType,
             };
-            break :blk if (padded) ((bytes + 31) / 32) * 32 else bytes;
+            break :blk if (padded) @divCeil(bytes, 32) * 32 else bytes;
         },
         .Array => |value| arrayCalldataSize(value, padded),
         .Struct => |value| structCalldataSize(value),

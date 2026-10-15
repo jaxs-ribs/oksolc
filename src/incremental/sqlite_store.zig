@@ -2758,7 +2758,7 @@ test "SQLite artifact store restricts database and WAL sidecar permissions" {
 }
 
 test "SQLite artifact store rejects a symlinked database" {
-    if (comptime @import("builtin").os.tag == .windows)
+    if (comptime @import("builtin").target.os.tag == .windows)
         return error.SkipZigTest;
 
     var temporary = std.testing.tmpDir(.{});

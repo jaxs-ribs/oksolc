@@ -19,6 +19,12 @@ for each component and the license text below apply to that component.
 * Zig 0.17 standard library
   Copyright (c) Zig contributors
 
+* translate-c 2.0.2 at c11030012dc325d446474d17b78c242fd1d622ec (build-only dependency)
+  Copyright (c) Zig contributors
+
+* Aro C compiler at 630d99ed60fe61ccabe721f1af60881f8b2adde3 (build-only dependency)
+  Copyright (c) 2021 Veikka Tuominen
+
 * zqlite.zig at 865223b734a5113f731ab1eb1d7d81c8ac252913
   Copyright (c) 2024 Karl Seguin.
   The Zig wrapper uses this repository's pinned SQLite amalgamation.

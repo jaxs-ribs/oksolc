@@ -5459,7 +5459,7 @@ pub const YulUtilFunctions = struct {
                 message.len,
             },
         );
-        const words = (message.len + 31) / 32;
+        const words = @divCeil(message.len, 32);
         for (0..words) |word_index| {
             var word: [32]u8 = @splat(0);
             const start = word_index * 32;

@@ -2938,7 +2938,7 @@ test "filesystem source loader searches includes and only directly addresses all
 }
 
 test "filesystem source loader rejects symlink escapes" {
-    if (comptime builtin.os.tag == .windows)
+    if (comptime builtin.target.os.tag == .windows)
         return error.SkipZigTest;
 
     var temporary = std.testing.tmpDir(.{});
@@ -2987,7 +2987,7 @@ test "filesystem source loader rejects symlink escapes" {
 }
 
 test "compile entry points reject file and directory symlinks" {
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const allocator = std.testing.allocator;
     const io = std.testing.io;
     var temporary = std.testing.tmpDir(.{});
@@ -3016,7 +3016,7 @@ test "compile entry points reject file and directory symlinks" {
 }
 
 test "filesystem source loader rejects symlinks in configured roots" {
-    if (comptime builtin.os.tag == .windows)
+    if (comptime builtin.target.os.tag == .windows)
         return error.SkipZigTest;
 
     var temporary = std.testing.tmpDir(.{});
@@ -3046,7 +3046,7 @@ test "filesystem source loader rejects symlinks in configured roots" {
 }
 
 test "filesystem source loader rejects a swapped root ancestor" {
-    if (comptime builtin.os.tag == .windows)
+    if (comptime builtin.target.os.tag == .windows)
         return error.SkipZigTest;
 
     var temporary = std.testing.tmpDir(.{});
@@ -3091,9 +3091,9 @@ test "filesystem source loader rejects a swapped root ancestor" {
 }
 
 test "filesystem source loader rejects a FIFO without blocking" {
-    if (comptime builtin.os.tag == .windows or
-        builtin.os.tag == .wasi or
-        builtin.os.tag == .uefi or
+    if (comptime builtin.target.os.tag == .windows or
+        builtin.target.os.tag == .wasi or
+        builtin.target.os.tag == .uefi or
         !builtin.link_libc)
     {
         return error.SkipZigTest;
@@ -3449,7 +3449,7 @@ test "artifact cache directory is private even when it already exists" {
 }
 
 test "artifact cache directory rejects a symlink without changing its target" {
-    if (comptime @import("builtin").os.tag == .windows)
+    if (comptime @import("builtin").target.os.tag == .windows)
         return error.SkipZigTest;
 
     var temporary = std.testing.tmpDir(.{});

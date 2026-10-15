@@ -31,7 +31,7 @@ pub const CompilerSessionStatistics = incremental.SessionStatistics;
 
 pub const baseline = struct {
     pub const version = libsolidity.@"interface/version".VersionNumber;
-    pub const zig_version = "0.16.0";
+    pub const zig_version = @import("builtin").zig_version_string;
 };
 
 test {

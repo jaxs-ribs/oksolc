@@ -100,7 +100,7 @@ fn openSourceFile(io: std.Io, path: []const u8) !std.Io.File {
         .follow_symlinks = false,
     });
     defer directory.close(io);
-    var components = std.mem.tokenizeAny(u8, path[root.len..], if (@import("builtin").os.tag == .windows) "/\\" else "/");
+    var components = std.mem.tokenizeAny(u8, path[root.len..], if (@import("builtin").target.os.tag == .windows) "/\\" else "/");
     while (components.next()) |component| {
         if (components.peek() != null) {
             const next = try directory.openDir(io, component, .{ .follow_symlinks = false });

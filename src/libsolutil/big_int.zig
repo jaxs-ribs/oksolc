@@ -302,7 +302,7 @@ pub const BigInt = struct {
         self: *const Self,
         allocator: std.mem.Allocator,
     ) std.mem.Allocator.Error![]u8 {
-        const byte_count = (self.bitLength() + 7) / 8;
+        const byte_count = @divCeil(self.bitLength(), 8);
         const output = try allocator.alloc(u8, byte_count);
         if (byte_count == 0) return output;
         const value = self.raw.toConst();
@@ -319,7 +319,7 @@ pub const BigInt = struct {
         ValueTooLarge,
     }!void {
         if (self.isNegative()) return error.NegativeValue;
-        const byte_count = (self.bitLength() + 7) / 8;
+        const byte_count = @divCeil(self.bitLength(), 8);
         if (byte_count > output.len) return error.ValueTooLarge;
         @memset(output, 0);
         if (byte_count == 0) return;

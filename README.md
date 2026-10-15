@@ -104,6 +104,11 @@ For development, omit `-Doptimize` for Debug mode, or use
 `-Doptimize=ReleaseSafe` for an optimized build with runtime safety checks. To
 build only the CLI, use `zig build build-cli`.
 
+C bindings use the pinned official `translate-c` package. Compiler inputs are
+registered with Zig 0.17's configuration cache, so unchanged builds can skip
+configuration while source edits, additions, and removals refresh the compiler
+identity. `zig build test-build-cache` checks this behavior.
+
 The web browser is disabled by default, so ordinary builds require neither Bun
 nor TypeScript. To include `oksolc browse` and `oksolc serve --browse`, install
 the pinned browser tools and opt in:
@@ -349,6 +354,10 @@ zig build fuzz --fuzz=10K -Dadapter-fuzz-runs=10000 -j2
 
 Run benchmarks on an otherwise idle machine with a native ReleaseFast build.
 Reports are written under `build/benchmarks`.
+
+To compile the CLI and benchmark executables together before timing, use
+`zig build build-benchmarks -Doptimize=ReleaseFast`. Zig schedules independent
+builds across the available cores; use `-jN` to set a concurrency limit.
 
 The local suite checks exact Standard JSON output against system `solc`, then
 times three contracts:

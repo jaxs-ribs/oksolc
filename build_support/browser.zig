@@ -22,7 +22,7 @@ pub fn build(b: *std.Build, cli: ?*std.Build.Module) void {
         .include_extensions = &.{ ".ts", ".json" },
     });
     const typecheck = b.addSystemCommand(&.{ tsc, "--pretty", "false", "--project" });
-    typecheck.addDirectoryArg(source);
+    typecheck.addDirectoryArg2(source, .{});
     // TS diagnostics are written to stdout. Inherit it so failures are visible,
     // and run the inexpensive check even when Bun's bundle is already cached.
     typecheck.stdio = .inherit;
@@ -30,9 +30,9 @@ pub fn build(b: *std.Build, cli: ?*std.Build.Module) void {
     b.step("typecheck-browser", "Check all browser TypeScript with strict TS7").dependOn(&typecheck.step);
 
     const bundle = b.addSystemCommand(&.{ bun, "build" });
-    bundle.addFileArg(source.path(b, "app.ts"));
+    bundle.addFileArg2(source.path(b, "app.ts"), .{});
     bundle.addArgs(&.{ "--target=browser", "--format=esm", "--env=disable", "--outdir" });
-    const output = bundle.addOutputDirectoryArg("browser");
+    const output = bundle.addOutputDirectoryArg2("browser", .{});
     bundle.setCwd(source);
     bundle.step.dependOn(&typecheck.step);
     bundle.step.dependOn(&check_bun.step);
@@ -46,7 +46,7 @@ pub fn build(b: *std.Build, cli: ?*std.Build.Module) void {
     b.step("build-browser", "Check and bundle browser assets into zig-out/browser").dependOn(&install.step);
 
     const tests = b.addSystemCommand(&.{ bun, "test" });
-    tests.addFileArg(b.path("test/zig/cli/browser_types.test.js"));
+    tests.addFileArg2(b.path("test/zig/cli/browser_types.test.js"), .{});
     tests.step.dependOn(&typecheck.step);
     tests.step.dependOn(&check_bun.step);
     b.step("test-browser-types", "Test browser API validation and artifact preservation").dependOn(&tests.step);

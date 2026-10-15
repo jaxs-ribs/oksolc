@@ -11,9 +11,9 @@ pub fn openSourceFileNonblocking(
     io: std.Io,
     component: []const u8,
 ) !std.Io.File {
-    if (comptime builtin.os.tag == .windows or
-        builtin.os.tag == .wasi or
-        builtin.os.tag == .uefi)
+    if (comptime builtin.target.os.tag == .windows or
+        builtin.target.os.tag == .wasi or
+        builtin.target.os.tag == .uefi)
     {
         return parent.openFile(io, component, .{
             .mode = .read_only,

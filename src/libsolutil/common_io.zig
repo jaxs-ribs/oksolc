@@ -84,7 +84,7 @@ pub const StandardInputError = std.Io.File.Reader.Error ||
 /// terminals. Non-terminal streams remain readable and platforms without the
 /// POSIX terminal interface use the ordinary one-byte input path.
 pub fn readStandardInputChar(io: std.Io) StandardInputError!?u8 {
-    const supports_termios = switch (builtin.os.tag) {
+    const supports_termios = switch (builtin.target.os.tag) {
         .linux,
         .driverkit,
         .ios,
@@ -152,7 +152,7 @@ pub fn absolutePathAlloc(
     const base = std.Io.Dir.path.dirname(reference) orelse
         if (std.Io.Dir.path.isAbsolute(reference)) reference else "";
     const resolved = try std.Io.Dir.path.resolveAlloc(allocator, &.{ base, path });
-    if (builtin.os.tag != .windows) return resolved;
+    if (builtin.target.os.tag != .windows) return resolved;
     defer allocator.free(resolved);
     return sanitizePathAlloc(allocator, resolved);
 }
@@ -164,7 +164,7 @@ pub fn sanitizePathAlloc(
     path: []const u8,
 ) std.mem.Allocator.Error![]u8 {
     const result = try allocator.dupe(u8, path);
-    if (builtin.os.tag == .windows) std.mem.replaceScalar(u8, result, '\\', '/');
+    if (builtin.target.os.tag == .windows) std.mem.replaceScalar(u8, result, '\\', '/');
     return result;
 }
 

@@ -37,6 +37,10 @@
             .url = "git+https://github.com/sam701/zig-toml.git#c661327bd9f02f774426c4fe78f60621411b7173",
             .hash = "toml-0.3.0-bV14BRmkAQDSILPPyXc31aAXPtJa1Uh8Frug3i6InAUc",
         },
+        .translate_c = .{
+            .url = "git+https://codeberg.org/ziglang/translate-c#c11030012dc325d446474d17b78c242fd1d622ec",
+            .hash = "translate_c-2.0.2-Q_BUWvBNBwBgPKQJPblip6M7AHNK_IPNPmyv4rSIQMQc",
+        },
     },
     .paths = .{
         "README.md",
