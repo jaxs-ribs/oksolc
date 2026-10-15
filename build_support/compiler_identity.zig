@@ -9,22 +9,55 @@ const std = @import("std");
 const directories = [_][]const u8{ "src", "include", "vendor/sqlite", "build_support" };
 const files = [_][]const u8{ "build.zig", "build.zig.zon" };
 
+pub const BuildIdentity = struct {
+    file: std.Build.LazyPath,
+    validator: ?*std.Build.Step.Compile,
+
+    pub fn validate(self: BuildIdentity, b: *std.Build, artifact: *std.Build.Step.Compile) ?*std.Build.Step {
+        const executable = self.validator orelse return null;
+        const validation = b.addRunArtifact(executable);
+        validation.has_side_effects = true;
+        validation.addArg("--validate");
+        validation.addDirectoryArg2(b.path("."), .{});
+        validation.addFileArg2(self.file, .{});
+        validation.setName(b.fmt("validate {s} compiler content identity", .{artifact.name}));
+        validation.step.dependOn(&artifact.step);
+        return &validation.step;
+    }
+};
+
+/// Source bytes are observed at make time, never captured in configuration.
+pub fn create(b: *std.Build, override: ?[]const u8) BuildIdentity {
+    if (override) |identity| {
+        if (identity.len == 0) @panic("-Dcompiler-build-identity must not be empty");
+        return .{ .file = b.addWriteFiles().add("compiler-identity", identity), .validator = null };
+    }
+    const executable = b.addExecutable(.{
+        .name = "oksolc-compiler-identity",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("build_support/compiler_identity.zig"),
+            .target = b.graph.host,
+            .optimize = .safe,
+        }),
+    });
+    const generate = b.addRunArtifact(executable);
+    generate.addArg("--generate");
+    generate.addDirectoryArg2(b.path("."), .{});
+    const generated = generate.addOutputFileArg2("compiler-identity", .{});
+    generate.has_side_effects = true;
+    generate.setName("hash compiler inputs");
+    // Keep the expected identity in a content-addressed snapshot shared by
+    // compilation and validation, rather than the generator's mutable output.
+    const snapshot = b.addWriteFiles().addCopyFile(generated, "compiler-identity");
+    return .{ .file = snapshot, .validator = executable };
+}
+
 pub const Inputs = struct {
     files: std.ArrayList([]const u8) = .empty,
-    directories: std.ArrayList([]const u8) = .empty,
 
     pub fn deinit(self: *Inputs, allocator: std.mem.Allocator) void {
         for (self.files.items) |path| allocator.free(path);
         self.files.deinit(allocator);
-        for (self.directories.items) |path| allocator.free(path);
-        self.directories.deinit(allocator);
-    }
-
-    /// Track both source bytes and directory entries, so new, removed and
-    /// renamed inputs invalidate Zig's configure cache without poisoning it.
-    pub fn trackConfiguration(self: Inputs, b: *std.Build) void {
-        for (self.files.items) |path| b.dependOnFileContents(b.path(path));
-        for (self.directories.items) |path| b.dependOnDirectoryContents(b.path(path));
     }
 };
 
@@ -37,11 +70,6 @@ pub fn collectInputs(allocator: std.mem.Allocator, io: std.Io, root: std.Io.Dir)
         try inputs.files.append(allocator, owned);
     }
     for (directories) |path| {
-        const owned = try allocator.dupe(u8, path);
-        {
-            errdefer allocator.free(owned);
-            try inputs.directories.append(allocator, owned);
-        }
         var directory = try root.openDir(io, path, .{ .iterate = true });
         defer directory.close(io);
         var walker = try directory.walk(allocator);
@@ -55,11 +83,11 @@ pub fn collectInputs(allocator: std.mem.Allocator, io: std.Io, root: std.Io.Dir)
                 continue;
             }
             switch (entry.kind) {
-                .directory, .file => {
-                    const full = try std.fs.path.join(allocator, &.{ path, entry.path });
+                .directory => {},
+                .file => {
+                    const full = try std.Io.Dir.path.join(allocator, &.{ path, entry.path });
                     errdefer allocator.free(full);
-                    const paths = if (entry.kind == .directory) &inputs.directories else &inputs.files;
-                    try paths.append(allocator, full);
+                    try inputs.files.append(allocator, full);
                 },
                 else => return error.UnsupportedCompilerInput,
             }
@@ -101,12 +129,34 @@ pub fn main(init: std.process.Init) !void {
     var args = try std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa);
     defer args.deinit();
     _ = args.next();
+    const mode = args.next() orelse return error.MissingMode;
     const path = args.next() orelse return error.MissingRoot;
-    const expected = args.next() orelse return error.MissingIdentity;
+    const identity_path = args.next() orelse return error.MissingIdentity;
     var root = try std.Io.Dir.cwd().openDir(init.io, path, .{});
     defer root.close(init.io);
-    const actual = try digest(init.gpa, init.io, root);
-    if (!std.mem.eql(u8, &actual, expected)) return error.CompilerInputsChangedDuringBuild;
+    if (std.mem.eql(u8, mode, "--generate")) {
+        const actual = digest(init.gpa, init.io, root) catch |err| switch (err) {
+            error.OutOfMemory, error.Canceled => return err,
+            else => {
+                try writeIdentity(init.io, identity_path, "");
+                return;
+            },
+        };
+        try writeIdentity(init.io, identity_path, &actual);
+    } else if (std.mem.eql(u8, mode, "--validate")) {
+        const expected = try std.Io.Dir.cwd().readFileAlloc(init.io, identity_path, init.gpa, .limited(4096));
+        defer init.gpa.free(expected);
+        if (expected.len == 0) return; // Unavailable identities disable persistent cache reuse.
+        const actual = try digest(init.gpa, init.io, root);
+        if (!std.mem.eql(u8, &actual, expected)) return error.CompilerInputsChangedDuringBuild;
+    } else return error.InvalidMode;
+}
+
+fn writeIdentity(io: std.Io, path: []const u8, bytes: []const u8) !void {
+    var output = try std.Io.Dir.cwd().createFileAtomic(io, path, .{ .replace = true });
+    defer output.deinit(io);
+    try output.file.writeStreamingAll(io, bytes);
+    try output.replace(io);
 }
 
 test "compiler identity follows input bytes without Git and ignores UI and documentation" {

@@ -104,10 +104,11 @@ For development, omit `-Doptimize` for Debug mode, or use
 `-Doptimize=ReleaseSafe` for an optimized build with runtime safety checks. To
 build only the CLI, use `zig build build-cli`.
 
-C bindings use the pinned official `translate-c` package. Compiler inputs are
-registered with Zig 0.17's configuration cache, so unchanged builds can skip
-configuration while source edits, additions, and removals refresh the compiler
-identity. `zig build test-build-cache` checks this behavior.
+C bindings use the pinned official `translate-c` package. Zig 0.17 can reuse
+configuration while compiler inputs are hashed at build time. Source edits,
+additions, and removals refresh the compiler identity; a post-build check rejects
+edits during compilation, and an unchanged retry recovers automatically.
+`zig build test-build-cache` checks this behavior.
 
 The web browser is disabled by default, so ordinary builds require neither Bun
 nor TypeScript. To include `oksolc browse` and `oksolc serve --browse`, install

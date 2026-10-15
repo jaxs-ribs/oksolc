@@ -6,6 +6,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const zlinter = @import("zlinter");
 const Translator = @import("translate_c").Translator;
+const CompilerIdentity = @import("build_support/compiler_identity.zig");
 const package = @import("build.zig.zon");
 
 const required_zig_version: std.SemanticVersion = .{
@@ -73,17 +74,7 @@ pub fn build(b: *std.Build) !void {
         "compiler-build-identity",
         "Content-derived compiler build identity for persistent cache isolation",
     );
-    const detected_compiler_build = detectCompilerBuildIdentity(b);
-    const compiler_build_identity = compiler_build_identity_override orelse
-        detected_compiler_build.identity;
-    const compiler_build_identity_available = compiler_build_identity_override != null or
-        detected_compiler_build.available;
-    const compiler_build_validation_identity = if (compiler_build_identity_override == null)
-        detected_compiler_build.validation_identity
-    else
-        null;
-    if (compiler_build_identity_override) |identity|
-        if (identity.len == 0) @panic("-Dcompiler-build-identity must not be empty");
+    const compiler_build_validation_identity = CompilerIdentity.create(b, compiler_build_identity_override);
 
     const build_options = b.addOptions();
     build_options.addOption([]const u8, "oksolc_version", package.version);
@@ -93,17 +84,13 @@ pub fn build(b: *std.Build) !void {
         "third_party_licenses",
         @embedFile("THIRD_PARTY_LICENSES.txt"),
     );
-    build_options.addOption(
-        []const u8,
-        "compiler_build_identity",
-        compiler_build_identity,
-    );
-    build_options.addOption(
-        bool,
-        "compiler_build_identity_available",
-        compiler_build_identity_available,
-    );
-    const build_options_module = build_options.createModule();
+    const build_options_module = b.createModule(.{
+        .root_source_file = b.path("build_support/build_options.zig"),
+        .imports = &.{.{ .name = "package_options", .module = build_options.createModule() }},
+    });
+    build_options_module.addAnonymousImport("compiler_identity", .{
+        .root_source_file = compiler_build_validation_identity.file,
+    });
 
     const common_module = b.createModule(.{
         .root_source_file = b.path("src/common/root.zig"),
@@ -420,10 +407,8 @@ pub fn build(b: *std.Build) !void {
     const cli_version_smoke = b.addSystemCommand(&.{"python3"});
     cli_version_smoke.addFileArg2(b.path("test/zig/cli/version_smoke.py"), .{});
     cli_version_smoke.addArtifactArg2(cli, .{});
-    cli_version_smoke.addArgs(&.{
-        package.version,
-        if (compiler_build_identity_available) compiler_build_identity else "",
-    });
+    cli_version_smoke.addArg(package.version);
+    cli_version_smoke.addFileContentArg2(compiler_build_validation_identity.file, .{});
     dependOnValidation(&cli_version_smoke.step, cli_identity_validation);
     b.step("version-smoke", "Check product and solc-compatible version reporting").dependOn(&cli_version_smoke.step);
     cli_smoke_step.dependOn(&cli_version_smoke.step);
@@ -1038,6 +1023,11 @@ pub fn build(b: *std.Build) !void {
     compiler_cache_check.addFileArg2(.zig_exe, .{ .make_absolute = true });
     b.step("test-build-cache", "Test compiler identity and Zig configure cache invalidation").dependOn(&compiler_cache_check.step);
     unit_test_step.dependOn(&compiler_cache_check.step);
+    const lint_worker_check = b.addSystemCommand(&.{"python3"});
+    lint_worker_check.addFileArg2(b.path("test/zig/lint_worker.py"), .{});
+    lint_worker_check.addFileArg2(.zig_exe, .{ .make_absolute = true });
+    b.step("test-lint-worker", "Test offline lint workers and passthrough arguments").dependOn(&lint_worker_check.step);
+    unit_test_step.dependOn(&lint_worker_check.step);
     const terminal_probe = b.addExecutable(.{
         .name = "common-io-terminal-probe",
         .root_module = b.createModule(.{
@@ -1357,30 +1347,13 @@ pub fn build(b: *std.Build) !void {
         builder.addRule(.{ .builtin = .no_unused }, .{ .container_declaration = .@"error" });
         builder.addRule(.{ .builtin = .require_errdefer_dealloc }, .{ .severity = .@"error" });
         builder.addSource(.{ .file_path = b.path("build.zig") });
-        for ([_][]const u8{ "src", "test/zig", "test/benchmarks" }) |path|
+        for ([_][]const u8{ "build_support", "src", "test/zig", "test/benchmarks" }) |path|
             builder.addSource(.{ .dir_path = b.path(path) });
         lint_step.dependOn(builder.build());
     } else {
         // zlinter probes for kcov during configuration even without coverage.
         // Keep that untracked lookup out of the normal configure cache.
-        const lint = std.Build.Step.Run.create(b, "configure and run zlinter");
-        lint.addFileArg2(.zig_exe, .{ .make_absolute = true });
-        lint.addArgs(&.{ "build", "lint", "-Dlint-worker=true" });
-        for (b.user_input_options.keys(), b.user_input_options.values()) |name, value| {
-            if (std.mem.eql(u8, name, "lint-worker")) continue;
-            switch (value) {
-                .flag => lint.addArg(b.fmt("-D{s}", .{name})),
-                .scalar => |scalar| lint.addArg(b.fmt("-D{s}={s}", .{ name, scalar })),
-                .list => |list| for (list.items) |scalar| {
-                    lint.addArg(b.fmt("-D{s}={s}", .{ name, scalar }));
-                },
-                else => @panic("lint requires command-line build options"),
-            }
-        }
-        lint.addArg("--cache-dir");
-        lint.addDirectoryArg2(b.graph.path(.local_cache, ""), .{ .make_absolute = true });
-        lint.setCwd(b.path("."));
-        lint.has_side_effects = true;
+        const lint = @import("build_support/lint.zig").worker(b, yyjson_dependency);
         lint_step.dependOn(&lint.step);
     }
 
@@ -1402,53 +1375,12 @@ pub fn build(b: *std.Build) !void {
     );
 }
 
-const DetectedCompilerBuild = struct {
-    identity: []const u8 = "unidentified",
-    available: bool = false,
-    validation_identity: ?[]const u8 = null,
-};
-
-/// Hash actual compiler inputs, including uncommitted and source-archive
-/// contents. Product assets, documentation and Git metadata are not inputs.
-fn detectCompilerBuildIdentity(b: *std.Build) DetectedCompilerBuild {
-    const CompilerIdentity = @import("build_support/compiler_identity.zig");
-    var root = b.root.openDir(b.graph.io, ".", .{}) catch {
-        b.graph.poisonCache();
-        return .{};
-    };
-    defer root.close(b.graph.io);
-    var inputs = CompilerIdentity.collectInputs(b.allocator, b.graph.io, root) catch {
-        b.graph.poisonCache();
-        return .{};
-    };
-    defer inputs.deinit(b.allocator);
-    inputs.trackConfiguration(b);
-    const identity = CompilerIdentity.digestInputs(b.allocator, b.graph.io, root, inputs) catch return .{};
-    const owned = b.graph.dupeString(&identity);
-    return .{ .identity = owned, .available = true, .validation_identity = owned };
-}
-
 fn addCompilerBuildIdentityValidation(
     b: *std.Build,
     artifact: *std.Build.Step.Compile,
-    expected_identity: ?[]const u8,
+    identity: CompilerIdentity.BuildIdentity,
 ) ?*std.Build.Step {
-    const identity = expected_identity orelse return null;
-    const validator = b.addExecutable(.{
-        .name = "oksolc-compiler-identity",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("build_support/compiler_identity.zig"),
-            .target = b.graph.host,
-            .optimize = .safe,
-        }),
-    });
-    const validation = b.addRunArtifact(validator);
-    validation.has_side_effects = true;
-    validation.addDirectoryArg2(b.path("."), .{});
-    validation.addArg(identity);
-    validation.setName(b.fmt("validate {s} compiler content identity", .{artifact.name}));
-    validation.step.dependOn(&artifact.step);
-    return &validation.step;
+    return identity.validate(b, artifact);
 }
 
 fn dependOnValidation(step: *std.Build.Step, validation: ?*std.Build.Step) void {
@@ -1562,7 +1494,7 @@ fn addBenchmarks(
     optimizer_workloads_module: *std.Build.Module,
     solidity_module: *std.Build.Module,
     incremental_edit_trace_module: *std.Build.Module,
-    compiler_build_validation_identity: ?[]const u8,
+    compiler_build_validation_identity: CompilerIdentity.BuildIdentity,
 ) void {
     const build_benchmarks_step = b.step(
         "build-benchmarks",
