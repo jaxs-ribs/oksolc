@@ -1137,6 +1137,16 @@ pub fn build(b: *std.Build) !void {
     dependOnValidation(&run_public_api_tests.step, addCompilerBuildIdentityValidation(b, public_api_tests, compiler_build_validation_identity));
     b.step("test-public-api", "Test public Zig API ownership and compiler sessions").dependOn(&run_public_api_tests.step);
 
+    const optimizer_cache_tests = b.addTest(.{
+        .name = "optimizer-cache-integration",
+        .root_module = standard_json_dispatch_module,
+        .filters = &.{"optimizer cache semantic edits"},
+    });
+    optimizer_cache_tests.stack_size = 32 * 1024 * 1024;
+    const run_optimizer_cache_tests = b.addRunArtifact(optimizer_cache_tests);
+    dependOnValidation(&run_optimizer_cache_tests.step, addCompilerBuildIdentityValidation(b, optimizer_cache_tests, compiler_build_validation_identity));
+    b.step("test-optimizer-caches", "Test optimizer caches through incremental edits and full solc outputs").dependOn(&run_optimizer_cache_tests.step);
+
     const ownership_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/ownership_tests.zig"),
@@ -1530,6 +1540,26 @@ fn addBenchmarks(
     if (benchmarkGuard(b, build_benchmarks_step, target, optimize, 1)) {
         build_benchmarks_step.dependOn(&cli.step);
         dependOnValidation(build_benchmarks_step, cli_identity_validation);
+    }
+    const cache_probe_step = b.step("benchmark-optimizer-caches", "Compare single-sample cached and uncached CSE and nearly finished stack layouts");
+    if (benchmarkGuard(b, cache_probe_step, target, optimize, 1)) {
+        const cache_probe = b.addExecutable(.{
+            .name = "optimizer-cache-probe",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("test/benchmarks/optimizer_caches.zig"),
+                .target = target,
+                .optimize = optimize,
+                .link_libc = true,
+                .imports = &.{.{ .name = "solidity", .module = solidity_module }},
+            }),
+        });
+        const validation = addCompilerBuildIdentityValidation(b, cache_probe, compiler_build_validation_identity);
+        build_benchmarks_step.dependOn(&cache_probe.step);
+        dependOnValidation(build_benchmarks_step, validation);
+        const run = b.addRunArtifact(cache_probe);
+        run.has_side_effects = true;
+        dependOnValidation(&run.step, validation);
+        cache_probe_step.dependOn(&run.step);
     }
     const benchmark_local_step = b.step(
         "benchmark-local",

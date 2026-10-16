@@ -391,6 +391,23 @@ zig build fuzz --fuzz=10K -Dadapter-fuzz-runs=10000 -j2
 Run benchmarks on an otherwise idle machine with a native ReleaseFast build.
 Reports are written under `build/benchmarks`.
 
+The focused optimizer-cache checks and performance probes are available with:
+
+```sh
+zig build test-optimizer-caches -Doptimize=Debug
+zig build benchmark-optimizer-caches -Doptimize=ReleaseFast
+```
+
+The probe takes one sample per case with no warmups. It compares the cached CSE
+path with a specialization that removes the complete cache path, using identical
+inputs and checking every resulting item and change counter. Cases cover unique
+chunks, small functions, one round, repeated chunks, and both admission limits.
+Lookup clocks and counters are enabled only for tests and this probe; its timings
+include that instrumentation. Whole-compiler timings should use normal builds.
+The reported allocation bytes include retained container capacity but exclude
+allocator metadata and bucket overhead. The default 8 MiB limit covers retained
+item and verbatim payload, with a separate 2,048-entry limit.
+
 To compile the CLI and benchmark executables together before timing, use
 `zig build build-benchmarks -Doptimize=ReleaseFast`. Zig schedules independent
 builds across the available cores; use `-jN` to set a concurrency limit.

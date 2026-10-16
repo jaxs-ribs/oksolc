@@ -558,7 +558,14 @@ pub const Assembly = struct {
         return self.tag_replacements.?.items;
     }
 
-    fn optimiseCSE(self: *Assembly, iteration_count: *u32, scratch_backing_allocator: ?std.mem.Allocator, cache: ?*CSEChunkCache.Cache) AssemblyError!void {
+    /// Run one CSE round. Null specializes away the entire chunk-cache path,
+    /// retaining the original algorithm for differential tests and benchmarks.
+    pub fn optimiseCSE(self: *Assembly, iteration_count: *u32, scratch_backing_allocator: ?std.mem.Allocator, cache: ?*CSEChunkCache.Cache) AssemblyError!void {
+        if (cache) |storage| return self.optimiseCSEImpl(true, iteration_count, scratch_backing_allocator, storage);
+        return self.optimiseCSEImpl(false, iteration_count, scratch_backing_allocator, undefined);
+    }
+
+    fn optimiseCSEImpl(self: *Assembly, comptime cache_enabled: bool, iteration_count: *u32, scratch_backing_allocator: ?std.mem.Allocator, cache: *CSEChunkCache.Cache) AssemblyError!void {
         var scratch_arena = if (scratch_backing_allocator) |backing|
             std.heap.ArenaAllocator.init(backing)
         else
@@ -582,13 +589,13 @@ pub const Assembly = struct {
                 if (!arena.reset(.{ .retain_with_limit = 8 * 1024 * 1024 }))
                     _ = arena.reset(.free_all);
             };
-            const query: ?CSEChunkCache.Request = if (cache) |storage| query: {
-                if (!storage.isActive()) break :query null;
+            const query: ?CSEChunkCache.Request = if (cache_enabled) query: {
+                if (!cache.isActive()) break :query null;
                 const tail = self.assembly_items.items[index..];
                 const length = CommonSubexpressionEliminator.CommonSubexpressionEliminator.chunkLength(tail, uses_msize);
-                break :query storage.request(tail[0..length], self.evm_version, uses_msize);
+                break :query cache.request(tail[0..length], self.evm_version, uses_msize);
             } else null;
-            if (query) |request| if (cache.?.lookup(request)) |entry| {
+            if (query) |request| if (cache.lookup(request)) |entry| {
                 const selected = if (entry.outcome == .replacement) entry.output else request.input;
                 if (entry.outcome == .replacement) iteration_count.* += 1;
                 for (selected) |*item| try appendClone(self.allocator, &optimized, item);
@@ -612,7 +619,7 @@ pub const Assembly = struct {
                 error.StackTooDeep, error.ItemNotAvailable => {
                     if (query) |request| {
                         std.debug.assert(consumed == request.input.len);
-                        cache.?.recordBestEffort(request, &.{}, if (err == error.StackTooDeep) .stack_too_deep else .item_not_available);
+                        cache.recordBestEffort(request, &.{}, if (err == error.StackTooDeep) .stack_too_deep else .item_not_available);
                     }
                     for (self.assembly_items.items[index .. index + consumed]) |*item|
                         try appendClone(self.allocator, &optimized, item);
@@ -625,7 +632,7 @@ pub const Assembly = struct {
             const changed = chunk.items.len < consumed;
             if (query) |request| {
                 std.debug.assert(consumed == request.input.len);
-                cache.?.recordBestEffort(request, if (changed) chunk.items else &.{}, if (changed) .replacement else .unchanged);
+                cache.recordBestEffort(request, if (changed) chunk.items else &.{}, if (changed) .replacement else .unchanged);
             }
             if (chunk.items.len < consumed) {
                 iteration_count.* += 1;
@@ -2539,6 +2546,34 @@ test "assembly CSE scratch preserves fallback before subsequent chunks" {
     // second owner. Successful optimization must keep its exact instructions.
     const prefix = try allocator.dupe(AssemblyItem, reference.itemsConst()[0..fallback_len]);
     defer allocator.free(prefix);
+    var replay_cache = CSEChunkCache.Cache.init(allocator);
+    defer replay_cache.deinit();
+    for (0..2) |pass| {
+        var plain = try Check.make(allocator);
+        defer plain.deinit();
+        var cached = try Check.make(allocator);
+        defer cached.deinit();
+        var plain_changes: u32 = 0;
+        var cached_changes: u32 = 0;
+        const hits_before = replay_cache.hits;
+        try plain.optimiseCSE(&plain_changes, allocator, null);
+        try cached.optimiseCSE(&cached_changes, allocator, &replay_cache);
+        try std.testing.expectEqual(plain_changes, cached_changes);
+        try std.testing.expect(CSEChunkCache.equalItems(plain.itemsConst(), cached.itemsConst()));
+        if (pass != 0) try std.testing.expect(replay_cache.hits > hits_before);
+        const entry = replay_cache.lookup(replay_cache.request(prefix, .current(), true)).?;
+        try std.testing.expectEqual(CSEChunkCache.Outcome.stack_too_deep, entry.outcome);
+    }
+    var rejecting_cache_allocator = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
+    var refusing_cache = CSEChunkCache.Cache.init(rejecting_cache_allocator.allocator());
+    defer refusing_cache.deinit();
+    var fallback = try Check.make(allocator);
+    defer fallback.deinit();
+    var changes: u32 = 0;
+    try fallback.optimiseCSE(&changes, allocator, &refusing_cache);
+    try std.testing.expect(rejecting_cache_allocator.has_induced_failure);
+    try std.testing.expect(!refusing_cache.admissions_enabled);
+    try std.testing.expect(CSEChunkCache.equalItems(prefix, fallback.itemsConst()[0..fallback_len]));
     try reference.optimise(.{ .run_cse = true });
     try std.testing.expectEqualDeep(prefix, reference.itemsConst()[0..fallback_len]);
     const expected = (try reference.assemble()).bytecode.items;

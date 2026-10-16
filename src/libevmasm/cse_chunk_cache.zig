@@ -9,6 +9,7 @@ const std = @import("std");
 const Item = @import("assembly_item.zig").AssemblyItem;
 const EVMVersion = @import("../liblangutil/evm_version.zig").EVMVersion;
 const builtin = @import("builtin");
+const metrics_enabled = builtin.is_test or if (@hasDecl(@import("root"), "optimizer_cache_metrics")) @import("root").optimizer_cache_metrics else false;
 
 pub const Outcome = enum { unchanged, replacement, stack_too_deep, item_not_available };
 pub const Request = struct {
@@ -32,11 +33,17 @@ pub const Cache = struct {
     entries: std.ArrayList(Entry) = .empty,
     min_items: usize = 16,
     max_entries: usize = 2048,
+    /// Retained item/verbatim payload only; container capacity and allocator
+    /// metadata are additional storage, bounded separately by max_entries.
     max_payload_bytes: usize = 8 * 1024 * 1024,
     payload_bytes: usize = 0,
     admissions_enabled: bool = true,
-    hits: if (builtin.is_test) usize else u0 = 0,
-    replacement_hits: if (builtin.is_test) usize else u0 = 0,
+    hits: if (metrics_enabled) usize else u0 = 0,
+    replacement_hits: if (metrics_enabled) usize else u0 = 0,
+    lookups: if (metrics_enabled) usize else u0 = 0,
+    copied_bytes: if (metrics_enabled) usize else u0 = 0,
+    lookup_nanoseconds: if (metrics_enabled) u64 else u0 = 0,
+    metrics_io: if (metrics_enabled) ?std.Io else void = if (metrics_enabled) null else {},
     hash_mask: if (builtin.is_test) u64 else u0 = if (builtin.is_test) std.math.maxInt(u64) else 0,
 
     pub fn init(allocator: std.mem.Allocator) Cache {
@@ -74,13 +81,18 @@ pub const Cache = struct {
 
     /// The returned view lasts until the next insertion or cache destruction.
     pub fn lookup(self: *Cache, query: Request) ?*const Entry {
+        const start = if (metrics_enabled) if (self.metrics_io) |io| std.Io.Clock.awake.now(io) else null else null;
+        defer if (metrics_enabled) if (start) |timestamp| {
+            self.lookup_nanoseconds +|= @intCast(timestamp.durationTo(std.Io.Clock.awake.now(self.metrics_io.?)).nanoseconds);
+        };
+        if (metrics_enabled) self.lookups += 1;
         const input = query.input;
         if (input.len < self.min_items) return null;
         var index = self.heads.get(query.hash);
         while (index) |current| {
             const entry = &self.entries.items[current];
             if (entry.version.version == query.version.version and entry.msize == query.msize and equalItems(entry.input, input)) {
-                if (builtin.is_test) {
+                if (metrics_enabled) {
                     self.hits += 1;
                     if (entry.outcome == .replacement) self.replacement_hits += 1;
                 }
@@ -115,6 +127,7 @@ pub const Cache = struct {
         });
         head.value_ptr.* = index;
         self.payload_bytes += bytes;
+        if (metrics_enabled) self.copied_bytes += bytes;
     }
 
     fn key(self: *const Cache, input: []const Item, version: EVMVersion, msize: bool) u64 {
@@ -263,4 +276,77 @@ test "assembly CSE cache owns verbatim data and unwinds allocation failures" {
     };
     try Exercise.run(std.testing.allocator);
     try std.testing.checkAllAllocationFailures(std.testing.allocator, Exercise.run, .{});
+}
+
+test "assembly CSE cache preserves collision chains and prior entries after failed growth" {
+    const Exercise = struct {
+        fn verify(cache: *Cache, count: usize) !void {
+            for (0..count) |index| {
+                const input = [_]Item{ Item.initPush(index, .{}), Item.initInstruction(.POP, .{}) };
+                const entry = cache.lookup(cache.request(&input, .current(), false)).?;
+                try std.testing.expectEqual(Outcome.replacement, entry.outcome);
+                try std.testing.expectEqual(@as(u256, index + 1), entry.output[0].data_value);
+            }
+        }
+
+        fn run(allocator: std.mem.Allocator, collisions: bool) !void {
+            var cache = Cache.init(allocator);
+            defer cache.deinit();
+            cache.min_items = 1;
+            if (collisions) cache.hash_mask = 0;
+            for (0..24) |index| {
+                const input = [_]Item{ Item.initPush(index, .{}), Item.initInstruction(.POP, .{}) };
+                const output = [_]Item{Item.initPush(index + 1, .{})};
+                const query = cache.request(&input, .current(), false);
+                const bytes_before = cache.payload_bytes;
+                cache.record(query, &output, .replacement) catch |err| {
+                    try std.testing.expectEqual(index, cache.entries.items.len);
+                    try std.testing.expectEqual(bytes_before, cache.payload_bytes);
+                    try verify(&cache, index);
+                    // The production policy must also preserve existing hits
+                    // when the same storage failure disables future admissions.
+                    cache.recordBestEffort(query, &output, .replacement);
+                    try std.testing.expect(!cache.admissions_enabled);
+                    try verify(&cache, index);
+                    return err;
+                };
+                try verify(&cache, index + 1);
+            }
+        }
+    };
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    for ([_]bool{ false, true }) |collisions|
+        try std.testing.checkAllAllocationFailures(deterministic.allocator(), Exercise.run, .{collisions});
+}
+
+test "assembly CSE cache admits exact payload and entry boundaries" {
+    var cache = Cache.init(std.testing.allocator);
+    defer cache.deinit();
+    cache.min_items = 2;
+    cache.max_entries = 1;
+    const first = [_]Item{ Item.initPush(1, .{}), Item.initInstruction(.POP, .{}) };
+    const second = [_]Item{ Item.initPush(2, .{}), Item.initInstruction(.POP, .{}) };
+    const output = [_]Item{Item.initInstruction(.STOP, .{})};
+    const bytes = payloadSize(&first) + payloadSize(&output);
+    cache.max_payload_bytes = bytes - 1;
+    try cache.record(cache.request(&first, .current(), false), &output, .replacement);
+    try std.testing.expectEqual(@as(usize, 0), cache.entries.items.len);
+    cache.max_payload_bytes = bytes;
+    try cache.record(cache.request(first[0..1], .current(), false), &.{}, .unchanged);
+    try std.testing.expectEqual(@as(usize, 0), cache.entries.items.len);
+    try cache.record(cache.request(&first, .current(), false), &output, .replacement);
+    try std.testing.expectEqual(bytes, cache.payload_bytes);
+    cache.max_entries = 2;
+    try cache.record(cache.request(&second, .current(), false), &output, .replacement);
+    try std.testing.expectEqual(@as(usize, 1), cache.entries.items.len);
+    cache.max_payload_bytes = 2 * bytes;
+    cache.max_entries = 1;
+    try cache.record(cache.request(&second, .current(), false), &output, .replacement);
+    try std.testing.expectEqual(@as(usize, 1), cache.entries.items.len);
+    cache.max_entries = 2;
+    try cache.record(cache.request(&second, .current(), false), &output, .replacement);
+    try std.testing.expectEqual(@as(usize, 2), cache.entries.items.len);
+    try std.testing.expectEqual(2 * bytes, cache.payload_bytes);
+    try std.testing.expect(cache.lookup(cache.request(&first, .current(), false)) != null);
+    try std.testing.expect(cache.lookup(cache.request(&second, .current(), false)) != null);
 }

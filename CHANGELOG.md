@@ -20,6 +20,7 @@ Solidity compatibility target: `0.8.36`.
 
 - Index function-flow lookups and memoize semantic dependency-mask updates.
 - Cache stack-slot multiplicities while constructing EVM stack layouts.
+  Defer setup for cheap shuffles and hash slot identities in large tables.
 - Reuse exact assembly common-subexpression chunks across optimization rounds
   with bounded retained storage.
 
@@ -33,6 +34,8 @@ Solidity compatibility target: `0.8.36`.
   passthrough arguments in nested lint builds.
 - Keep allocation-failure tests deterministic across platforms with Zig 0.17's
   allocator.
+- Preserve dependency-mask initialization retry state and continue compilation
+  when optional optimizer-cache storage runs out of memory.
 
 ## 0.1.6 - 2026-10-12
 
