@@ -93,6 +93,15 @@ pub const Repository = struct {
         return self.insertOwned(owned, string_hash);
     }
 
+    pub fn generatedHandle(
+        self: *Repository,
+        base: Handle,
+        counter: usize,
+    ) std.mem.Allocator.Error!Handle {
+        const owned = try self.allocator.print("{s}_{d}", .{ handleString(base), counter });
+        return self.stringToHandleOwnedHashed(owned, hash(owned));
+    }
+
     fn insertOwned(
         self: *Repository,
         owned: []u8,

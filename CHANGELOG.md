@@ -36,6 +36,8 @@ Solidity compatibility target: `0.8.36`.
   allocator.
 - Preserve dependency-mask initialization retry state and continue compilation
   when optional optimizer-cache storage runs out of memory.
+- Retain the public Zig `libyul.yul_string.Repository.generatedHandle` method for
+  callers managing their own string repositories.
 
 ## 0.1.6 - 2026-10-12
 
