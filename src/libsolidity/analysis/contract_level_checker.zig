@@ -329,8 +329,7 @@ pub const ContractLevelChecker = struct {
                     "Libraries cannot have receive ether functions.",
                 );
             if (value.state_mutability != .Payable) {
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Receive ether function must be payable, but is \"{s}\".",
                     .{@import("../ast/ast_enums.zig").stateMutabilityToString(value.state_mutability)},
                 );
@@ -454,8 +453,7 @@ pub const ContractLevelChecker = struct {
             for (unresolved.items) |missing|
                 try secondary.append(self.allocator, "Missing implementation: ", missing.location);
             const canonical = try annotation.type_declaration.canonical_name.get();
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Contract \"{s}\" should be marked as abstract.",
                 .{canonical.*},
             );
@@ -561,8 +559,7 @@ pub const ContractLevelChecker = struct {
                         constructor.payload.function_definition.callable.parameters.location,
                     );
                     const canonical = try annotation.type_declaration.canonical_name.get();
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "No arguments passed to the base constructor. Specify the arguments or mark \"{s}\" as abstract.",
                         .{canonical.*},
                     );
@@ -727,8 +724,7 @@ pub const ContractLevelChecker = struct {
                         function.function_type.payload.Function,
                     );
                     defer self.allocator.free(signature);
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "Function signature hash collision for {s}",
                         .{signature},
                     );
@@ -783,8 +779,7 @@ pub const ContractLevelChecker = struct {
                 );
         }
         if (secondary.infos.items.len == 0) return;
-        const message = try std.fmt.allocPrint(
-            self.allocator,
+        const message = try self.allocator.print(
             "Contract \"{s}\" does not use ABI coder v2 but wants to inherit from a contract which uses types that require it. Use \"pragma abicoder v2;\" for the inheriting contract as well to enable the feature.",
             .{contract.payload.contract_definition.declaration.name},
         );

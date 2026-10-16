@@ -42,7 +42,7 @@ pub fn ASTCompareByID(comptime T: type) type {
 test "AST ID comparison supports node and transparent integer lookups" {
     const Node = struct {
         value: i64,
-        fn id(self: *const @This()) i64 {
+        pub fn id(self: *const @This()) i64 {
             return self.value;
         }
     };

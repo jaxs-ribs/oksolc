@@ -31,7 +31,7 @@ pub const CompilerSessionStatistics = incremental.SessionStatistics;
 
 pub const baseline = struct {
     pub const version = libsolidity.@"interface/version".VersionNumber;
-    pub const zig_version = "0.16.0";
+    pub const zig_version = @import("builtin").zig_version_string;
 };
 
 test {
@@ -57,4 +57,23 @@ test "public CompilerSession retains exact Standard JSON responses" {
     const statistics = session.statistics();
     try std.testing.expectEqual(@as(u64, 2), statistics.requests);
     try std.testing.expectEqual(@as(u64, 1), statistics.memory_response_hits);
+}
+
+test "public dependency mask marker exposes explicit collection ownership" {
+    const allocator = std.testing.allocator;
+    var registry = incremental.SourceRegistry.init(allocator);
+    defer registry.deinit();
+    _ = try registry.beginRevision();
+    const importer = (try registry.upsert("A.sol", "")).id;
+    const imported = (try registry.upsert("B.sol", "")).id;
+    _ = try registry.finishRevision();
+    registry.commitRevision();
+    var graph = try incremental.SourceGraph.initAlloc(allocator, &registry, &.{.{ .importer = importer, .imported = imported }});
+    defer graph.deinit();
+    const revision = try incremental.SemanticRevision.create(allocator, @fromBackingInt(@as(u64, 1)));
+    defer revision.destroy();
+    var marker: incremental.DependencyMaskMarker = try revision.initializeDependencyMasks(&graph);
+    defer marker.deinit();
+    marker.mark(importer, imported);
+    try std.testing.expectEqual(incremental.semantic_fingerprint.CategoryMask.all, revision.dependencyMasks()[0].categories);
 }

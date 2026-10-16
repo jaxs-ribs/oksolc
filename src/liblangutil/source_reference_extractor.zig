@@ -101,8 +101,7 @@ pub fn extractReference(
             return error.InvalidSourceLocation;
         }
         const right_start = source_end - 35;
-        const replacement = try std.fmt.allocPrint(
-            allocator,
+        const replacement = try allocator.print(
             "{s} ... {s}",
             .{ line[0..left_end], line[right_start..] },
         );

@@ -42,7 +42,7 @@ fn classify(token: Token) Kind {
         .CommentLiteral => .comment,
         .Identifier => .identifier,
         .Illegal => .invalid,
-        else => if (@intFromEnum(token) >= @intFromEnum(Token.Delete)) .keyword else .punctuation,
+        else => if (@backingInt(token) >= @backingInt(Token.Delete)) .keyword else .punctuation,
     };
 }
 

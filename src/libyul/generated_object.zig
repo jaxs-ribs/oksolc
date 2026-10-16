@@ -167,7 +167,7 @@ test "Yul AST generated object rendering retains bytes beyond input owners" {
                 .source_name = object.debug_data.?.source_names.?.entries.items[0].name,
             } });
             object.setCode(AST.AST.init(arena, selected_dialect, try generator.statements("let x := 1 pop(x)", .{})), null);
-            try object.addSubObject(.{ .data = try Objects.Data.init(arena, ".metadata", &([_]u8{0xaa} ** 256)) });
+            try object.addSubObject(.{ .data = try Objects.Data.init(arena, ".metadata", &@as([256]u8, @splat(0xaa))) });
             owner.root = object;
             return owner;
         }
@@ -195,7 +195,7 @@ test "Yul AST generated object rendering retains bytes beyond input owners" {
     for ([_]DebugInfoSelection{ .noneValue(), .defaultValue(), .allValue(true) }) |selection| {
         const body = try reference.root.?.formatAlloc(allocator, selection, provider.provider());
         defer allocator.free(body);
-        const expected = try std.fmt.allocPrint(allocator, "{s}{s}\n", .{ if (selection.ethdebug) "/// ethdebug: enabled\n" else "", body });
+        const expected = try allocator.print("{s}{s}\n", .{ if (selection.ethdebug) "/// ethdebug: enabled\n" else "", body });
         defer allocator.free(expected);
         for ([_]bool{ false, true }) |fail_output|
             try std.testing.checkAllAllocationFailures(allocator, Fixture.check, .{ dialect, selection, expected, fail_output });

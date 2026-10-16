@@ -1275,8 +1275,7 @@ pub const IRGeneratorForStatements = struct {
                     contract,
                 );
                 defer self.allocator.free(deployed_object);
-                break :path try std.fmt.allocPrint(
-                    self.allocator,
+                break :path try self.allocator.print(
                     "{s}.{s}",
                     .{ creation_object, deployed_object },
                 );
@@ -3639,8 +3638,8 @@ pub const IRGeneratorForStatements = struct {
         }
         const check_extcodesize = encoded_head_size == 0 or
             !self.context.evm_version.supportsReturndata() or
-            @intFromEnum(self.context.revert_strings) >=
-                @intFromEnum(DebugSettings.RevertStrings.Debug);
+            @backingInt(self.context.revert_strings) >=
+                @backingInt(DebugSettings.RevertStrings.Debug);
         const revert_no_code = try self.utils.revertReasonIfDebugFunction(
             "Target contract does not contain code",
         );
@@ -3688,8 +3687,8 @@ pub const IRGeneratorForStatements = struct {
         const return_data_size = try self.context.newYulVariable();
         defer self.allocator.free(return_data_size);
         const use_static_call =
-            @intFromEnum(function_type.state_mutability) <=
-            @intFromEnum(Types.StateMutability.View) and
+            @backingInt(function_type.state_mutability) <=
+            @backingInt(Types.StateMutability.View) and
             self.context.evm_version.hasStaticCall();
         const opcode = if (function_type.kind == .DelegateCall)
             "delegatecall"
@@ -4090,7 +4089,7 @@ pub const IRGeneratorForStatements = struct {
             );
             const expression: YulAST.Expression = .{ .literal = .{ .kind = .Number, .value = .{
                 .numeric_value = digest.toInteger(),
-                .string_value = try std.fmt.allocPrint(self.output.generator.allocator(), "0x{s}", .{&digest.hex()}),
+                .string_value = try self.output.generator.allocator().print("0x{s}", .{&digest.hex()}),
             } } };
             try self.defineExpression(&result, expression);
             return result;
@@ -5738,7 +5737,7 @@ pub const IRGeneratorForStatements = struct {
 
     fn numericLabel(self: *IRGeneratorForStatements, value: anytype) GeneratorError!YulAST.Expression {
         return .{ .literal = .{ .kind = .String, .value = .{
-            .string_value = try std.fmt.allocPrint(self.output.generator.allocator(), "{d}", .{value}),
+            .string_value = try self.output.generator.allocator().print("{d}", .{value}),
         } } };
     }
 
@@ -5876,7 +5875,7 @@ const InlineAssemblyCopyContext = struct {
     ) anyerror!YulName {
         const self: *InlineAssemblyCopyContext = @ptrCast(@alignCast(opaque_context.?));
         const original = try name.str();
-        const prefixed = try std.fmt.allocPrint(self.allocator, "usr${s}", .{original});
+        const prefixed = try self.allocator.print("usr${s}", .{original});
         defer self.allocator.free(prefixed);
         return YulName.init(prefixed);
     }
@@ -5900,7 +5899,7 @@ const InlineAssemblyCopyContext = struct {
             .numeric_value = value,
             .string_value = switch (mode) {
                 .compact => try Numeric.toCompactHexWithPrefixAlloc(u256, self.allocator, value),
-                .decimal => try std.fmt.allocPrint(self.allocator, "{d}", .{value}),
+                .decimal => try self.allocator.print("{d}", .{value}),
                 .short => try Numeric.formatNumberU256Alloc(self.allocator, value),
             },
         } } };

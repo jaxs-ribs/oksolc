@@ -22,8 +22,7 @@ pub const RevertStrings = enum(c_int) {
     }
 
     pub fn fromString(input: []const u8) ?RevertStrings {
-        inline for (std.meta.fields(RevertStrings)) |field| {
-            const value: RevertStrings = @enumFromInt(field.value);
+        inline for (std.enums.values(RevertStrings)) |value| {
             if (std.mem.eql(u8, input, value.toString())) return value;
         }
         return null;
@@ -31,8 +30,8 @@ pub const RevertStrings = enum(c_int) {
 };
 
 test "revert-string settings retain ABI order and exact spellings" {
-    try std.testing.expectEqual(@as(c_int, 0), @intFromEnum(RevertStrings.Default));
-    try std.testing.expectEqual(@as(c_int, 3), @intFromEnum(RevertStrings.VerboseDebug));
+    try std.testing.expectEqual(@as(c_int, 0), @backingInt(RevertStrings.Default));
+    try std.testing.expectEqual(@as(c_int, 3), @backingInt(RevertStrings.VerboseDebug));
     try std.testing.expectEqualStrings("verboseDebug", RevertStrings.VerboseDebug.toString());
     try std.testing.expectEqual(RevertStrings.Strip, RevertStrings.fromString("strip").?);
     try std.testing.expect(RevertStrings.fromString("verbose-debug") == null);

@@ -7,7 +7,7 @@
 
 const std = @import("std");
 const solidity = @import("solidity");
-const authentication_key = [_]u8{0x5a} ** 32;
+const authentication_key: [32]u8 = @splat(0x5a);
 
 pub fn main(init: std.process.Init) !void {
     const arguments = try init.minimal.args.toSlice(init.arena.allocator());

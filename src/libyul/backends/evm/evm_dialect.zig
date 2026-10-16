@@ -337,8 +337,7 @@ pub const EVMDialect = struct {
                 InstructionModule.instructionInfo(instruction, self.evm_version).name,
             );
             defer self.allocator.free(instruction_name);
-            const description = try std.fmt.allocPrint(
-                self.allocator,
+            const description = try self.allocator.print(
                 "The \"{s}\" instruction is {s} VMs (you are currently compiling for \"{s}\").",
                 .{ instruction_name, value.kind, self.evm_version.name() },
             );
@@ -359,15 +358,15 @@ pub const EVMDialect = struct {
 
     fn createReservedIdentifiers(self: *EVMDialect) !void {
         @setEvalBranchQuota(10_000);
-        inline for (std.meta.fields(Instruction)) |field| {
-            const instruction: Instruction = @enumFromInt(field.value);
+        inline for (std.enums.values(Instruction)) |instruction| {
+            const instruction_name = @tagName(instruction);
             const name = comptime blk: {
-                var buffer: [field.name.len]u8 = undefined;
-                _ = std.ascii.lowerString(&buffer, field.name);
+                var buffer: [instruction_name.len]u8 = undefined;
+                _ = std.ascii.lowerString(&buffer, instruction_name);
                 const lowercase = buffer;
                 break :blk &lowercase;
             };
-            if (!reservedInstructionException(instruction, field.name, self.evm_version))
+            if (!reservedInstructionException(instruction, instruction_name, self.evm_version))
                 try self.reserved.put(name, {});
         }
         try self.reserved.put("difficulty", {});
@@ -446,7 +445,7 @@ fn builtinAvailable(entry: *const Entry, evm_version: EVMVersion, object_access:
                 !InstructionModule.isSwapInstruction(instruction) and
                 !InstructionModule.isDupInstruction(instruction) and
                 !InstructionModule.isPushInstruction(instruction) and
-                evm_version.hasOpcode(@intFromEnum(instruction)) and
+                evm_version.hasOpcode(@backingInt(instruction)) and
                 !alias_unavailable;
         }
     }
@@ -538,7 +537,7 @@ const dialect_vtable: AST.DialectVTable = .{
     .hash_function_handle = hashFunctionCallback,
 };
 
-const version_count = std.meta.fields(Version).len;
+const version_count = @typeInfo(Version).@"enum".field_names.len;
 var cache_mutex: std.Io.Mutex = .init;
 var inline_dialect_cache: [version_count]?*EVMDialect = @splat(null);
 var object_dialect_cache: [version_count]?*EVMDialect = @splat(null);
@@ -569,7 +568,7 @@ fn cachedDialect(
         try (YulString.ResetCallback{ .function = clearDialectCaches }).register();
         reset_callback_registered = true;
     }
-    const index: usize = @intCast(@intFromEnum(evm_version.version));
+    const index: usize = @intCast(@backingInt(evm_version.version));
     if (cache[index] == null) {
         const dialect = try std.heap.page_allocator.create(EVMDialect); // zlinter-disable-current-line no_hidden_allocations - process-wide dialect cache has process-wide allocation lifetime
         errdefer std.heap.page_allocator.destroy(dialect); // zlinter-disable-current-line no_hidden_allocations - process-wide dialect cache has process-wide allocation lifetime
@@ -597,7 +596,7 @@ fn clearDialectCache(cache: *[version_count]?*EVMDialect) void {
 }
 
 fn mutexLock(mutex: *std.Io.Mutex) void {
-    std.Io.Threaded.mutexLock(mutex);
+    std.Io.Threaded.mutexLockUncancelable(mutex);
 }
 
 fn mutexUnlock(mutex: *std.Io.Mutex) void {

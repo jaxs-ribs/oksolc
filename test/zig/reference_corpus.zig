@@ -227,11 +227,10 @@ test "full frozen corpus is byte-exact through a memory compiler session" {
 }
 
 test "full frozen corpus is byte-exact after a persistent session restart" {
-    const authentication_key = [_]u8{0x72} ** 32;
+    const authentication_key: [32]u8 = @splat(0x72);
     var temporary = std.testing.tmpDir(.{});
     defer temporary.cleanup();
-    const path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/reference-corpus.sqlite",
         .{&temporary.sub_path},
     );

@@ -110,7 +110,7 @@ fn parseFailureName(
     allocator: std.mem.Allocator,
     err: anyerror,
 ) std.mem.Allocator.Error!StrictParseResult {
-    const message = try std.fmt.allocPrint(allocator, "JSON parse error: {s}", .{@errorName(err)});
+    const message = try allocator.print("JSON parse error: {s}", .{@errorName(err)});
     return .{ .failure = .{ .allocator = allocator, .message = message } };
 }
 

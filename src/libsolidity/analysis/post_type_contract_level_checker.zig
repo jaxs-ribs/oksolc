@@ -130,8 +130,7 @@ pub const PostTypeContractLevelChecker = struct {
                     "This error has a different signature but the same hash: ",
                     first_other.?.location,
                 );
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Error signature hash collision for {s}",
                     .{signature},
                 );
@@ -189,8 +188,7 @@ pub const PostTypeContractLevelChecker = struct {
                     " (the type is 'address' instead)",
                 ),
                 .FixedBytes => |fixed| {
-                    const suffix = try std.fmt.allocPrint(
-                        self.allocator,
+                    const suffix = try self.allocator.print(
                         " (the type is 'bytes{d}' instead)",
                         .{fixed.bytes},
                     );
@@ -204,8 +202,7 @@ pub const PostTypeContractLevelChecker = struct {
                         true,
                     );
                     defer self.allocator.free(rendered);
-                    const suffix = try std.fmt.allocPrint(
-                        self.allocator,
+                    const suffix = try self.allocator.print(
                         " (the type is '{s}' instead)",
                         .{rendered},
                     );
@@ -275,8 +272,7 @@ pub const PostTypeContractLevelChecker = struct {
                 error.InvalidBase => unreachable,
             };
             defer self.allocator.free(rendered);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "The base slot of the storage layout evaluates to {s}, which is outside the range of type uint256.",
                 .{rendered},
             );
@@ -293,8 +289,7 @@ pub const PostTypeContractLevelChecker = struct {
                 expression_type,
             );
             defer self.allocator.free(rendered);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Base slot expression of type '{s}' is not convertible to uint256.",
                 .{rendered},
             );
@@ -348,8 +343,7 @@ pub const PostTypeContractLevelChecker = struct {
                 error.InvalidBase => unreachable,
             };
             defer self.allocator.free(rendered);
-            const secondary_message = try std.fmt.allocPrint(
-                self.allocator,
+            const secondary_message = try self.allocator.print(
                 "There are {s} storage slots between this state variable and the end of storage.",
                 .{rendered},
             );

@@ -331,8 +331,7 @@ pub const SemVerMatchExpressionParser = struct {
                 u8,
                 "Expected version number but reached end of pragma.",
             ),
-            error.InvalidVersionStart => std.fmt.allocPrint(
-                allocator,
+            error.InvalidVersionStart => allocator.print(
                 "Expected the start of a version number but instead found character '{c}'. Version number is invalid or the pragma is not terminated with a semicolon.",
                 .{self.failure_character orelse '?'},
             ),

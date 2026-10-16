@@ -80,7 +80,7 @@ pub const Status = struct {
 test "live progress owns borrowed names and keeps snapshot identity across stages" {
     var status: Status = .{ .io = std.testing.io, .source_path = "src" };
     status.published(7, false);
-    var name = [_]u8{'x'} ** 520;
+    var name: [520]u8 = @splat('x');
     status.reporter().report(.{ .stage = .generating_contracts, .completed_items = 2, .estimated_total_items = 8, .item_name = &name });
     @memset(&name, 'y');
     const snapshot = status.get();

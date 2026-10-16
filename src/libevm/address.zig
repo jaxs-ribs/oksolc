@@ -25,7 +25,7 @@ pub fn create(creator: u160, nonce: u64) u160 {
     } else len: {
         var bytes: [8]u8 = undefined;
         std.mem.writeInt(u64, &bytes, nonce, .big);
-        const count: usize = (64 - @as(usize, @clz(nonce)) + 7) / 8;
+        const count: usize = @divCeil(64 - @as(usize, @clz(nonce)), 8);
         preimage[22] = 0x80 + @as(u8, @intCast(count));
         @memcpy(preimage[23..][0..count], bytes[8 - count ..]);
         break :len 23 + count;

@@ -12,7 +12,7 @@ pub const Effect = enum(c_int) {
     write,
 
     pub fn combine(self: Effect, other: Effect) Effect {
-        return @enumFromInt(@max(@intFromEnum(self), @intFromEnum(other)));
+        return @fromBackingInt(@intCast(@max(@backingInt(self), @backingInt(other))));
     }
 };
 

@@ -155,7 +155,7 @@ pub fn formatNumberU256Alloc(
     if (value > 0x1000000) {
         return toCompactHexWithPrefixAlloc(u256, allocator, value);
     }
-    return std.fmt.allocPrint(allocator, "{d}", .{value});
+    return allocator.print("{d}", .{value});
 }
 
 pub const FormatBigIntError = std.mem.Allocator.Error || error{

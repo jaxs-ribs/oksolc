@@ -484,9 +484,8 @@ pub const OptimizedEVMCodeTransform = struct {
                     self.transform.dialect.dialect(),
                 );
                 defer self.transform.allocator.free(slot_text);
-                break :blk try std.fmt.allocPrint(self.transform.allocator, "Slot {s}", .{slot_text});
-            } else try std.fmt.allocPrint(
-                self.transform.allocator,
+                break :blk try self.transform.allocator.print("Slot {s}", .{slot_text});
+            } else try self.transform.allocator.print(
                 "Variable {s}",
                 .{try deep_name.str()},
             );
@@ -498,9 +497,8 @@ pub const OptimizedEVMCodeTransform = struct {
                     self.transform.dialect.dialect(),
                 );
                 defer self.transform.allocator.free(slot_text);
-                break :blk try std.fmt.allocPrint(self.transform.allocator, "Slot {s}", .{slot_text});
-            } else try std.fmt.allocPrint(
-                self.transform.allocator,
+                break :blk try self.transform.allocator.print("Slot {s}", .{slot_text});
+            } else try self.transform.allocator.print(
                 "Variable {s}",
                 .{try top_name.str()},
             );
@@ -511,8 +509,7 @@ pub const OptimizedEVMCodeTransform = struct {
                 self.transform.dialect.dialect(),
             );
             defer self.transform.allocator.free(stack_text);
-            const message = try std.fmt.allocPrint(
-                self.transform.allocator,
+            const message = try self.transform.allocator.print(
                 "Cannot swap {s} with {s}: too deep in the stack by {d} slots in {s}",
                 .{ deep_description, top_description, deficit, stack_text },
             );
@@ -543,9 +540,8 @@ pub const OptimizedEVMCodeTransform = struct {
                             self.transform.dialect.dialect(),
                         );
                         defer self.transform.allocator.free(slot_text);
-                        break :blk try std.fmt.allocPrint(self.transform.allocator, "Slot {s}", .{slot_text});
-                    } else try std.fmt.allocPrint(
-                        self.transform.allocator,
+                        break :blk try self.transform.allocator.print("Slot {s}", .{slot_text});
+                    } else try self.transform.allocator.print(
                         "Variable {s}",
                         .{try variable_name.str()},
                     );
@@ -556,8 +552,7 @@ pub const OptimizedEVMCodeTransform = struct {
                         self.transform.dialect.dialect(),
                     );
                     defer self.transform.allocator.free(stack_text);
-                    const message = try std.fmt.allocPrint(
-                        self.transform.allocator,
+                    const message = try self.transform.allocator.print(
                         "{s} is {d} too deep in the stack {s}",
                         .{ slot_description, deficit, stack_text },
                     );

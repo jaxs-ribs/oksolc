@@ -1,13 +1,41 @@
 # Changelog
 
-## 0.1.7-dev
+## 0.2.0-dev
 
 Solidity compatibility target: `0.8.36`.
+
+### Changed
+
+- Require Zig 0.17.0 and migrate the compiler and build system to its current
+  standard library and build APIs.
+- Use the pinned official `translate-c` package for C bindings and reuse Zig's
+  configuration cache across unchanged builds.
+- The lower-level Zig `SemanticRevision.initializeDependencyMasks` API now
+  returns an owned `incremental.DependencyMaskMarker`. Replace
+  `revision.markDependencyUsed(graph, importer, referenced)` with
+  `marker.mark(importer, referenced)` and call `marker.deinit()` after collection.
+  See the [Zig API migration example](README.md#zig-api-migration-for-020-dev).
+
+### Performance
+
+- Index function-flow lookups and memoize semantic dependency-mask updates.
+- Cache stack-slot multiplicities while constructing EVM stack layouts.
+  Defer setup for cheap shuffles and hash slot identities in large tables.
+- Reuse exact assembly common-subexpression chunks across optimization rounds
+  with bounded retained storage.
 
 ### Fixed
 
 - Format multiline diagnostic highlights independently of closing-line
   indentation.
+- Refresh compiler identities at build time, reject concurrent edits during
+  header translation or compilation, and recover on unchanged retries.
+- Preserve offline package settings, dependency overrides, and linter
+  passthrough arguments in nested lint builds.
+- Keep allocation-failure tests deterministic across platforms with Zig 0.17's
+  allocator.
+- Preserve dependency-mask initialization retry state and continue compilation
+  when optional optimizer-cache storage runs out of memory.
 
 ## 0.1.6 - 2026-10-12
 

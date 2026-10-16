@@ -118,7 +118,7 @@ pub const AssemblyItem = struct {
         debug_data: DebugData,
     ) AssemblyItem {
         return if (item_type == .Operation)
-            initInstruction(@enumFromInt(@as(u8, @truncate(value))), debug_data)
+            initInstruction(@fromBackingInt(@intCast(@as(u8, @truncate(value)))), debug_data)
         else
             .{
                 .item_type = item_type,
@@ -273,7 +273,7 @@ pub const AssemblyItem = struct {
                 makeOwnedNameAndData(
                     allocator,
                     "PUSH [tag]",
-                    try std.fmt.allocPrint(allocator, "{d}", .{self.data_value}),
+                    try allocator.print("{d}", .{self.data_value}),
                 ),
             .PushSub => makeOwnedNameAndData(allocator, "PUSH [$]", try fullHex256Alloc(allocator, self.data_value)),
             .PushSubSize => makeOwnedNameAndData(allocator, "PUSH #[$]", try fullHex256Alloc(allocator, self.data_value)),
@@ -285,7 +285,7 @@ pub const AssemblyItem = struct {
             .Tag => makeOwnedNameAndData(
                 allocator,
                 "tag",
-                try std.fmt.allocPrint(allocator, "{d}", .{self.data_value}),
+                try allocator.print("{d}", .{self.data_value}),
             ),
             .PushData => makeOwnedNameAndData(allocator, "PUSH data", try uppercaseHexAlloc(allocator, self.data_value)),
             .VerbatimBytecode => makeOwnedNameAndData(
@@ -470,9 +470,9 @@ pub const AssemblyItem = struct {
     }
 
     pub fn lessThan(self: *const AssemblyItem, other: *const AssemblyItem) bool {
-        if (self.item_type != other.item_type) return @intFromEnum(self.item_type) < @intFromEnum(other.item_type);
+        if (self.item_type != other.item_type) return @backingInt(self.item_type) < @backingInt(other.item_type);
         return switch (self.item_type) {
-            .Operation => @intFromEnum(self.instruction_value.?) < @intFromEnum(other.instruction_value.?),
+            .Operation => @backingInt(self.instruction_value.?) < @backingInt(other.instruction_value.?),
             .VerbatimBytecode => compareVerbatim(self.verbatim, other.verbatim),
             else => self.data_value < other.data_value,
         };
@@ -716,7 +716,7 @@ fn makeOwnedNameAndData(
 }
 
 fn uppercaseHexAlloc(allocator: std.mem.Allocator, value: u256) std.mem.Allocator.Error![]u8 {
-    return std.fmt.allocPrint(allocator, "{X}", .{value});
+    return allocator.print("{X}", .{value});
 }
 
 fn fullHex256Alloc(allocator: std.mem.Allocator, value: u256) std.mem.Allocator.Error![]u8 {
@@ -730,7 +730,7 @@ fn appendFormat(
     comptime format: []const u8,
     args: anytype,
 ) std.mem.Allocator.Error!void {
-    const formatted = try std.fmt.allocPrint(allocator, format, args);
+    const formatted = try allocator.print(format, args);
     defer allocator.free(formatted);
     try output.appendSlice(allocator, formatted);
 }

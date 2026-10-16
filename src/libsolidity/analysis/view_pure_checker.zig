@@ -136,8 +136,7 @@ pub const ViewPureChecker = struct {
             body_nonempty and function.kind == .Function and
             !function.callable.marked_virtual)
         {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Function state mutability can be restricted to {s}",
                 .{Enums.stateMutabilityToString(self.best.mutability)},
             );
@@ -458,8 +457,7 @@ pub const ViewPureChecker = struct {
             );
             self.errors = true;
         } else if (mutability == .NonPayable) {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Function cannot be declared as {s} because this expression (potentially) modifies the state.",
                 .{Enums.stateMutabilityToString(declared)},
             );
@@ -500,7 +498,7 @@ pub const ViewPureChecker = struct {
 };
 
 fn mutabilityLess(left: AST.StateMutability, right: AST.StateMutability) bool {
-    return @intFromEnum(left) < @intFromEnum(right);
+    return @backingInt(left) < @backingInt(right);
 }
 
 fn functionMutability(node: *const AST.Node) AST.StateMutability {

@@ -162,8 +162,7 @@ pub const TypeChecker = struct {
                 " Remove parentheses if you do not want to provide arguments here."
             else
                 "";
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Wrong argument count for constructor call: {d} arguments given but expected {d}.{s}",
                 .{ arguments.len, parameters.len, suffix },
             );
@@ -181,8 +180,7 @@ pub const TypeChecker = struct {
             defer self.allocator.free(actual_name);
             const expected_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, expected);
             defer self.allocator.free(expected_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Invalid type for argument in constructor call. Invalid implicit conversion from {s} to {s} requested.",
                 .{ actual_name, expected_name },
             );
@@ -418,8 +416,7 @@ pub const TypeChecker = struct {
                 in_library,
             )) == null) {
                 const base_reason = interfaceTypeFailureReason(parameter_type, in_library);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "{s}{s}",
                     .{
                         base_reason,
@@ -459,8 +456,7 @@ pub const TypeChecker = struct {
                 "Libraries cannot have fallback functions.",
             );
         if (function.state_mutability != .NonPayable and function.state_mutability != .Payable) {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Fallback function must be payable or non-payable, but is \"{s}\".",
                 .{stateMutabilityName(function.state_mutability)},
             );
@@ -515,8 +511,7 @@ pub const TypeChecker = struct {
                     "Non-empty \"returns\" directive for constructor.",
                 );
         if (function.state_mutability != .NonPayable and function.state_mutability != .Payable) {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Constructor must be payable or non-payable, but is \"{s}\".",
                 .{stateMutabilityName(function.state_mutability)},
             );
@@ -634,8 +629,7 @@ pub const TypeChecker = struct {
             return;
         };
         if (arguments.len != expected_parameters.len) {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Wrong argument count for modifier invocation: {d} arguments given but expected {d}.",
                 .{ arguments.len, expected_parameters.len },
             );
@@ -653,8 +647,7 @@ pub const TypeChecker = struct {
             defer self.allocator.free(actual_name);
             const expected_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, expected);
             defer self.allocator.free(expected_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Invalid type for argument in modifier invocation. Invalid implicit conversion from {s} to {s} requested.{s}{s}",
                 .{
                     actual_name,
@@ -701,8 +694,7 @@ pub const TypeChecker = struct {
             const type_ref = (try variableAnnotation(self.tree, parameter)).type_ref orelse
                 return error.InvalidAst;
             if (containsNestedMapping(type_ref, 0)) {
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Type containing a (nested) mapping is not allowed as {s} parameter type.",
                     .{kind},
                 );
@@ -720,8 +712,7 @@ pub const TypeChecker = struct {
                 type_ref,
                 false,
             )) == null) {
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Internal or recursive type is not allowed as {s} parameter type.",
                     .{kind},
                 );
@@ -824,8 +815,7 @@ pub const TypeChecker = struct {
                     true,
                 );
                 defer self.allocator.free(type_string);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "The function \"{s}\" does not have any parameters, and therefore cannot be attached to the type \"{s}\".",
                     .{ path_name, type_string },
                 );
@@ -845,8 +835,7 @@ pub const TypeChecker = struct {
             if (ASTImplementation.effectiveVisibility(declaration) == .Private and
                 ASTImplementation.scope(declaration) != self.current_contract)
             {
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Function \"{s}\" is private and therefore cannot be attached to a type outside of the library where it is defined.",
                     .{path_name},
                 );
@@ -892,8 +881,7 @@ pub const TypeChecker = struct {
                 );
                 defer self.allocator.free(first_name);
                 const reason = implicitConversionReason(normalized_attached, normalized_self);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "The function \"{s}\" cannot be attached to the type \"{s}\" because the type cannot be implicitly converted to the first argument of the function (\"{s}\"){s}{s}",
                     .{
                         path_name,
@@ -984,20 +972,17 @@ pub const TypeChecker = struct {
         defer self.allocator.free(canonical_name);
         const wrong_parameters: ?[]u8 = if (binary_only and
             (parameter_count != 2 or !identical_first_two))
-            try std.fmt.allocPrint(
-                self.allocator,
+            try self.allocator.print(
                 "two parameters of type {s} and the same data location",
                 .{canonical_name},
             )
         else if (unary_only and (parameter_count != 1 or !first_matches))
-            try std.fmt.allocPrint(
-                self.allocator,
+            try self.allocator.print(
                 "exactly one parameter of type {s}",
                 .{canonical_name},
             )
         else if (parameter_count >= 3 or !first_matches or !identical_first_two)
-            try std.fmt.allocPrint(
-                self.allocator,
+            try self.allocator.print(
                 "one or two parameters of type {s} and the same data location",
                 .{canonical_name},
             )
@@ -1005,8 +990,7 @@ pub const TypeChecker = struct {
             null;
         defer if (wrong_parameters) |message| self.allocator.free(message);
         if (wrong_parameters) |expected| {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Wrong parameters in operator definition. The function \"{s}\" needs to have {s} to be used for the operator {s}.",
                 .{ path_name, expected, TokenModule.friendlyName(operator) },
             );
@@ -1030,8 +1014,7 @@ pub const TypeChecker = struct {
         const return_types = function_value.return_parameter_types;
         const wrong_returns: ?[]u8 = if (!TokenModule.isCompareOp(operator) and operator != .Not)
             if (return_types.len != 1 or !TypeBehavior.equals(attached_type, return_types[0]))
-                try std.fmt.allocPrint(
-                    self.allocator,
+                try self.allocator.print(
                     "exactly one value of type {s}",
                     .{canonical_name},
                 )
@@ -1049,8 +1032,7 @@ pub const TypeChecker = struct {
             null;
         defer if (wrong_returns) |message| self.allocator.free(message);
         if (wrong_returns) |expected| {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Wrong return parameters in operator definition. The function \"{s}\" needs to return {s} to be used for the operator {s}.",
                 .{ path_name, expected, TokenModule.friendlyName(operator) },
             );
@@ -1097,8 +1079,7 @@ pub const TypeChecker = struct {
                         "Conflicting definition:",
                         definition.location,
                     );
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "User-defined {s} operator {s} has more than one definition matching the operand type visible in the current scope.",
                 .{
                     if (parameter_count == 1) "unary" else "binary",
@@ -1241,8 +1222,7 @@ pub const TypeChecker = struct {
                 variable_type,
             );
             defer self.allocator.free(type_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Type {s} is only valid in storage because it contains a (nested) mapping.",
                 .{type_name},
             );
@@ -1279,8 +1259,7 @@ pub const TypeChecker = struct {
                 if (unsupported.items.len != 0) {
                     const names = try std.mem.join(self.allocator, ", ", unsupported.items);
                     defer self.allocator.free(names);
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "The following types are only supported for getters in ABI coder v2: {s}. Either remove \"public\" or use \"pragma abicoder v2;\" to enable the feature.",
                         .{names},
                     );
@@ -1548,8 +1527,7 @@ pub const TypeChecker = struct {
                 );
             defer if (!self.evm_version.supportsReturndata()) self.allocator.free(return_types);
             if (parameters.len != return_types.len) {
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Function returns {d} values, but returns clause has {d} variables.",
                     .{ function_type.return_parameter_types.len, parameters.len },
                 );
@@ -1565,8 +1543,7 @@ pub const TypeChecker = struct {
                 defer self.allocator.free(expected_name);
                 const actual_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, actual);
                 defer self.allocator.free(actual_name);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Invalid type, expected {s} but got {s}.",
                     .{ expected_name, actual_name },
                 );
@@ -1604,8 +1581,7 @@ pub const TypeChecker = struct {
                                 "Expected `catch (bytes memory ...) { ... }` or `catch { ... }`.",
                             );
                         if (!self.evm_version.supportsReturndata()) {
-                            const message = try std.fmt.allocPrint(
-                                self.allocator,
+                            const message = try self.allocator.print(
                                 "This catch clause type cannot be used on the selected EVM version ({s}). You need at least a Byzantium-compatible EVM or use `catch {{ ... }}`.",
                                 .{self.evm_version.name()},
                             );
@@ -1662,8 +1638,7 @@ pub const TypeChecker = struct {
         self: *TypeChecker,
         clause: *const AST.Node,
     ) CheckError!void {
-        const message = try std.fmt.allocPrint(
-            self.allocator,
+        const message = try self.allocator.print(
             "This catch clause type cannot be used on the selected EVM version ({s}). You need at least a Byzantium-compatible EVM or use `catch {{ ... }}`.",
             .{self.evm_version.name()},
         );
@@ -1819,8 +1794,7 @@ pub const TypeChecker = struct {
         else
             try component_types.append(self.allocator, initial_type);
         if (component_types.items.len != value.declarations.len) {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Different number of components on the left hand side ({d}) than on the right hand side ({d}).",
                 .{ value.declarations.len, component_types.items.len },
             );
@@ -1839,8 +1813,7 @@ pub const TypeChecker = struct {
             defer self.allocator.free(actual_name);
             const expected_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, expected);
             defer self.allocator.free(expected_name);
-            const base_message = try std.fmt.allocPrint(
-                self.allocator,
+            const base_message = try self.allocator.print(
                 "Type {s} is not implicitly convertible to expected type {s}",
                 .{ actual_name, expected_name },
             );
@@ -1850,8 +1823,7 @@ pub const TypeChecker = struct {
                 const mobile = try TypeBehavior.mobileType(self.type_provider, actual);
                 if (rational.denominator.compareUnsigned(1) != .eq and mobile != null) {
                     if (TypeBehavior.equals(expected, mobile.?)) {
-                        const message = try std.fmt.allocPrint(
-                            self.allocator,
+                        const message = try self.allocator.print(
                             "{s}, but it can be explicitly converted.",
                             .{base_message},
                         );
@@ -1863,8 +1835,7 @@ pub const TypeChecker = struct {
                             mobile.?,
                         );
                         defer self.allocator.free(mobile_name);
-                        const message = try std.fmt.allocPrint(
-                            self.allocator,
+                        const message = try self.allocator.print(
                             "{s}. Try converting to type {s} or use an explicit conversion.",
                             .{ base_message, mobile_name },
                         );
@@ -1875,8 +1846,7 @@ pub const TypeChecker = struct {
                 }
             }
             const reason = implicitConversionReason(actual, expected);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "{s}.{s}{s}",
                 .{
                     base_message,
@@ -1933,14 +1903,12 @@ pub const TypeChecker = struct {
         const expected_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, expected);
         defer self.allocator.free(expected_name);
         const message = if (first_return_variable)
-            try std.fmt.allocPrint(
-                self.allocator,
+            try self.allocator.print(
                 "Return argument type {s} is not implicitly convertible to expected type (type of first return variable) {s}.",
                 .{ actual_name, expected_name },
             )
         else
-            try std.fmt.allocPrint(
-                self.allocator,
+            try self.allocator.print(
                 "Return argument type {s} is not implicitly convertible to expected type {s}.",
                 .{ actual_name, expected_name },
             );
@@ -1961,8 +1929,7 @@ pub const TypeChecker = struct {
             var detail: ?[]u8 = null;
             defer if (detail) |message| self.allocator.free(message);
             if (cleaned.len != 42) {
-                detail = try std.fmt.allocPrint(
-                    self.allocator,
+                detail = try self.allocator.print(
                     "This looks like an address but is not exactly 40 hex digits. It is {d} hex digits.",
                     .{cleaned.len -| 2},
                 );
@@ -1981,15 +1948,13 @@ pub const TypeChecker = struct {
                         "This looks like an address but has an invalid checksum.",
                     )
                 else
-                    try std.fmt.allocPrint(
-                        self.allocator,
+                    try self.allocator.print(
                         "This looks like an address but has an invalid checksum. Correct checksummed address: \"{s}\".",
                         .{checksummed},
                     );
             }
             if (detail) |message| {
-                const full = try std.fmt.allocPrint(
-                    self.allocator,
+                const full = try self.allocator.print(
                     "{s} If this is not used as an address, please prepend '00'. For more information please see https://docs.soliditylang.org/en/develop/types.html#address-literals",
                     .{message},
                 );
@@ -2355,8 +2320,7 @@ pub const TypeChecker = struct {
                     function.parameter_types[0],
                 );
                 defer self.allocator.free(parameter_name);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "The type of the second operand of this user-defined binary operator {s} does not match the type of the first operand, which is {s}.",
                     .{ TokenModule.friendlyName(value.operator), parameter_name },
                 );
@@ -2383,8 +2347,7 @@ pub const TypeChecker = struct {
                     left,
                     right,
                 );
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Built-in binary operator {s} cannot be applied to types {s} and {s}.{s}{s}{s}",
                     .{
                         TokenModule.friendlyName(value.operator),
@@ -2438,8 +2401,7 @@ pub const TypeChecker = struct {
             defer self.allocator.free(common_name);
             const right_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, right);
             defer self.allocator.free(right_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "The result type of the {s} operation is equal to the type of the first operand ({s}) ignoring the (larger) type of the second operand ({s}) which might be unexpected. Silence this warning by either converting the first or the second operand to the type of the other.",
                 .{ operation, common_name, right_name },
             );
@@ -2496,8 +2458,7 @@ pub const TypeChecker = struct {
             else
                 null;
             const suffix = failure_reason orelse no_match_reason;
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Built-in unary operator {s} cannot be applied to type {s}.{s}{s}",
                 .{
                     TokenModule.friendlyName(value.operator),
@@ -2573,8 +2534,7 @@ pub const TypeChecker = struct {
                 defer self.allocator.free(left_name);
                 const right_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, right);
                 defer self.allocator.free(right_name);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Operator {s} not compatible with types {s} and {s}.",
                     .{ TokenModule.friendlyName(value.operator), left_name, right_name },
                 );
@@ -2757,8 +2717,7 @@ pub const TypeChecker = struct {
                         common,
                     );
                     defer self.allocator.free(name);
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "Type {s} is only valid in storage.",
                         .{name},
                     );
@@ -2838,8 +2797,7 @@ pub const TypeChecker = struct {
                     false_type.?,
                 );
                 defer self.allocator.free(false_name);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "True expression's type {s} does not match false expression's type {s}.",
                     .{ true_name, false_name },
                 );
@@ -3072,8 +3030,7 @@ pub const TypeChecker = struct {
                                 declaration.location,
                             );
                 }
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Explicit type conversion not allowed from non-payable \"address\" to \"{s}\", which has a payable fallback function.",
                     .{result_name},
                 );
@@ -3089,16 +3046,14 @@ pub const TypeChecker = struct {
                 argument_type.asFunction().?.kind == .External and
                 result_type.category() == .Address)
             {
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Explicit type conversion not allowed from \"{s}\" to \"{s}\". To obtain the address of the contract of the function, you can use the .address member of the function.",
                     .{ argument_name, result_name },
                 );
                 defer self.allocator.free(message);
                 try self.reporter.typeError(errorId(5030), node.location, message);
             } else {
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Explicit type conversion not allowed from \"{s}\" to \"{s}\".",
                     .{ argument_name, result_name },
                 );
@@ -3214,8 +3169,7 @@ pub const TypeChecker = struct {
             (!variadic and value.arguments.len > parameter_types.len))
         {
             const message = if (variadic)
-                try std.fmt.allocPrint(
-                    self.allocator,
+                try self.allocator.print(
                     "Need at least {d} arguments for {s}, but provided only {d}.",
                     .{
                         parameter_types.len,
@@ -3224,8 +3178,7 @@ pub const TypeChecker = struct {
                     },
                 )
             else
-                try std.fmt.allocPrint(
-                    self.allocator,
+                try self.allocator.print(
                     "Wrong argument count for {s}: {d} arguments given but expected {d}.",
                     .{
                         if (struct_constructor) "struct constructor" else "function call",
@@ -3239,7 +3192,7 @@ pub const TypeChecker = struct {
                     " This function requires a single bytes argument. Use \"\" as argument to provide empty calldata."
                 else
                     " This function requires a single bytes argument. If all your arguments are value types, you can use abi.encode(...) to properly generate it.";
-                const full = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ message, suffix });
+                const full = try self.allocator.print("{s}{s}", .{ message, suffix });
                 defer self.allocator.free(full);
                 try self.reporter.typeError(
                     if (value.arguments.len == 0) errorId(6138) else errorId(8922),
@@ -3247,8 +3200,7 @@ pub const TypeChecker = struct {
                     full,
                 );
             } else if (isHashFunctionKind(function_type.kind)) {
-                const full = try std.fmt.allocPrint(
-                    self.allocator,
+                const full = try self.allocator.print(
                     "{s} This function requires a single bytes argument. Use abi.encodePacked(...) to obtain the pre-0.5.0 behaviour or abi.encode(...) to use ABI encoding.",
                     .{message},
                 );
@@ -3289,8 +3241,7 @@ pub const TypeChecker = struct {
                 for (value.names[index + 1 ..]) |other|
                     if (std.mem.eql(u8, name, other)) {
                         duplicate = true;
-                        const message = try std.fmt.allocPrint(
-                            self.allocator,
+                        const message = try self.allocator.print(
                             "Duplicate named argument \"{s}\".",
                             .{name},
                         );
@@ -3313,8 +3264,7 @@ pub const TypeChecker = struct {
                 }
                 if (!found) {
                     not_all_mapped = true;
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "Named argument \"{s}\" does not match function declaration.",
                         .{name},
                     );
@@ -3334,8 +3284,7 @@ pub const TypeChecker = struct {
             defer self.allocator.free(actual_name);
             const expected_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, expected);
             defer self.allocator.free(expected_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Invalid type for argument in function call. Invalid implicit conversion from {s} to {s} requested.{s}{s}",
                 .{
                     actual_name,
@@ -3346,16 +3295,14 @@ pub const TypeChecker = struct {
             );
             defer self.allocator.free(message);
             if (isBareCallKind(function_type.kind)) {
-                const full = try std.fmt.allocPrint(
-                    self.allocator,
+                const full = try self.allocator.print(
                     "{s} This function requires a single bytes argument. If all your arguments are value types, you can use abi.encode(...) to properly generate it.",
                     .{message},
                 );
                 defer self.allocator.free(full);
                 try self.reporter.typeError(errorId(8051), argument.location, full);
             } else if (isHashFunctionKind(function_type.kind)) {
-                const full = try std.fmt.allocPrint(
-                    self.allocator,
+                const full = try self.allocator.print(
                     "{s} This function requires a single bytes argument. Use abi.encodePacked(...) to obtain the pre-0.5.0 behaviour or abi.encode(...) to use ABI encoding.",
                     .{message},
                 );
@@ -3380,8 +3327,7 @@ pub const TypeChecker = struct {
                     parameter_type,
                 );
                 defer self.allocator.free(type_name);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "The type of this parameter, {s}, is only supported in ABI coder v2. Use \"pragma abicoder v2;\" to enable the feature.",
                     .{type_name},
                 );
@@ -3395,8 +3341,7 @@ pub const TypeChecker = struct {
                     return_type,
                 );
                 defer self.allocator.free(type_name);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "The type of return parameter {d}, {s}, is only supported in ABI coder v2. Use \"pragma abicoder v2;\" to enable the feature.",
                     .{ index, type_name },
                 );
@@ -3412,8 +3357,7 @@ pub const TypeChecker = struct {
     ) CheckError!*const Types.Type {
         const value = node.payload.function_call;
         if (value.arguments.len != 2) {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "This function takes two arguments, but {d} were provided.",
                 .{value.arguments.len},
             );
@@ -3430,8 +3374,7 @@ pub const TypeChecker = struct {
             {
                 const type_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, first_type);
                 defer self.allocator.free(type_name);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "The first argument to \"abi.decode\" must be implicitly convertible to bytes memory or bytes calldata, but is of type {s}.",
                     .{type_name},
                 );
@@ -3483,8 +3426,7 @@ pub const TypeChecker = struct {
                     actual_type,
                 );
                 defer self.allocator.free(type_name);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Decoding type {s} not supported.",
                     .{type_name},
                 );
@@ -3600,8 +3542,7 @@ pub const TypeChecker = struct {
                 first_type,
             );
             defer self.allocator.free(type_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Expected first argument to be a function pointer, not \"{s}\".",
                 .{type_name},
             );
@@ -3689,14 +3630,12 @@ pub const TypeChecker = struct {
 
         if (external_type.parameter_types.len != call_arguments.items.len) {
             const message = if (tuple_type != null)
-                try std.fmt.allocPrint(
-                    self.allocator,
+                try self.allocator.print(
                     "Expected {d} instead of {d} components for the tuple parameter.",
                     .{ external_type.parameter_types.len, call_arguments.items.len },
                 )
             else
-                try std.fmt.allocPrint(
-                    self.allocator,
+                try self.allocator.print(
                     "Expected a tuple with {d} components instead of a single non-tuple parameter.",
                     .{external_type.parameter_types.len},
                 );
@@ -3725,8 +3664,7 @@ pub const TypeChecker = struct {
             );
             defer self.allocator.free(expected_name);
             const reason = implicitConversionReason(actual, expected);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Cannot implicitly convert component at position {d} from \"{s}\" to \"{s}\"{s}{s}",
                 .{
                     index,
@@ -3747,8 +3685,7 @@ pub const TypeChecker = struct {
     ) CheckError!*const Types.Type {
         const value = node.payload.function_call;
         if (value.arguments.len != 1) {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "This function takes one argument, but {d} were provided.",
                 .{value.arguments.len},
             );
@@ -3771,8 +3708,7 @@ pub const TypeChecker = struct {
         if (!valid) {
             const type_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, argument_type);
             defer self.allocator.free(type_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Invalid type for argument in the function call. An enum type, contract type or an integer type is required, but {s} provided.",
                 .{type_name},
             );
@@ -3803,8 +3739,7 @@ pub const TypeChecker = struct {
             )) continue;
             const type_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, argument_type);
             defer self.allocator.free(type_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Invalid type for argument in the string.concat function call. string type is required, but {s} provided.",
                 .{type_name},
             );
@@ -3832,8 +3767,7 @@ pub const TypeChecker = struct {
             if (valid) continue;
             const type_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, argument_type);
             defer self.allocator.free(type_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Invalid type for argument in the bytes.concat function call. bytes or fixed bytes type is required, but {s} provided.",
                 .{type_name},
             );
@@ -4019,8 +3953,7 @@ pub const TypeChecker = struct {
                     );
                 } else if (function_type.state_mutability != .Payable) {
                     const constructor_message = if (function_type.kind == .Creation)
-                        try std.fmt.allocPrint(
-                            self.allocator,
+                        try self.allocator.print(
                             "Cannot set option \"value\", since the constructor of {s} is not payable.",
                             .{try self.typeNameTemporary(function_type.return_parameter_types[0])},
                         )
@@ -4048,8 +3981,7 @@ pub const TypeChecker = struct {
                     _ = try self.expectTypeAlready(option, self.type_provider.uint256());
                 }
             } else {
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Unknown call option \"{s}\". Valid options are \"salt\", \"value\" and \"gas\".",
                     .{name},
                 );
@@ -4082,8 +4014,7 @@ pub const TypeChecker = struct {
         location: Diagnostics.SourceLocation,
     ) CheckError!void {
         if (seen.*) {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Duplicate option \"{s}\".",
                 .{name},
             );
@@ -4296,8 +4227,7 @@ pub const TypeChecker = struct {
                     std.mem.eql(u8, value.member_name, "code") or
                     std.mem.eql(u8, value.member_name, "codehash")))
             {
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Member \"{s}\" not found or not visible after argument-dependent lookup in {s}. Use \"address(...)\" to access this address member.",
                     .{ value.member_name, try self.typeNameTemporary(owner_type) },
                 );
@@ -4314,8 +4244,7 @@ pub const TypeChecker = struct {
                     owner_type,
                 );
                 defer self.allocator.free(owner_name);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "\"send\" and \"transfer\" are only available for objects of type \"address payable\", not \"{s}\".",
                     .{owner_name},
                 );
@@ -4329,8 +4258,7 @@ pub const TypeChecker = struct {
                             "contract"
                         else
                             try self.typeNameTemporary(function_type.return_parameter_types[0]);
-                        const message = try std.fmt.allocPrint(
-                            self.allocator,
+                        const message = try self.allocator.print(
                             "Constructor for {s} must be payable for member \"value\" to be available.",
                             .{result_name},
                         );
@@ -4371,8 +4299,7 @@ pub const TypeChecker = struct {
                         owner_type,
                     );
                     defer self.allocator.free(owner_name);
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "Member \"{s}\" not found or not visible after argument-dependent lookup in {s}. Did you intend to call the function?",
                         .{ value.member_name, owner_name },
                     );
@@ -4400,8 +4327,7 @@ pub const TypeChecker = struct {
                             owner_type,
                         );
                         defer self.allocator.free(owner_name);
-                        const message = try std.fmt.allocPrint(
-                            self.allocator,
+                        const message = try self.allocator.print(
                             "Member \"{s}\" is not available in {s} outside of storage.",
                             .{ value.member_name, owner_name },
                         );
@@ -4417,8 +4343,7 @@ pub const TypeChecker = struct {
             }
             const owner_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, owner_type);
             defer self.allocator.free(owner_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Member \"{s}\" not found or not visible after argument-dependent lookup in {s}.",
                 .{ value.member_name, owner_name },
             );
@@ -4437,8 +4362,7 @@ pub const TypeChecker = struct {
                 (std.mem.eql(u8, value.member_name, "value") or
                     std.mem.eql(u8, value.member_name, "gas")))
             {
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Using \".{s}(...)\" is deprecated. Use \"{{{s}: ...}}\" instead.",
                     .{ value.member_name, value.member_name },
                 );
@@ -4578,8 +4502,7 @@ pub const TypeChecker = struct {
         }
         if (!std.mem.eql(u8, name, "push")) return null;
         const argument_count = if (arguments) |value| value.types.items.len else {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Member \"push\" not unique after argument-dependent lookup in {s}.",
                 .{try self.typeNameTemporary(owner_type)},
             );
@@ -4850,8 +4773,7 @@ pub const TypeChecker = struct {
         if (candidates.items.len == 0) return null;
         if (candidates.items.len != 1) {
             const owner_name = contract.payload.contract_definition.declaration.name;
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Member \"{s}\" not unique after argument-dependent lookup in contract {s}.",
                 .{ name, owner_name },
             );
@@ -4942,8 +4864,7 @@ pub const TypeChecker = struct {
                             )) continue;
                     if (selected != null) {
                         const owner = contract_type.declaration.payload.contract_definition.declaration.name;
-                        const message = try std.fmt.allocPrint(
-                            self.allocator,
+                        const message = try self.allocator.print(
                             "Member \"{s}\" not unique after argument-dependent lookup in contract {s}.",
                             .{ name, owner },
                         );
@@ -5193,8 +5114,7 @@ pub const TypeChecker = struct {
                 }
                 if (resolved != null) {
                     const owner_type = (try expressionAnnotation(self.tree, node.payload.member_access.expression)).type_ref.?;
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "Member \"{s}\" not unique after argument-dependent lookup in {s}.",
                         .{ name, try self.typeNameTemporary(owner_type) },
                     );
@@ -5305,8 +5225,7 @@ pub const TypeChecker = struct {
         if (matches.items.len != 1) {
             const owner_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, owner_type);
             defer self.allocator.free(owner_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Member \"{s}\" not unique after argument-dependent lookup in {s}.",
                 .{ name, owner_name },
             );
@@ -5534,8 +5453,7 @@ pub const TypeChecker = struct {
             else => {
                 const type_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, base_type);
                 defer self.allocator.free(type_name);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Indexed expression has to be a type, mapping or array (is {s})",
                     .{type_name},
                 );
@@ -5645,8 +5563,7 @@ pub const TypeChecker = struct {
         self: *TypeChecker,
         node: *AST.Node,
     ) CheckError!void {
-        const message = try std.fmt.allocPrint(
-            self.allocator,
+        const message = try self.allocator.print(
             "Zig port: Solidity type checking for {s} expressions is not implemented.",
             .{@tagName(node.nodeKind())},
         );
@@ -5730,8 +5647,7 @@ pub const TypeChecker = struct {
         defer self.allocator.free(actual_name);
         const expected_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, expected);
         defer self.allocator.free(expected_name);
-        const base_message = try std.fmt.allocPrint(
-            self.allocator,
+        const base_message = try self.allocator.print(
             "Type {s} is not implicitly convertible to expected type {s}",
             .{ actual_name, expected_name },
         );
@@ -5741,8 +5657,7 @@ pub const TypeChecker = struct {
             const mobile = try TypeBehavior.mobileType(self.type_provider, actual);
             if (rational.denominator.compareUnsigned(1) != .eq and mobile != null) {
                 if (TypeBehavior.equals(expected, mobile.?)) {
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "{s}, but it can be explicitly converted.",
                         .{base_message},
                     );
@@ -5755,8 +5670,7 @@ pub const TypeChecker = struct {
                     );
                     defer self.allocator.free(mobile_name);
                     const reason = implicitConversionReason(actual, expected);
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "{s}. Try converting to type {s} or use an explicit conversion.{s}{s}",
                         .{
                             base_message,
@@ -5772,8 +5686,7 @@ pub const TypeChecker = struct {
             }
         }
         const reason = implicitConversionReason(actual, expected);
-        const message = try std.fmt.allocPrint(
-            self.allocator,
+        const message = try self.allocator.print(
             "{s}.{s}{s}",
             .{
                 base_message,
@@ -6280,8 +6193,7 @@ const InlineAssemblyResolverContext = struct {
         identifier: *const YulAST.Identifier,
         suffix: []const u8,
     ) CheckError!void {
-        const message = try std.fmt.allocPrint(
-            self.checker.allocator,
+        const message = try self.checker.allocator.print(
             "The suffix \".{s}\" is not supported by this variable or type.",
             .{suffix},
         );

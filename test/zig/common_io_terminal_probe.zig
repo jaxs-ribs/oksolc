@@ -20,7 +20,7 @@ pub fn main(init: std.process.Init) !void {
 }
 
 fn cancelRead(_: ?*anyopaque, file: std.Io.File, _: []const []u8, _: u64) std.Io.File.ReadPositionalError!usize {
-    if (comptime @import("builtin").os.tag != .windows) {
+    if (comptime @import("builtin").target.os.tag != .windows) {
         const mode = std.posix.tcgetattr(file.handle) catch return error.InputOutput;
         if (mode.lflag.ICANON or mode.lflag.ECHO) return error.InputOutput;
     }

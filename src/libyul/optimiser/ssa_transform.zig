@@ -57,7 +57,7 @@ const IntroduceSSA = struct {
         var expanded_len = old_len;
         // Cache the first 64 original decisions in one word, without allocating
         // width metadata or modifying annotations. Larger indices use the set.
-        var replacements: std.StaticBitSet(64) = .empty;
+        var replacements: std.bit_set.Static(64) = .empty;
         for (block.statements.items, 0..) |*statement, source_index| {
             const extra = self.additionalStatements(statement, null);
             expanded_len = std.math.add(usize, expanded_len, extra) catch return error.OutOfMemory;
@@ -581,8 +581,10 @@ test "SSA transform preserves first-phase tuple order and all annotations" {
     const Converter = @import("../asm_json_converter.zig").AsmJsonConverter;
     const JSON = @import("../../libsolutil/json.zig");
     const allocator = std.testing.allocator;
+    const assignment_source = "x, y := pair() ";
+    const assignments: [32 * assignment_source.len]u8 = @bitCast(@as([32][assignment_source.len]u8, @splat(assignment_source.*)));
     const cases = .{
-        .{ "wide", "{ let x, y := pair() " ++ "x, y := pair() " ** 32 ++ "pop(x) pop(y) function pair() -> a, b { a := 1 b := 2 } }", "85a90ee29f0f905de511c249775c28c3cb4155c230dcf59fb25337bfbaf012e7" },
+        .{ "wide", "{ let x, y := pair() " ++ assignments ++ "pop(x) pop(y) function pair() -> a, b { a := 1 b := 2 } }", "85a90ee29f0f905de511c249775c28c3cb4155c230dcf59fb25337bfbaf012e7" },
         .{ "nested", "{ let x, y := pair() let z let stable := 0 x, y := pair() if x { z := 1 x := 2 } switch y case 0 { y := 3 } default { x := 4 } for { let i := 0 } lt(i, 3) { i := add(i, 1) x := add(x, 1) } { y := add(y, 1) } { let nested := 0 nested := 1 } function pair() -> a, b { a := 1 b := 2 } }", "f08b6f8aa6a72f1f358494c2434523ce3631baaaecc6992783e0fd163efb28fa" },
     };
     inline for (cases) |case| {
@@ -668,7 +670,7 @@ test "SSA transform preserves unchanged blocks and leaves reserve failure untouc
         defer ast.deinit();
         // Remove parser spare capacity before testing the first reserve failure.
         const items = try ast.root_block.statements.toOwnedSlice(allocator);
-        ast.root_block.statements = .{ .items = items, .capacity = items.len };
+        ast.root_block.statements = .fromOwnedSlice(items);
         const hash = try Encoding.hashBlock(ast.root());
         var reserved: NameCollector.NameSet = .{};
         defer reserved.deinit(allocator);
@@ -854,7 +856,7 @@ test "SSA transform control-flow insertion skips empty work and preserves reserv
         var ast = (try Parser.parseSource(allocator, case[0], "control-reserve.yul", &reporter, .{}, .{})).?;
         defer ast.deinit();
         const items = try ast.root_block.statements.toOwnedSlice(allocator);
-        ast.root_block.statements = .{ .items = items, .capacity = items.len };
+        ast.root_block.statements = .fromOwnedSlice(items);
         const hash = try Encoding.hashBlock(ast.root());
         var reserved: NameCollector.NameSet = .{};
         defer reserved.deinit(allocator);

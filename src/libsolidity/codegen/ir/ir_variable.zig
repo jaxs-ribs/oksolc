@@ -200,7 +200,7 @@ pub const IRVariable = struct {
         suffix: []const u8,
     ) std.mem.Allocator.Error![]u8 {
         if (suffix.len == 0) return self.allocator.dupe(u8, self.base_name);
-        return std.fmt.allocPrint(self.allocator, "{s}_{s}", .{ self.base_name, suffix });
+        return self.allocator.print("{s}_{s}", .{ self.base_name, suffix });
     }
 };
 
@@ -218,8 +218,7 @@ fn appendStackSlotsRecursive(
         if (item.type_ref) |item_type| {
             if (item.name.len == 0 or item_type == type_ref)
                 return error.InvalidStackLayout;
-            const suffixed = try std.fmt.allocPrint(
-                allocator,
+            const suffixed = try allocator.print(
                 "{s}_{s}",
                 .{ base_name, item.name },
             );

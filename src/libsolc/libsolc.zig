@@ -227,7 +227,7 @@ fn takeAbiAllocation(pointer: [*]u8) ?AbiAllocation {
 }
 
 fn lockAbiAllocations() void {
-    std.Io.Threaded.mutexLock(&abi_allocations_mutex);
+    std.Io.Threaded.mutexLockUncancelable(&abi_allocations_mutex);
 }
 
 fn unlockAbiAllocations() void {
@@ -235,7 +235,7 @@ fn unlockAbiAllocations() void {
 }
 
 fn lockAbiSessions() void {
-    std.Io.Threaded.mutexLock(&abi_sessions_mutex);
+    std.Io.Threaded.mutexLockUncancelable(&abi_sessions_mutex);
 }
 
 fn unlockAbiSessions() void {

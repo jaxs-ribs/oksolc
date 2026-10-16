@@ -126,8 +126,7 @@ pub const DocStringAnalyser = struct {
         if (try findBaseCallable(bases, reference, 0)) |callable| return callable;
         const documentation = documentationNode(node) orelse return error.InvalidAst;
         const contract_name = (reference.declarationConst() orelse return error.InvalidAst).name;
-        const message = try std.fmt.allocPrint(
-            self.allocator,
+        const message = try self.allocator.print(
             "Documentation tag @inheritdoc references contract \"{s}\", but the contract does not contain a function that is overridden by this function.",
             .{contract_name},
         );
@@ -188,8 +187,7 @@ fn copyMissingTags(
                     content = if (target_name.len == 0)
                         try tree.ownString(remainder)
                     else
-                        try std.fmt.allocPrint(
-                            tree.allocator(),
+                        try tree.allocator().print(
                             "{s} {s}",
                             .{ target_name, remainder },
                         );

@@ -94,7 +94,7 @@ fn Instantiate(comptime tree: anytype) type {
                             const number = std.math.cast(u256, value) orelse return error.InvalidTemplateArgument;
                             return .{ .literal = .{ .debug_data = b.debug_data, .kind = .Number, .value = .{
                                 .numeric_value = number,
-                                .string_value = try std.fmt.allocPrint(b.allocator(), "{d}", .{number}),
+                                .string_value = try b.allocator().print("{d}", .{number}),
                             } } };
                         },
                         else => @compileError("Yul expression holes require expressions, identifiers, integers or booleans"),

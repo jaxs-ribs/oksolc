@@ -21,6 +21,7 @@ const LinkerObject = LinkerObjectModule.LinkerObject;
 pub const SubAssemblyID = @import("sub_assembly_id.zig").SubAssemblyID;
 const BlockDeduplicator = @import("block_deduplicator.zig");
 const CommonSubexpressionEliminator = @import("common_subexpression_eliminator.zig");
+const CSEChunkCache = @import("cse_chunk_cache.zig");
 const ConstantOptimiser = @import("constant_optimiser.zig");
 const Inliner = @import("inliner.zig");
 const JumpdestRemover = @import("jumpdest_remover.zig");
@@ -492,6 +493,8 @@ pub const Assembly = struct {
 
         var replacements: std.ArrayList(BlockDeduplicator.TagReplacement) = .empty;
         errdefer replacements.deinit(self.allocator);
+        var cse_cache = CSEChunkCache.Cache.init(scratch_backing_allocator orelse self.allocator);
+        defer cse_cache.deinit();
         var iteration_count: u32 = 1;
         while (iteration_count != 0) {
             iteration_count = 0;
@@ -537,7 +540,7 @@ pub const Assembly = struct {
             }
 
             if (settings.run_cse) {
-                try self.optimiseCSE(&iteration_count, scratch_backing_allocator);
+                try self.optimiseCSE(&iteration_count, scratch_backing_allocator, &cse_cache);
             }
         }
 
@@ -555,7 +558,14 @@ pub const Assembly = struct {
         return self.tag_replacements.?.items;
     }
 
-    fn optimiseCSE(self: *Assembly, iteration_count: *u32, scratch_backing_allocator: ?std.mem.Allocator) AssemblyError!void {
+    /// Run one CSE round. Null specializes away the entire chunk-cache path,
+    /// retaining the original algorithm for differential tests and benchmarks.
+    pub fn optimiseCSE(self: *Assembly, iteration_count: *u32, scratch_backing_allocator: ?std.mem.Allocator, cache: ?*CSEChunkCache.Cache) AssemblyError!void {
+        if (cache) |storage| return self.optimiseCSEImpl(true, iteration_count, scratch_backing_allocator, storage);
+        return self.optimiseCSEImpl(false, iteration_count, scratch_backing_allocator, undefined);
+    }
+
+    fn optimiseCSEImpl(self: *Assembly, comptime cache_enabled: bool, iteration_count: *u32, scratch_backing_allocator: ?std.mem.Allocator, cache: *CSEChunkCache.Cache) AssemblyError!void {
         var scratch_arena = if (scratch_backing_allocator) |backing|
             std.heap.ArenaAllocator.init(backing)
         else
@@ -579,6 +589,19 @@ pub const Assembly = struct {
                 if (!arena.reset(.{ .retain_with_limit = 8 * 1024 * 1024 }))
                     _ = arena.reset(.free_all);
             };
+            const query: ?CSEChunkCache.Request = if (cache_enabled) query: {
+                if (!cache.isActive()) break :query null;
+                const tail = self.assembly_items.items[index..];
+                const length = CommonSubexpressionEliminator.CommonSubexpressionEliminator.chunkLength(tail, uses_msize);
+                break :query cache.request(tail[0..length], self.evm_version, uses_msize);
+            } else null;
+            if (query) |request| if (cache.lookup(request)) |entry| {
+                const selected = if (entry.outcome == .replacement) entry.output else request.input;
+                if (entry.outcome == .replacement) iteration_count.* += 1;
+                for (selected) |*item| try appendClone(self.allocator, &optimized, item);
+                index += request.input.len;
+                continue;
+            };
             var state = try KnownState.init(scratch_allocator);
             defer state.deinit();
             var eliminator = try CommonSubexpressionEliminator.CommonSubexpressionEliminator.init(
@@ -594,6 +617,10 @@ pub const Assembly = struct {
             // owned output survives until copied into the assembly allocator.
             var chunk = eliminator.finish() catch |err| switch (err) {
                 error.StackTooDeep, error.ItemNotAvailable => {
+                    if (query) |request| {
+                        std.debug.assert(consumed == request.input.len);
+                        cache.recordBestEffort(request, &.{}, if (err == error.StackTooDeep) .stack_too_deep else .item_not_available);
+                    }
                     for (self.assembly_items.items[index .. index + consumed]) |*item|
                         try appendClone(self.allocator, &optimized, item);
                     index += consumed;
@@ -602,6 +629,11 @@ pub const Assembly = struct {
                 else => return err,
             };
             defer deinitItems(scratch_allocator, &chunk);
+            const changed = chunk.items.len < consumed;
+            if (query) |request| {
+                std.debug.assert(consumed == request.input.len);
+                cache.recordBestEffort(request, if (changed) chunk.items else &.{}, if (changed) .replacement else .unchanged);
+            }
             if (chunk.items.len < consumed) {
                 iteration_count.* += 1;
                 for (chunk.items) |*item| try appendClone(self.allocator, &optimized, item);
@@ -713,14 +745,14 @@ pub const Assembly = struct {
         errdefer code_locations.deinit(self.allocator);
         try code_locations.instruction_locations.ensureTotalCapacity(self.allocator, self.assembly_items.items.len);
 
-        const tag_push = @intFromEnum(InstructionModule.pushInstruction(@intCast(bytes_per_tag)));
-        const data_ref_push = @intFromEnum(InstructionModule.pushInstruction(@intCast(bytes_per_data_ref)));
+        const tag_push = @backingInt(InstructionModule.pushInstruction(@intCast(bytes_per_tag)));
+        const data_ref_push = @backingInt(InstructionModule.pushInstruction(@intCast(bytes_per_data_ref)));
         for (self.assembly_items.items, 0..) |*item, item_index| {
             var location_start = ret.bytecode.items.len;
             if (item.item_type != .Tag and self.tag_positions_in_bytecode.items[0] == std.math.maxInt(usize))
                 self.tag_positions_in_bytecode.items[0] = ret.bytecode.items.len;
             switch (item.item_type) {
-                .Operation => try ret.bytecode.append(self.allocator, @intFromEnum(item.instruction_value.?)),
+                .Operation => try ret.bytecode.append(self.allocator, @backingInt(item.instruction_value.?)),
                 .Push => try appendPush(self.allocator, &ret.bytecode, item.data_value, self.evm_version),
                 .PushTag => {
                     try ret.bytecode.append(self.allocator, tag_push);
@@ -757,7 +789,7 @@ pub const Assembly = struct {
                     const width = @max(@as(usize, 1), Numeric.numberEncodingSize(usize, size));
                     try ret.bytecode.append(
                         self.allocator,
-                        @intFromEnum(InstructionModule.pushInstruction(@intCast(width))),
+                        @backingInt(InstructionModule.pushInstruction(@intCast(width))),
                     );
                     try appendBigEndian(self.allocator, &ret.bytecode, width, size);
                 },
@@ -767,7 +799,7 @@ pub const Assembly = struct {
                     try ret.bytecode.appendNTimes(self.allocator, 0, bytes_per_data_ref);
                 },
                 .PushLibraryAddress => {
-                    try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.PUSH20));
+                    try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.PUSH20));
                     try ret.putLinkReference(
                         self.allocator,
                         ret.bytecode.items.len,
@@ -776,7 +808,7 @@ pub const Assembly = struct {
                     try ret.bytecode.appendNTimes(self.allocator, 0, 20);
                 },
                 .PushImmutable => {
-                    try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.PUSH32));
+                    try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.PUSH32));
                     try appendImmutableReference(
                         self.allocator,
                         ret,
@@ -791,31 +823,31 @@ pub const Assembly = struct {
                     const offsets = immutableOffsets(immutable_by_sub.items, item.data_value);
                     for (offsets, 0..) |offset, index| {
                         if (index != offsets.len - 1) {
-                            try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.DUP2));
+                            try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.DUP2));
                             try emitLocation(self.allocator, &code_locations, item_index, &location_start, ret.bytecode.items.len);
-                            try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.DUP2));
+                            try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.DUP2));
                             try emitLocation(self.allocator, &code_locations, item_index, &location_start, ret.bytecode.items.len);
                         }
                         const width = @max(@as(usize, 1), Numeric.numberEncodingSize(usize, offset));
                         try ret.bytecode.append(
                             self.allocator,
-                            @intFromEnum(InstructionModule.pushInstruction(@intCast(width))),
+                            @backingInt(InstructionModule.pushInstruction(@intCast(width))),
                         );
                         try appendBigEndian(self.allocator, &ret.bytecode, width, offset);
                         try emitLocation(self.allocator, &code_locations, item_index, &location_start, ret.bytecode.items.len);
-                        try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.ADD));
+                        try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.ADD));
                         try emitLocation(self.allocator, &code_locations, item_index, &location_start, ret.bytecode.items.len);
-                        try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.MSTORE));
+                        try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.MSTORE));
                     }
                     if (offsets.len == 0) {
-                        try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.POP));
+                        try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.POP));
                         try emitLocation(self.allocator, &code_locations, item_index, &location_start, ret.bytecode.items.len);
-                        try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.POP));
+                        try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.POP));
                     }
                     removeImmutableReference(&immutable_by_sub, item.data_value);
                 },
                 .PushDeployTimeAddress => {
-                    try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.PUSH20));
+                    try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.PUSH20));
                     try ret.bytecode.appendNTimes(self.allocator, 0, 20);
                 },
                 .Tag => try self.assembleTag(item, ret.bytecode.items.len, true, &ret.bytecode),
@@ -830,7 +862,7 @@ pub const Assembly = struct {
 
         if (immutable_by_sub.items.len != 0) return error.UnassignedImmutable;
         if (self.subs.items.len != 0 or self.data_entries.items.len != 0 or self.auxiliary_data.items.len != 0)
-            try ret.bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.INVALID));
+            try ret.bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.INVALID));
 
         const SubOffset = struct { object: *const LinkerObject, offset: usize };
         var sub_offsets: std.ArrayList(SubOffset) = .empty;
@@ -917,7 +949,7 @@ pub const Assembly = struct {
             return error.DuplicateTagPosition;
         self.tag_positions_in_bytecode.items[split[1]] = position;
         if (add_jump_dest)
-            try bytecode.append(self.allocator, @intFromEnum(InstructionModule.Instruction.JUMPDEST));
+            try bytecode.append(self.allocator, @backingInt(InstructionModule.Instruction.JUMPDEST));
     }
 
     pub fn encodeSubPath(self: *Assembly, path: []const SubAssemblyID) AssemblyError!SubAssemblyID {
@@ -1178,7 +1210,7 @@ pub const Assembly = struct {
             }
             for (self.subs.items, 0..) |sub_assembly, index| {
                 try output.print("\n{s}sub_{d}: assembly {{\n", .{ prefix, index });
-                const child_prefix = try std.fmt.allocPrint(allocator, "{s}    ", .{prefix});
+                const child_prefix = try allocator.print("{s}    ", .{prefix});
                 defer allocator.free(child_prefix);
                 try sub_assembly.appendAssemblyText(allocator, output, selection, child_prefix, source_codes);
                 try output.print("{s}}}\n", .{prefix});
@@ -1239,7 +1271,7 @@ fn buildAssemblyJSON(
             try data.object.put(allocator, key, .{ .string = value });
         }
         for (assembly.subs.items, 0..) |sub_assembly, index| {
-            const key = try std.fmt.allocPrint(allocator, "{x}", .{index});
+            const key = try allocator.print("{x}", .{index});
             try data.object.put(
                 allocator,
                 key,
@@ -1704,7 +1736,7 @@ fn appendPush(
 ) std.mem.Allocator.Error!void {
     var width = Numeric.numberEncodingSize(u256, value);
     if (width == 0 and !evm_version.hasPush0()) width = 1;
-    try bytecode.append(allocator, @intFromEnum(InstructionModule.pushInstruction(@intCast(width))));
+    try bytecode.append(allocator, @backingInt(InstructionModule.pushInstruction(@intCast(width))));
     try appendBigEndian(allocator, bytecode, width, value);
 }
 
@@ -2048,8 +2080,7 @@ test "assembly JSON preserves code, source names, data, and subassemblies" {
 test "assembly JSON tag integers use decimal octal and hexadecimal prefixes" {
     const allocator = std.testing.allocator;
     for ([_][]const u8{ "8", "010", "0x8", "0X8" }) |tag| {
-        const input = try std.fmt.allocPrint(
-            allocator,
+        const input = try allocator.print(
             "{{\".code\":[{{\"name\":\"PUSH [tag]\",\"value\":\"8\"}},{{\"name\":\"JUMP\"}},{{\"name\":\"tag\",\"value\":\"{s}\"}},{{\"name\":\"JUMPDEST\"}},{{\"name\":\"STOP\"}}]}}",
             .{tag},
         );
@@ -2068,8 +2099,7 @@ test "assembly JSON tag integers use decimal octal and hexadecimal prefixes" {
 test "assembly JSON PUSH values require unprefixed hex digits" {
     const allocator = std.testing.allocator;
     for ([_][]const u8{ "0x10", "0X10", "1_0", "+10" }) |value| {
-        const input = try std.fmt.allocPrint(
-            allocator,
+        const input = try allocator.print(
             "{{\".code\":[{{\"name\":\"PUSH\",\"value\":\"{s}\"}}]}}",
             .{value},
         );
@@ -2090,8 +2120,7 @@ test "assembly JSON data aliases use lexicographic key order" {
         "{\"" ++ lower ++ "\":\"11\",\"" ++ upper ++ "\":\"22\"}",
         "{\"" ++ upper ++ "\":\"22\",\"" ++ lower ++ "\":\"11\"}",
     }) |data| {
-        const input = try std.fmt.allocPrint(
-            allocator,
+        const input = try allocator.print(
             "{{\".code\":[{{\"name\":\"PUSH data\",\"value\":\"{s}\"}}],\".data\":{s}}}",
             .{ lower, data },
         );
@@ -2159,9 +2188,11 @@ test "assembly printing retains one owner through allocation failures" {
             try std.testing.expectEqualStrings(text, actual);
         }
     };
-    try std.testing.checkAllAllocationFailures(allocator, Check.run, .{ &assembly, expected, selection, &sources, .both });
-    try std.testing.checkAllAllocationFailures(allocator, Check.run, .{ &assembly, expected, selection, &sources, .scratch });
-    try std.testing.checkAllAllocationFailures(allocator, Check.run, .{ &assembly, expected, selection, &sources, .output });
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{ &assembly, expected, selection, &sources, .both });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{ &assembly, expected, selection, &sources, .scratch });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{ &assembly, expected, selection, &sources, .output });
     var buffer: [64]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     try std.testing.expectError(error.WriteFailed, assembly.writeAssemblyText(allocator, &writer, .{}, &.{}));
@@ -2262,7 +2293,8 @@ test "assembly immutable references preserve child owners across allocation fail
             };
             if (parent.assemble()) |object| {
                 try std.testing.expect(expected_error == null);
-                const runtime_hex = ("7f" ++ "00" ** 32 ++ "50") ** 3 ++ "00";
+                const runtime_push = "7f" ++ @as([64]u8, @splat('0')) ++ "50";
+                const runtime_hex = runtime_push ++ runtime_push ++ runtime_push ++ "00";
                 const expected = if (case == .complete)
                     "602a600081816001015260450152602b600060230152602c60005050602d600050506100285000fe" ++ runtime_hex
                 else
@@ -2289,6 +2321,79 @@ test "assembly immutable references preserve child owners across allocation fail
     for (cases) |case| try Check.run(std.testing.allocator, case);
     for (cases) |case|
         try std.testing.checkAllAllocationFailures(std.testing.allocator, Check.run, .{case});
+}
+
+test "assembly CSE cached rounds preserve complete items and change counters" {
+    const Fixture = struct {
+        fn make(allocator: std.mem.Allocator) !Assembly {
+            var assembly = try Assembly.init(allocator, .current(), false, "Cache");
+            errdefer assembly.deinit();
+            _ = try assembly.append(try assembly.newTag());
+            for (0..12) |_| {
+                _ = try assembly.append(AssemblyItem.initPush(3, .{ .ast_id = 1 }));
+                _ = try assembly.append(AssemblyItem.initPush(4, .{ .ast_id = 2 }));
+                _ = try assembly.append(AssemblyItem.initInstruction(.ADD, .{ .ast_id = 3 }));
+                _ = try assembly.append(AssemblyItem.initPush(0, .{}));
+                _ = try assembly.append(AssemblyItem.initInstruction(.MSTORE, .{}));
+            }
+            _ = try assembly.append(AssemblyItem.initInstruction(.STOP, .{}));
+            return assembly;
+        }
+
+        fn run(allocator: std.mem.Allocator) !void {
+            var cache = CSEChunkCache.Cache.init(allocator);
+            defer cache.deinit();
+            cache.min_items = 1;
+            // Null bypasses the complete cache path, including boundary scans
+            // and hashing, and retains the original analysis as an oracle.
+            // Two fresh inputs exercise positive replay; later rounds exercise
+            // unchanged results after the first round's replacement.
+            for (0..2) |_| {
+                var plain = try make(allocator);
+                defer plain.deinit();
+                var cached = try make(allocator);
+                defer cached.deinit();
+                for (0..3) |_| {
+                    var plain_changes: u32 = 0;
+                    var cached_changes: u32 = 0;
+                    try plain.optimiseCSE(&plain_changes, allocator, null);
+                    try cached.optimiseCSE(&cached_changes, allocator, &cache);
+                    try std.testing.expectEqual(plain_changes, cached_changes);
+                    try std.testing.expect(CSEChunkCache.equalItems(plain.assembly_items.items, cached.assembly_items.items));
+                }
+            }
+            try std.testing.expect(cache.hits > 0);
+            try std.testing.expect(cache.replacement_hits > 0);
+        }
+    };
+    try Fixture.run(std.testing.allocator);
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Fixture.run, .{});
+    // Isolate optional storage failures from the working analysis/output owners.
+    for (0..4) |fail_index| {
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index, .resize_fail_index = 0 });
+        var cache = CSEChunkCache.Cache.init(failing.allocator());
+        defer cache.deinit();
+        var plain = try Fixture.make(std.testing.allocator);
+        defer plain.deinit();
+        var cached = try Fixture.make(std.testing.allocator);
+        defer cached.deinit();
+        var plain_changes: u32 = 0;
+        var cached_changes: u32 = 0;
+        try plain.optimiseCSE(&plain_changes, std.testing.allocator, null);
+        try cached.optimiseCSE(&cached_changes, std.testing.allocator, &cache);
+        try std.testing.expect(failing.has_induced_failure);
+        try std.testing.expect(!cache.admissions_enabled);
+        try std.testing.expectEqual(plain_changes, cached_changes);
+        try std.testing.expect(CSEChunkCache.equalItems(plain.itemsConst(), cached.itemsConst()));
+    }
+    var output_owner = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var required = try Fixture.make(output_owner.allocator());
+    defer required.deinit();
+    output_owner.fail_index = output_owner.alloc_index;
+    var changes: u32 = 0;
+    try std.testing.expectError(error.OutOfMemory, required.optimiseCSE(&changes, std.testing.allocator, null));
 }
 
 test "assembly CSE scratch releases nested analyses before output use" {
@@ -2365,8 +2470,10 @@ test "assembly CSE scratch releases nested analyses before output use" {
             const linker = try reference.assemble();
             const text = try reference.assemblyStringAlloc(allocator, .defaultValue(), &sources);
             defer allocator.free(text);
+            // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+            var deterministic = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
             for ([_]bool{ false, true }) |separate_scratch|
-                try std.testing.checkAllAllocationFailures(allocator, Check.run, .{
+                try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{
                     version, enable_cse, separate_scratch, @as(usize, 1), linker.bytecode.items, text,
                 });
         }
@@ -2439,9 +2546,39 @@ test "assembly CSE scratch preserves fallback before subsequent chunks" {
     // second owner. Successful optimization must keep its exact instructions.
     const prefix = try allocator.dupe(AssemblyItem, reference.itemsConst()[0..fallback_len]);
     defer allocator.free(prefix);
+    var replay_cache = CSEChunkCache.Cache.init(allocator);
+    defer replay_cache.deinit();
+    for (0..2) |pass| {
+        var plain = try Check.make(allocator);
+        defer plain.deinit();
+        var cached = try Check.make(allocator);
+        defer cached.deinit();
+        var plain_changes: u32 = 0;
+        var cached_changes: u32 = 0;
+        const hits_before = replay_cache.hits;
+        try plain.optimiseCSE(&plain_changes, allocator, null);
+        try cached.optimiseCSE(&cached_changes, allocator, &replay_cache);
+        try std.testing.expectEqual(plain_changes, cached_changes);
+        try std.testing.expect(CSEChunkCache.equalItems(plain.itemsConst(), cached.itemsConst()));
+        if (pass != 0) try std.testing.expect(replay_cache.hits > hits_before);
+        const entry = replay_cache.lookup(replay_cache.request(prefix, .current(), true)).?;
+        try std.testing.expectEqual(CSEChunkCache.Outcome.stack_too_deep, entry.outcome);
+    }
+    var rejecting_cache_allocator = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
+    var refusing_cache = CSEChunkCache.Cache.init(rejecting_cache_allocator.allocator());
+    defer refusing_cache.deinit();
+    var fallback = try Check.make(allocator);
+    defer fallback.deinit();
+    var changes: u32 = 0;
+    try fallback.optimiseCSE(&changes, allocator, &refusing_cache);
+    try std.testing.expect(rejecting_cache_allocator.has_induced_failure);
+    try std.testing.expect(!refusing_cache.admissions_enabled);
+    try std.testing.expect(CSEChunkCache.equalItems(prefix, fallback.itemsConst()[0..fallback_len]));
     try reference.optimise(.{ .run_cse = true });
     try std.testing.expectEqualDeep(prefix, reference.itemsConst()[0..fallback_len]);
     const expected = (try reference.assemble()).bytecode.items;
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
     for ([_]bool{ false, true }) |separate_scratch|
-        try std.testing.checkAllAllocationFailures(allocator, Check.run, .{ separate_scratch, expected });
+        try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{ separate_scratch, expected });
 }

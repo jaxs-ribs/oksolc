@@ -39,11 +39,11 @@ pub const Node = union(enum) {
         const left_tag = std.meta.activeTag(left);
         const right_tag = std.meta.activeTag(right);
         if (left_tag != right_tag)
-            return @intFromEnum(left_tag) < @intFromEnum(right_tag);
+            return @backingInt(left_tag) < @backingInt(right_tag);
         return switch (left) {
             .callable => |value| compatibility_ids.id(value).? <
                 compatibility_ids.id(right.callable).?,
-            .special => |value| @intFromEnum(value) < @intFromEnum(right.special),
+            .special => |value| @backingInt(value) < @backingInt(right.special),
         };
     }
 };

@@ -47,7 +47,7 @@ test "contract artifact merge preserves frontend fields and allocation owners" {
     const source_evm = source.object.getPtr("evm").?;
     // Force destination map growth using storage independent of the source.
     for (0..20) |index| {
-        const field = try std.fmt.allocPrint(source_allocator, "field{d}", .{index});
+        const field = try source_allocator.print("field{d}", .{index});
         try source_evm.object.put(source_allocator, field, .{ .string = try source_allocator.dupe(u8, field) });
     }
     try source.object.put(source_allocator, "metadata", .{ .string = try source_allocator.dupe(u8, "backend") });

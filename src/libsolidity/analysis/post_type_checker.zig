@@ -87,8 +87,7 @@ pub const PostTypeChecker = struct {
         const watcher = self.reporter.errorWatcher();
         for (self.constant_variables.items) |declaration|
             if (try self.findCycle(declaration)) |via| {
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "The value of the constant {s} has a cyclic dependency via {s}.",
                     .{ declarationName(declaration), declarationName(via) },
                 );
@@ -258,8 +257,7 @@ pub const PostTypeChecker = struct {
             if (declaration.nodeKind() == .contract_definition) continue;
             const type_name = try self.declarationTypeNameAlloc(declaration);
             defer self.allocator.free(type_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Expected contract but got {s}.",
                 .{type_name},
             );
@@ -321,8 +319,7 @@ pub const PostTypeChecker = struct {
         if (selector != 0 and selector != std.math.maxInt(u32)) return;
         const selector_hash = FunctionSelector.selectorFromSignatureH32(signature);
         const hex = selector_hash.hex();
-        const message = try std.fmt.allocPrint(
-            self.allocator,
+        const message = try self.allocator.print(
             "The selector 0x{s} is reserved. Please rename the error to avoid the collision.",
             .{&hex},
         );
@@ -599,7 +596,7 @@ fn appendDecimal(
     output: *std.ArrayList(u8),
     value: anytype,
 ) std.mem.Allocator.Error!void {
-    const rendered = try std.fmt.allocPrint(allocator, "{d}", .{value});
+    const rendered = try allocator.print("{d}", .{value});
     defer allocator.free(rendered);
     try output.appendSlice(allocator, rendered);
 }

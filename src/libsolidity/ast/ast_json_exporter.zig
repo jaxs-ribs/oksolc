@@ -892,7 +892,7 @@ pub const ASTJsonExporter = struct {
                 const hex_value = try hexAlloc(self.allocator, value.value);
                 try result.object.put(self.allocator, "hexValue", .{ .string = hex_value });
                 if (value.sub_denomination != .None) {
-                    const token: AST.Token = @enumFromInt(@intFromEnum(value.sub_denomination));
+                    const token: AST.Token = @fromBackingInt(@intCast(@backingInt(value.sub_denomination)));
                     try putString(
                         self.allocator,
                         &result,
@@ -986,8 +986,7 @@ pub const ASTJsonExporter = struct {
         if (annotation.internal_function_ids.items.len != 0) {
             var identifiers: Json = .{ .object = .empty };
             for (annotation.internal_function_ids.items) |entry| {
-                const key = try std.fmt.allocPrint(
-                    self.allocator,
+                const key = try self.allocator.print(
                     "{d}",
                     .{try self.nodeId(entry.function)},
                 );
@@ -1260,8 +1259,7 @@ pub const ASTJsonExporter = struct {
                 }
             }
         }
-        return std.fmt.allocPrint(
-            self.allocator,
+        return self.allocator.print(
             "{d}:{d}:{d}",
             .{ location.start, length, source_index },
         );

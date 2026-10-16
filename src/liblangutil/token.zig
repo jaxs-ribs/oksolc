@@ -191,7 +191,7 @@ pub const Token = enum(c_uint) {
     NUM_TOKENS,
 };
 
-pub const count: usize = @intFromEnum(Token.NUM_TOKENS);
+pub const count: usize = @backingInt(Token.NUM_TOKENS);
 
 comptime {
     if (count > 0x100) @compileError("scanner tokens no longer fit in one byte");
@@ -201,7 +201,7 @@ comptime {
 }
 
 fn tokenOrdinal(token: Token) c_uint {
-    return @intFromEnum(token);
+    return @backingInt(token);
 }
 
 fn inRange(token: Token, first: Token, last: Token) bool {
@@ -336,7 +336,7 @@ pub fn assignmentToBinaryOp(token: Token) InvalidOperator!Token {
         return error.InvalidAssignmentOperator;
     }
     const offset = tokenOrdinal(.BitOr) - tokenOrdinal(.AssignBitOr);
-    return @enumFromInt(tokenOrdinal(token) + offset);
+    return @fromBackingInt(@intCast(tokenOrdinal(token) + offset));
 }
 
 pub fn precedence(token: Token) i8 {
@@ -374,8 +374,7 @@ pub fn precedence(token: Token) i8 {
 
 pub fn hasExpHighestPrecedence() bool {
     if (precedence(.Exp) != 14) return false;
-    inline for (std.meta.fields(Token)) |field| {
-        const token: Token = @enumFromInt(field.value);
+    inline for (std.enums.values(Token)) |token| {
         if (token != .Exp and token != .NUM_TOKENS and precedence(token) >= 14) {
             return false;
         }
@@ -655,13 +654,11 @@ pub const ElementaryTypeNameToken = struct {
             return allocator.dupe(u8, base);
         }
         return switch (self.token_value) {
-            .FixedMxN, .UFixedMxN => std.fmt.allocPrint(
-                allocator,
+            .FixedMxN, .UFixedMxN => allocator.print(
                 "{s}{d}x{d}",
                 .{ base[0 .. base.len - 3], self.first_number, self.second_number },
             ),
-            else => std.fmt.allocPrint(
-                allocator,
+            else => allocator.print(
                 "{s}{d}",
                 .{ base[0 .. base.len - 1], self.first_number },
             ),
@@ -741,7 +738,7 @@ test "keyword lookup matches the former scan on spellings and near misses" {
         try Reference.check(@tagName(token));
         if (toString(token)) |spelling| {
             for (0..spelling.len + 1) |length| try Reference.check(spelling[0..length]);
-            const suffixed = try std.fmt.allocPrint(std.testing.allocator, "{s}_1", .{spelling});
+            const suffixed = try std.testing.allocator.print("{s}_1", .{spelling});
             defer std.testing.allocator.free(suffixed);
             try Reference.check(suffixed);
             const upper = try std.ascii.allocUpperString(std.testing.allocator, spelling);

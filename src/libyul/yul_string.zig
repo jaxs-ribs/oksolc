@@ -182,7 +182,7 @@ pub fn reset() std.mem.Allocator.Error!void {
 
     lockGlobal();
     defer unlockGlobal();
-    for (&shards) |*shard| std.Io.Threaded.mutexLock(&shard.mutex);
+    for (&shards) |*shard| std.Io.Threaded.mutexLockUncancelable(&shard.mutex);
     defer for (&shards) |*shard| std.Io.Threaded.mutexUnlock(&shard.mutex);
     for (&shards) |*shard| {
         if (shard.repository) |*repository| repository.deinit();
@@ -197,19 +197,19 @@ pub const YulString = struct {
         if (string.len == 0) return .{};
         const string_hash = hash(string);
         const shard = &shards[shardIndex(string_hash, shard_mask)];
-        std.Io.Threaded.mutexLock(&shard.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&shard.mutex);
         defer std.Io.Threaded.mutexUnlock(&shard.mutex);
         return .{ .handle = try (try shard.repositoryLocked()).stringToHandleHashed(string, string_hash) };
     }
 
     pub fn initGenerated(base: YulString, counter: usize) std.mem.Allocator.Error!YulString {
         var buffer: [256]u8 = undefined;
-        const generated = std.fmt.bufPrint(
+        const generated = std.mem.print(
             &buffer,
             "{s}_{d}",
             .{ handleString(base.handle), counter },
         ) catch {
-            const long = try std.fmt.allocPrint(std.heap.smp_allocator, "{s}_{d}", .{ handleString(base.handle), counter });
+            const long = try std.heap.smp_allocator.print("{s}_{d}", .{ handleString(base.handle), counter });
             defer std.heap.smp_allocator.free(long);
             return init(long);
         };
@@ -240,7 +240,7 @@ pub const YulString = struct {
 };
 
 fn lockGlobal() void {
-    std.Io.Threaded.mutexLock(&global_mutex);
+    std.Io.Threaded.mutexLockUncancelable(&global_mutex);
 }
 
 fn unlockGlobal() void {
@@ -268,7 +268,7 @@ test "repository hash index returns stable handles" {
 
     var name_buffer: [64]u8 = undefined;
     for (0..4096) |index| {
-        const name = try std.fmt.bufPrint(&name_buffer, "generated_name_{d}", .{index});
+        const name = try std.mem.print(&name_buffer, "generated_name_{d}", .{index});
         const inserted = try repository.stringToHandle(name);
         try std.testing.expect(inserted.entry != null);
         const repeated = try repository.stringToHandle(name);
@@ -283,7 +283,7 @@ test "Yul strings shard routing keeps shard tables evenly filled" {
     var occupied: usize = 0;
     var buffer: [64]u8 = undefined;
     for (0..4096) |i| {
-        const value_hash = hash(try std.fmt.bufPrint(&buffer, "name_{d}", .{i}));
+        const value_hash = hash(try std.mem.print(&buffer, "name_{d}", .{i}));
         const slot = &seen[shardIndex(value_hash, shard_count - 1)][@intCast(value_hash & 255)];
         if (!slot.*) occupied += 1;
         slot.* = true;
@@ -315,9 +315,9 @@ test "Yul strings stay canonical when sharded across threads" {
             var buffer: [64]u8 = undefined;
             const base = try YulString.init("shared_base");
             for (0..count) |i| {
-                self.shared[worker][i] = try YulString.init(try std.fmt.bufPrint(&buffer, "shared_{d}", .{i}));
+                self.shared[worker][i] = try YulString.init(try std.mem.print(&buffer, "shared_{d}", .{i}));
                 self.generated[worker][i] = try YulString.initGenerated(base, i);
-                _ = try YulString.init(try std.fmt.bufPrint(&buffer, "worker_{d}_{d}", .{ worker, i }));
+                _ = try YulString.init(try std.mem.print(&buffer, "worker_{d}_{d}", .{ worker, i }));
             }
         }
     };

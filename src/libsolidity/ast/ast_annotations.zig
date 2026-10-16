@@ -281,7 +281,7 @@ pub const AnnotationTable = struct {
     entries: std.AutoHashMapUnmanaged(AST.NodeRef, AnnotationEntry) = .empty,
     bound_contexts: std.ArrayList(*AST.SemanticContext) = .empty,
     parent: ?*const AnnotationTable = null,
-    masked_sources: ?std.DynamicBitSetUnmanaged = null,
+    masked_sources: ?std.bit_set.Dynamic = null,
     compatibility_ids: ?*const CompatibilityIds.CompatibilityIdProjection = null,
 
     pub fn create(
@@ -310,7 +310,7 @@ pub const AnnotationTable = struct {
     ) std.mem.Allocator.Error!*AnnotationTable {
         const table = try create(backing_allocator);
         errdefer table.destroy();
-        var masked = try std.DynamicBitSetUnmanaged.initEmpty(
+        var masked = try std.bit_set.Dynamic.initEmpty(
             backing_allocator,
             source_capacity,
         );

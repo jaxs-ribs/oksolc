@@ -199,8 +199,7 @@ pub const DocStringTagParser = struct {
                 entry.name.len > "custom:".len)
             {
                 if (!validCustomTag(entry.name)) {
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "Invalid character in custom tag @{s}. Only lowercase letters and \"-\" are permitted.",
                         .{entry.name},
                     );
@@ -212,8 +211,7 @@ pub const DocStringTagParser = struct {
                     );
                 }
             } else if (!containsString(valid_tags, entry.name)) {
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Documentation tag @{s} not valid for {s}.",
                     .{ entry.name, node_name },
                 );
@@ -236,8 +234,7 @@ pub const DocStringTagParser = struct {
         for (annotation.doc_tags.items) |entry| {
             if (!std.mem.eql(u8, entry.name, "param")) continue;
             if (callableHasParameter(node, entry.tag.parameter_name)) continue;
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Documented parameter \"{s}\" not found in the parameter list of the function.",
                 .{entry.tag.parameter_name},
             );
@@ -277,8 +274,7 @@ pub const DocStringTagParser = struct {
                 };
                 const documentation = documentationNode(node) orelse return error.InvalidAst;
                 if (return_tags_visited > return_names.len) {
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "Documentation tag \"@return {s}\" exceeds the number of return parameters.",
                         .{entry.tag.content},
                     );
@@ -292,8 +288,7 @@ pub const DocStringTagParser = struct {
                     const parameter = return_names[return_tags_visited - 1];
                     const first_word = firstWord(entry.tag.content);
                     if (parameter.len != 0 and !std.mem.eql(u8, parameter, first_word)) {
-                        const message = try std.fmt.allocPrint(
-                            self.allocator,
+                        const message = try self.allocator.print(
                             "Documentation tag \"@return {s}\" does not contain the name of its return parameter.",
                             .{entry.tag.content},
                         );
@@ -344,8 +339,7 @@ pub const DocStringTagParser = struct {
 
         for (tags.items) |entry| {
             if (!std.mem.eql(u8, entry.name, "solidity")) {
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Unexpected NatSpec tag \"{s}\" with value \"{s}\" in inline assembly.",
                     .{ entry.name, entry.tag.content },
                 );
@@ -376,8 +370,7 @@ pub const DocStringTagParser = struct {
                             "Natspec memory-safe-assembly special comment for inline assembly is deprecated and scheduled for removal. Use the memory-safe block annotation instead.",
                         );
                     } else {
-                        const message = try std.fmt.allocPrint(
-                            self.allocator,
+                        const message = try self.allocator.print(
                             "Unexpected value for @solidity tag in inline assembly: {s}",
                             .{word},
                         );
@@ -386,8 +379,7 @@ pub const DocStringTagParser = struct {
                     }
                 } else if (!containsString(duplicate_warnings.items, word)) {
                     try duplicate_warnings.append(self.allocator, word);
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "Value for @solidity tag in inline assembly specified multiple times: {s}",
                         .{word},
                     );

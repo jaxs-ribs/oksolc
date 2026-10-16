@@ -36,7 +36,7 @@ test "precompile dispatch addresses match the pinned executable specification" {
     try std.testing.expectEqual(@as(usize, 14), fixture.value.forks.len);
     for (fixture.value.forks, 0..) |fork, index| {
         const revision = EVMVersion.fromString(fork.revision).?;
-        try std.testing.expectEqual(index, @as(usize, @intCast(@intFromEnum(revision.version))));
+        try std.testing.expectEqual(index, @as(usize, @intCast(@backingInt(revision.version))));
         const actual = addresses(revision).?;
         try std.testing.expectEqualSlices(u160, fork.addresses, actual);
         for (actual, 0..) |address, ordinal| {
