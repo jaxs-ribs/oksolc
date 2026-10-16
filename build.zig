@@ -1571,6 +1571,33 @@ fn addBenchmarks(
         dependOnValidation(&run.step, validation);
         cache_probe_step.dependOn(&run.step);
     }
+    const interner_probe_step = b.step("build-interner-benchmarks", "Build single-sample Yul interner probes for 1, 8, 16, 32 and 64 shards in parallel");
+    if (benchmarkGuard(b, interner_probe_step, target, optimize, 1)) {
+        const interner_module = b.createModule(.{
+            .root_source_file = b.path("src/libyul/yul_string.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        for ([_]usize{ 1, 8, 16, 32, 64 }) |count| {
+            const options = b.addOptions();
+            options.addOption(usize, "shards", count);
+            const probe = b.addExecutable(.{
+                .name = b.fmt("yul-interner-{d}", .{count}),
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path("test/benchmarks/yul_interner.zig"),
+                    .target = target,
+                    .optimize = optimize,
+                    .link_libc = true,
+                    .imports = &.{
+                        .{ .name = "yul_string", .module = interner_module },
+                        .{ .name = "benchmark_options", .module = options.createModule() },
+                    },
+                }),
+            });
+            interner_probe_step.dependOn(&b.addInstallArtifact(probe, .{}).step);
+            build_benchmarks_step.dependOn(&probe.step);
+        }
+    }
     const benchmark_local_step = b.step(
         "benchmark-local",
         "Compare ReleaseFast oksolc with system solc on three local fixtures",

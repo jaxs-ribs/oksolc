@@ -426,6 +426,17 @@ The reported allocation bytes include retained container capacity but exclude
 allocator metadata and bucket overhead. The default 8 MiB limit covers retained
 item and verbatim payload, with a separate 2,048-entry limit.
 
+Build the Yul interner probes together with
+`zig build build-interner-benchmarks -Doptimize=ReleaseFast -j8`. Run
+`zig-out/bin/yul-interner-N WORKERS` with `N` set to 1, 8, 16, 32, or 64 and
+`WORKERS` set to 2 or 10 to compare contention at those shard counts. Each
+process samples initial use, reuse without resetting, and use after resetting
+once each, checking ordinary/generated canonicality outside the timing.
+Reports include cumulative process peak RSS after each stage; this includes
+container capacity and allocator retention, not just string payload. Normal
+compiler builds use 64 shards when multiple workers are enabled. This fixed
+choice is not a claim of optimality across machines or compiler workloads.
+
 To compile the CLI and benchmark executables together before timing, use
 `zig build build-benchmarks -Doptimize=ReleaseFast`. Zig schedules independent
 builds across the available cores; use `-jN` to set a concurrency limit.

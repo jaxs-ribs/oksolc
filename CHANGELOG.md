@@ -25,6 +25,8 @@ Solidity compatibility target: `0.8.36`.
   Defer setup for cheap shuffles and hash slot identities in large tables.
 - Reuse exact assembly common-subexpression chunks across optimization rounds
   with bounded retained storage.
+- Shard Yul string interning for multiple compilation workers while preserving
+  serial storage and transferring long generated-name buffers without copying.
 
 ### Fixed
 

@@ -162,7 +162,16 @@ var reset_callbacks: std.ArrayList(ResetCallback) = .empty;
 /// Each shard is an independent repository with its own lock. Serial
 /// compilation uses only the first shard; parallel compilation spreads strings
 /// over all of them so workers rarely wait for each other.
-const shard_count = 64;
+// Probe executables specialize this constant without adding runtime options to
+// the compiler. Normal compiler roots retain the fixed 64-shard configuration.
+const shard_count: usize = if (@hasDecl(@import("root"), "yul_interner_shards"))
+    @import("root").yul_interner_shards
+else
+    64;
+comptime {
+    if (shard_count == 0 or shard_count > 64 or !std.math.isPowerOfTwo(shard_count))
+        @compileError("Yul interner shard count must be a power of two from 1 through 64");
+}
 const Shard = struct {
     mutex: std.Io.Mutex align(std.atomic.cache_line) = .init,
     repository: ?Repository = null,
