@@ -98,13 +98,14 @@ pub fn main(init: std.process.Init) !void {
     defer init.gpa.destroy(context);
     context.* = .{};
     try strings.reset();
-    defer strings.reset() catch unreachable;
+    errdefer strings.reset() catch |err| std.log.err("interner cleanup failed: {s}", .{@errorName(err)});
     try strings.setSharded(workers > 1);
     const initial = try measure(init.io, context, workers);
     const reused = try measure(init.io, context, workers);
     try strings.reset();
     try strings.setSharded(workers > 1);
     const after_reset = try measure(init.io, context, workers);
+    try strings.reset();
     const report = try std.json.Stringify.valueAlloc(init.gpa, .{
         .shards = if (workers > 1) yul_interner_shards else 1,
         .workers = workers,
