@@ -308,6 +308,7 @@ pub const SemanticRevision = struct {
         graph: *const SourceGraph,
     ) std.mem.Allocator.Error!DependencyMaskMarker {
         std.debug.assert(self.dependency_masks.items.len == 0);
+        errdefer self.dependency_masks.clearRetainingCapacity();
         try self.dependency_masks.ensureTotalCapacity(
             self.semanticAllocator(),
             graph.edgeCount(),
@@ -488,6 +489,39 @@ test "semantic revision owns annotations and one type generation" {
     _ = (try semantic.typeProvider()).boolean();
     semantic.markAnalyzed();
     try std.testing.expectEqual(SemanticCompleteness.analyzed, semantic.completeness);
+}
+
+test "semantic revision dependency masks roll back marker OOM and retry with reserved storage" {
+    const Graph = @import("source_graph.zig");
+    const allocator = std.testing.allocator;
+    var registry = Graph.SourceRegistry.init(allocator);
+    defer registry.deinit();
+    _ = try registry.beginRevision();
+    const importer = (try registry.upsert("A.sol", "")).id;
+    const imported = (try registry.upsert("B.sol", "")).id;
+    _ = try registry.finishRevision();
+    registry.commitRevision();
+    var graph = try SourceGraph.initAlloc(allocator, &registry, &.{.{ .importer = importer, .imported = imported }});
+    defer graph.deinit();
+    var failing = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
+    const semantic = try SemanticRevision.create(failing.allocator(), @fromBackingInt(@as(u64, 11)));
+    defer semantic.destroy();
+    try semantic.dependency_masks.ensureTotalCapacity(semantic.semanticAllocator(), graph.edgeCount());
+    const storage = semantic.dependency_masks.items.ptr;
+    const capacity = semantic.dependency_masks.capacity;
+    failing.fail_index = failing.alloc_index;
+    try std.testing.expectError(error.OutOfMemory, semantic.initializeDependencyMasks(&graph));
+    try std.testing.expect(failing.has_induced_failure);
+    try std.testing.expectEqual(@as(usize, 0), semantic.dependencyMasks().len);
+    try std.testing.expectEqual(capacity, semantic.dependency_masks.capacity);
+    try std.testing.expect(storage == semantic.dependency_masks.items.ptr);
+    failing.fail_index = std.math.maxInt(usize);
+    var marker = try semantic.initializeDependencyMasks(&graph);
+    defer marker.deinit();
+    try std.testing.expectEqual(@as(usize, 1), semantic.dependencyMasks().len);
+    try std.testing.expect(storage == semantic.dependency_masks.items.ptr);
+    marker.mark(importer, imported);
+    try std.testing.expectEqual(SemanticFingerprint.CategoryMask.all, semantic.dependencyMasks()[0].categories);
 }
 
 test "semantic child revisions share types and copy dirty annotations" {
