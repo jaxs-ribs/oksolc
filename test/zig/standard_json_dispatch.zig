@@ -89,6 +89,18 @@ test "using-for reference receivers preserve calldata memory and storage locatio
     }
 }
 
+test "using-for members preserve imported aliases in via-IR bytecode" {
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+        .input = @embedFile("standard-json/solidity-using-for-import-aliases.json"),
+    });
+    defer output.deinit();
+    try standard_json.compareExact(
+        @embedFile("standard-json/expected/solidity-using-for-import-aliases.json"),
+        output.bytes,
+    );
+}
+
 test "using-for library lookup ignores zero-parameter helpers and preserves explicit diagnostics" {
     inline for (.{
         "solidity-using-for-zero-parameter-overload",

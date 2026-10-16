@@ -5170,8 +5170,10 @@ pub const TypeChecker = struct {
                         self.tree,
                         entry.function_or_library,
                     );
+                    // Import aliases determine the attached member name.
+                    const path = entry.function_or_library.payload.identifier_path.path;
                     if (declaration.nodeKind() != .function_definition or
-                        !std.mem.eql(u8, declarationName(declaration), name)) continue;
+                        !std.mem.eql(u8, path[path.len - 1], name)) continue;
                     if (!containsMutableNode(declarations.items, declaration))
                         try declarations.append(self.allocator, declaration);
                 }
