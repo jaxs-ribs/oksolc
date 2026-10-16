@@ -38,6 +38,8 @@ Solidity compatibility target: `0.8.36`.
   when optional optimizer-cache storage runs out of memory.
 - Retain the public Zig `libyul.yul_string.Repository.generatedHandle` method for
   callers managing their own string repositories.
+- Keep Yul string interning unsharded for `--parallel --jobs 1` and validate
+  worker counts before configuring the interner.
 
 ## 0.1.6 - 2026-10-12
 
