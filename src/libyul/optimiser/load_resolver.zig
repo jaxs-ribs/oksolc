@@ -64,7 +64,7 @@ pub const LoadResolver = struct {
             .builtin => |builtin| builtin.handle,
             .identifier => return .handled,
         };
-        if (analyzer.load_function_handles[@intFromEnum(DataFlow.StoreLoadLocation.memory)]) |memory_load| {
+        if (analyzer.load_function_handles[@backingInt(DataFlow.StoreLoadLocation.memory)]) |memory_load| {
             if (handle.id == memory_load.id) {
                 if (!self.contains_msize and
                     try self.tryResolve(analyzer, expression, .memory, call.arguments.items))
@@ -72,7 +72,7 @@ pub const LoadResolver = struct {
                 return .handled;
             }
         }
-        if (analyzer.load_function_handles[@intFromEnum(DataFlow.StoreLoadLocation.storage)]) |storage_load| {
+        if (analyzer.load_function_handles[@backingInt(DataFlow.StoreLoadLocation.storage)]) |storage_load| {
             if (handle.id == storage_load.id) {
                 if (try self.tryResolve(analyzer, expression, .storage, call.arguments.items))
                     return .modified;

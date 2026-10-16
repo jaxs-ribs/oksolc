@@ -172,7 +172,7 @@ const Compiler = struct {
             else
                 "\nmemoryguard was present.";
         } else "";
-        const message = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ stack_error.message, suffix });
+        const message = try self.allocator.print("{s}{s}", .{ stack_error.message, suffix });
         defer self.allocator.free(message);
         try reporter.report(.{ .value = 0 }, .YulException, stack_error.location, message);
     }
@@ -383,7 +383,9 @@ test "backend scratch arenas release nested intermediates before assembly use" {
             const linker = try reference.assemble();
             const text = try reference.assemblyStringAlloc(allocator, .{}, &.{});
             defer allocator.free(text);
-            try std.testing.checkAllAllocationFailures(allocator, Check.run, .{
+            // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+            var deterministic = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
+            try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{
                 object, version, optimize, text, linker.bytecode.items,
             });
         }

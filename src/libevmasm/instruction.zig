@@ -204,63 +204,63 @@ pub fn isCallInstruction(instruction: Instruction) bool {
 }
 
 pub fn isPushInstruction(instruction: Instruction) bool {
-    const opcode = @intFromEnum(instruction);
-    return opcode >= @intFromEnum(Instruction.PUSH0) and opcode <= @intFromEnum(Instruction.PUSH32);
+    const opcode = @backingInt(instruction);
+    return opcode >= @backingInt(Instruction.PUSH0) and opcode <= @backingInt(Instruction.PUSH32);
 }
 
 pub fn isDupInstruction(instruction: Instruction) bool {
-    const opcode = @intFromEnum(instruction);
-    return opcode >= @intFromEnum(Instruction.DUP1) and opcode <= @intFromEnum(Instruction.DUP16);
+    const opcode = @backingInt(instruction);
+    return opcode >= @backingInt(Instruction.DUP1) and opcode <= @backingInt(Instruction.DUP16);
 }
 
 pub fn isSwapInstruction(instruction: Instruction) bool {
-    const opcode = @intFromEnum(instruction);
-    return opcode >= @intFromEnum(Instruction.SWAP1) and opcode <= @intFromEnum(Instruction.SWAP16);
+    const opcode = @backingInt(instruction);
+    return opcode >= @backingInt(Instruction.SWAP1) and opcode <= @backingInt(Instruction.SWAP16);
 }
 
 pub fn isLogInstruction(instruction: Instruction) bool {
-    const opcode = @intFromEnum(instruction);
-    return opcode >= @intFromEnum(Instruction.LOG0) and opcode <= @intFromEnum(Instruction.LOG4);
+    const opcode = @backingInt(instruction);
+    return opcode >= @backingInt(Instruction.LOG0) and opcode <= @backingInt(Instruction.LOG4);
 }
 
 pub fn getPushNumber(instruction: Instruction) u8 {
     std.debug.assert(isPushInstruction(instruction));
-    return @intFromEnum(instruction) - @intFromEnum(Instruction.PUSH0);
+    return @backingInt(instruction) - @backingInt(Instruction.PUSH0);
 }
 
 pub fn getDupNumber(instruction: Instruction) u8 {
     std.debug.assert(isDupInstruction(instruction));
-    return @intFromEnum(instruction) - @intFromEnum(Instruction.DUP1) + 1;
+    return @backingInt(instruction) - @backingInt(Instruction.DUP1) + 1;
 }
 
 pub fn getSwapNumber(instruction: Instruction) u8 {
     std.debug.assert(isSwapInstruction(instruction));
-    return @intFromEnum(instruction) - @intFromEnum(Instruction.SWAP1) + 1;
+    return @backingInt(instruction) - @backingInt(Instruction.SWAP1) + 1;
 }
 
 pub fn getLogNumber(instruction: Instruction) u8 {
     std.debug.assert(isLogInstruction(instruction));
-    return @intFromEnum(instruction) - @intFromEnum(Instruction.LOG0);
+    return @backingInt(instruction) - @backingInt(Instruction.LOG0);
 }
 
 pub fn pushInstruction(number: u8) Instruction {
     std.debug.assert(number <= 32);
-    return @enumFromInt(@intFromEnum(Instruction.PUSH0) + number);
+    return @fromBackingInt(@intCast(@backingInt(Instruction.PUSH0) + number));
 }
 
 pub fn dupInstruction(number: u8) Instruction {
     std.debug.assert(number >= 1 and number <= 16);
-    return @enumFromInt(@intFromEnum(Instruction.DUP1) + number - 1);
+    return @fromBackingInt(@intCast(@backingInt(Instruction.DUP1) + number - 1));
 }
 
 pub fn swapInstruction(number: u8) Instruction {
     std.debug.assert(number >= 1 and number <= 16);
-    return @enumFromInt(@intFromEnum(Instruction.SWAP1) + number - 1);
+    return @fromBackingInt(@intCast(@backingInt(Instruction.SWAP1) + number - 1));
 }
 
 pub fn logInstruction(number: u8) Instruction {
     std.debug.assert(number <= 4);
-    return @enumFromInt(@intFromEnum(Instruction.LOG0) + number);
+    return @fromBackingInt(@intCast(@backingInt(Instruction.LOG0) + number));
 }
 
 pub fn instructionByName(name: []const u8) ?Instruction {
@@ -391,7 +391,7 @@ const invalid_names: [256][]const u8 = names: {
 
 fn invalidInfo(instruction: Instruction) InstructionInfo {
     return .{
-        .name = invalid_names[@intFromEnum(instruction)],
+        .name = invalid_names[@backingInt(instruction)],
         .additional = 0,
         .args = 0,
         .ret = 0,
@@ -401,11 +401,11 @@ fn invalidInfo(instruction: Instruction) InstructionInfo {
 }
 
 test "every declared opcode round-trips through its mnemonic" {
-    inline for (std.meta.fields(Instruction)) |field| {
-        const instruction: Instruction = @enumFromInt(field.value);
+    inline for (std.enums.values(Instruction)) |instruction| {
+        const name = @tagName(instruction);
         try std.testing.expect(isValidInstruction(instruction));
-        try std.testing.expectEqual(instruction, instructionByName(field.name).?);
-        try std.testing.expectEqualStrings(field.name, instructionInfo(instruction, EVMVersion.current()).name);
+        try std.testing.expectEqual(instruction, instructionByName(name).?);
+        try std.testing.expectEqualStrings(name, instructionInfo(instruction, EVMVersion.current()).name);
     }
     try std.testing.expectEqual(Instruction.PREVRANDAO, instructionByName("DIFFICULTY").?);
     try std.testing.expect(instructionByName("difficulty") == null);
@@ -420,10 +420,10 @@ test "opcode family arithmetic and metadata match the EVM stack model" {
     try std.testing.expectEqual(@as(u8, 17), instructionInfo(.DUP16, EVMVersion.current()).ret);
     try std.testing.expectEqual(@as(u8, 17), instructionInfo(.SWAP16, EVMVersion.current()).args);
     try std.testing.expectEqual(@as(u8, 6), instructionInfo(.LOG4, EVMVersion.current()).args);
-    try std.testing.expect(!isValidInstruction(@enumFromInt(0x0c)));
+    try std.testing.expect(!isValidInstruction(@fromBackingInt(@intCast(0x0c))));
     try std.testing.expectEqualStrings(
         "<INVALID_INSTRUCTION: 12>",
-        instructionInfo(@enumFromInt(0x0c), EVMVersion.current()).name,
+        instructionInfo(@fromBackingInt(@intCast(0x0c)), EVMVersion.current()).name,
     );
 }
 

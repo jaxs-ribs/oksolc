@@ -71,7 +71,7 @@ pub const Output = struct {
 
     pub fn integer(self: *Output, value: anytype) Error!void {
         var buffer: [80]u8 = undefined; // All signed source IDs and u256 literals fit.
-        const rendered = std.fmt.bufPrint(&buffer, "{d}", .{value}) catch unreachable; // zlinter-disable-current-line no_swallow_error - 80 bytes fit every supported integer up to u256
+        const rendered = std.mem.print(&buffer, "{d}", .{value}) catch unreachable; // zlinter-disable-current-line no_swallow_error - 80 bytes fit every supported integer up to u256
         try self.writeAll(rendered);
     }
 };
@@ -189,7 +189,7 @@ fn Render(comptime project: bool) type {
             const text = if (value.value.string_value) |hint| hint else blk: {
                 const numeric = value.value.numeric_value orelse return error.InvalidAST;
                 if (value.kind == .Boolean) break :blk if (numeric == 0) "false" else "true";
-                break :blk std.fmt.bufPrint(&buffer, "{d}", .{numeric}) catch unreachable; // zlinter-disable-current-line no_swallow_error - 80 bytes fit the decimal representation of a u256 literal
+                break :blk std.mem.print(&buffer, "{d}", .{numeric}) catch unreachable; // zlinter-disable-current-line no_swallow_error - 80 bytes fit the decimal representation of a u256 literal
             };
             if (value.kind == .String) try CommonData.writeEscapedQuoted(self.output, text) else try self.output.writeAll(text);
             try self.finish(&value.debug_data, mark);
@@ -476,12 +476,12 @@ test "Yul AST layout probes stay bounded on deep block chains without allocation
     defer arena.deinit();
     const items = try arena.allocator().alloc(AST.Statement, 1);
     items[0] = .{ .expression_statement = .{ .expression = .{ .function_call = .{ .function_name = .{ .builtin = .{ .handle = .{ .id = 0 } } } } } } };
-    var root: AST.Block = .{ .statements = .{ .items = items, .capacity = 1 } };
+    var root: AST.Block = .{ .statements = .fromOwnedSlice(items) };
     var first_calls: usize = 0;
     for (0..200) |depth| {
         const wrapper = try arena.allocator().alloc(AST.Statement, 1);
         wrapper[0] = .{ .block = root };
-        root = .{ .statements = .{ .items = wrapper, .capacity = 1 } };
+        root = .{ .statements = .fromOwnedSlice(wrapper) };
         if (depth != 99 and depth != 199) continue;
         var counter: Counter = .{};
         var output: Output = .{};
@@ -570,7 +570,7 @@ test "Yul AST native projection preserves empty and absent source mappings" {
     const allocator = std.testing.allocator;
     const dialect = (try EVM.strictAssemblyForEVMObjects(.current())).dialect();
     for ([_][]const u8{ "", "/// @use-src \n" }) |header| {
-        const source = try std.fmt.allocPrint(allocator, "{s}object \"Root\" {{ code {{ let a, b a, b := f() function f() -> x,y {{ x := 1 y := 2 }} }} }}", .{header});
+        const source = try allocator.print("{s}object \"Root\" {{ code {{ let a, b a, b := f() function f() -> x,y {{ x := 1 y := 2 }} }} }}", .{header});
         defer allocator.free(source);
         for ([_]DebugInfoSelection{ .defaultValue(), .noneValue(), .only(.location), .only(.ast_id) }) |selection| {
             var reporter = Diagnostics.ErrorReporter.init(allocator);

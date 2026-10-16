@@ -619,8 +619,7 @@ pub const CodeTransform = struct {
             const function_name = try function_definition.name.str();
             const target_height = (try self.assembly.stackHeight()) -
                 @as(i32, @intCast(function_definition.parameters.items.len));
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "The function {s} has {d} parameters or return variables too many to fit the stack size.",
                 .{ function_name, unreachable_slots },
             );
@@ -904,8 +903,7 @@ pub const CodeTransform = struct {
         if (height_difference > limit) {
             const excess = height_difference - limit;
             const variable_text = try variable_name.str();
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Variable {s} is {d} slot(s) too deep inside the stack. {s}",
                 .{
                     variable_text,

@@ -12,7 +12,6 @@ const DataFlow = @import("data_flow_analyzer.zig");
 const Metrics = @import("metrics.zig");
 const NameCollector = @import("name_collector.zig");
 const OptimiserStepContext = @import("optimiser_step.zig").OptimiserStepContext;
-const YulName = @import("../yul_name.zig").YulName;
 
 pub const Rematerialiser = struct {
     const Self = @This();

@@ -188,9 +188,10 @@ const WorkloadCounters = struct {
     }
 };
 
-/// zBench 0.11.2 forwards allocator remaps without updating its live-byte
+/// zBench forwards allocator remaps without updating its live-byte
 /// counters. Refusing remap here makes reallocations take the tracked
 /// allocate/copy/free fallback and keeps benchmark memory results meaningful.
+/// Use this as the benchmark's parent allocator so every workload is covered.
 const TrackingCompatibleAllocator = struct {
     child: std.mem.Allocator,
 
@@ -508,8 +509,8 @@ fn runBenchmarks(
             "{{\"schema_version\":1,\"zig_version\":\"{s}\",\"target\":\"{s}-{s}\",\"optimize\":\"{s}\",\"workload_counters\":",
             .{
                 builtin.zig_version_string,
-                @tagName(builtin.cpu.arch),
-                @tagName(builtin.os.tag),
+                @tagName(builtin.target.cpu.arch),
+                @tagName(builtin.target.os.tag),
                 @tagName(builtin.mode),
             },
         );
@@ -602,7 +603,8 @@ fn runStandardJsonSurvey(
         .use_smp_allocator = true,
     };
 
-    var benchmark = zbench.Benchmark.init(init.gpa, .{
+    var compatible: TrackingCompatibleAllocator = .{ .child = init.gpa };
+    var benchmark = zbench.Benchmark.init(compatible.allocator(), .{
         .track_allocations = true,
     });
     defer benchmark.deinit();
@@ -621,8 +623,7 @@ fn runStandardJsonSurvey(
         &response_print_case,
         .{ .iterations = 3 },
     );
-    const compiler_name = try std.fmt.allocPrint(
-        init.gpa,
+    const compiler_name = try init.gpa.print(
         "compiler: Standard JSON end-to-end ({d} jobs, timing only)",
         .{jobs},
     );
@@ -798,7 +799,8 @@ pub fn main(init: std.process.Init) !void {
         },
     };
 
-    var benchmark = zbench.Benchmark.init(init.gpa, .{
+    var compatible: TrackingCompatibleAllocator = .{ .child = init.gpa };
+    var benchmark = zbench.Benchmark.init(compatible.allocator(), .{
         .track_allocations = true,
     });
     defer benchmark.deinit();

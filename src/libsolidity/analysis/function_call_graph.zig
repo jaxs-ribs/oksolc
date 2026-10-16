@@ -475,8 +475,7 @@ fn formatCallableNodeAlloc(
 
     if (callable.nodeKind() == .function_definition and
         callable.payload.function_definition.free)
-        return std.fmt.allocPrint(
-            allocator,
+        return allocator.print(
             "function {s}({s})",
             .{ callable_data.declaration.name, parameters.items },
         );
@@ -486,17 +485,15 @@ fn formatCallableNodeAlloc(
     const scope_name = scope.payload.contract_definition.declaration.name;
     return switch (callable.payload) {
         .function_definition => |function| switch (function.kind) {
-            .Constructor => std.fmt.allocPrint(allocator, "constructor of {s}", .{scope_name}),
-            .Fallback => std.fmt.allocPrint(allocator, "fallback of {s}", .{scope_name}),
-            .Receive => std.fmt.allocPrint(allocator, "receive of {s}", .{scope_name}),
-            else => std.fmt.allocPrint(
-                allocator,
+            .Constructor => allocator.print("constructor of {s}", .{scope_name}),
+            .Fallback => allocator.print("fallback of {s}", .{scope_name}),
+            .Receive => allocator.print("receive of {s}", .{scope_name}),
+            else => allocator.print(
                 "function {s}.{s}({s})",
                 .{ scope_name, callable_data.declaration.name, parameters.items },
             ),
         },
-        .modifier_definition => std.fmt.allocPrint(
-            allocator,
+        .modifier_definition => allocator.print(
             "modifier {s}.{s}",
             .{ scope_name, callable_data.declaration.name },
         ),

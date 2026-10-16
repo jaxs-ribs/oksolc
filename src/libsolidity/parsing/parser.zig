@@ -298,8 +298,7 @@ pub const Parser = struct {
         if (self.currentToken() != .Identifier) {
             const actual_name = try self.base.tokenNameAlloc(self.currentToken());
             defer self.allocator.free(actual_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Expected identifier but got {s}",
                 .{actual_name},
             );
@@ -407,8 +406,7 @@ pub const Parser = struct {
                 const semver_error: SemVer.SemVerError = @errorCast(parse_error);
                 const detail = try parser.errorMessageAlloc(self.allocator, semver_error);
                 defer self.allocator.free(detail);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Invalid version pragma. {s}",
                     .{detail},
                 );
@@ -430,8 +428,7 @@ pub const Parser = struct {
         };
         defer current.deinit();
         if (!expression.matches(current)) {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Source file requires different compiler version (current compiler is {s}) - note that nightly builds are considered to be strictly less than the released version",
                 .{Version.VersionString},
             );
@@ -664,8 +661,7 @@ pub const Parser = struct {
         if (self.currentToken() != .Identifier or !std.mem.eql(u8, self.currentLiteral(), "at")) {
             const actual_name = try self.base.tokenNameAlloc(self.currentToken());
             defer self.allocator.free(actual_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Expected 'at' but got {s}",
                 .{actual_name},
             );
@@ -718,8 +714,7 @@ pub const Parser = struct {
                             self.currentLiteral()
                         else
                             TokenModule.toString(operator.?) orelse "";
-                        const message = try std.fmt.allocPrint(
-                            self.allocator,
+                        const message = try self.allocator.print(
                             "Not a user-definable operator: {s}. Only the following operators can be user-defined: |, &, ^, ~, +, -, *, /, %, ==, !=, <, >, <=, >=",
                             .{operator_name},
                         );
@@ -1092,8 +1087,7 @@ pub const Parser = struct {
                     if (is_state_variable and
                         (result.visibility == .External or result.visibility == .Internal))
                         break;
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "Visibility already specified as \"{s}\".",
                         .{visibilityToString(result.visibility)},
                     );
@@ -1103,8 +1097,7 @@ pub const Parser = struct {
                 } else result.visibility = try self.parseVisibility();
             } else if (TokenModule.isStateMutabilitySpecifier(token)) {
                 if (result.state_mutability != .NonPayable) {
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "State mutability already specified as \"{s}\".",
                         .{ASTEnums.stateMutabilityToString(result.state_mutability)},
                     );
@@ -1192,8 +1185,7 @@ pub const Parser = struct {
                 };
                 name_location = self.currentLocation();
                 name = try self.tree.ownString(token_name);
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "This function is named \"{s}\" but is not the {s} of the contract. If you intend this to be a {s}, use \"{s}(...) {{ ... }}\" without the \"function\" keyword to define it.",
                     .{ name, expected, expected, name },
                 );
@@ -1280,8 +1272,7 @@ pub const Parser = struct {
             if (options.kind == .state and TokenModule.isVariableVisibilitySpecifier(token)) {
                 factory.markEndPosition();
                 if (visibility != .Default) {
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "Visibility already specified as \"{s}\".",
                         .{visibilityToString(visibility)},
                     );
@@ -1299,8 +1290,7 @@ pub const Parser = struct {
                 _ = try self.advance();
             } else if (token == .Constant or token == .Immutable) {
                 if (mutability != .Mutable) {
-                    const message = try std.fmt.allocPrint(
-                        self.allocator,
+                    const message = try self.allocator.print(
                         "Mutability already set to \"{s}\"",
                         .{if (mutability == .Constant) "constant" else "immutable"},
                     );
@@ -2480,7 +2470,7 @@ pub const Parser = struct {
                 TokenModule.isTimeSubdenomination(self.currentToken())))
         {
             factory.markEndPosition();
-            denomination = @enumFromInt(@intFromEnum(self.currentToken()));
+            denomination = @fromBackingInt(@intCast(@backingInt(self.currentToken())));
             _ = try self.advance();
         }
         return factory.create(.{ .literal = .{

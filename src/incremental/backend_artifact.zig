@@ -118,7 +118,7 @@ pub fn encodeBlueprintAlloc(
     errdefer encoder.deinit();
     try encoder.writeBytes(blueprint_magic);
     try encoder.writeInt(u32, schema_version);
-    try encoder.writeByte(@intCast(@intFromEnum(evm_version.version)));
+    try encoder.writeByte(@intCast(@backingInt(evm_version.version)));
     try encoder.writeInt(u32, try deployedIndexWire(pair));
     try encoder.writeSlice(assembly_json);
     try encodePortableAssemblyState(&encoder, root);
@@ -166,7 +166,7 @@ pub fn encodeCreationAlloc(
     errdefer encoder.deinit();
     try encoder.writeBytes(creation_magic);
     try encoder.writeInt(u32, schema_version);
-    try encoder.writeByte(@intCast(@intFromEnum(evm_version.version)));
+    try encoder.writeByte(@intCast(@backingInt(evm_version.version)));
     try encoder.writeInt(u32, deployed_index);
     try encoder.writeSlice(assembly_json);
     try encodePortableAssemblyState(&encoder, root);
@@ -192,7 +192,7 @@ pub fn encodeDeployedAlloc(
     errdefer encoder.deinit();
     try encoder.writeBytes(deployed_magic);
     try encoder.writeInt(u32, schema_version);
-    try encoder.writeByte(@intCast(@intFromEnum(evm_version.version)));
+    try encoder.writeByte(@intCast(@backingInt(evm_version.version)));
     try encodeMachineObject(&encoder, object);
     return encoder.finish();
 }
@@ -678,7 +678,7 @@ fn decodeDeployedIndex(value: u32) DecodeError!?usize {
 
 fn expectVersion(cursor: *Cursor, expected: EVMVersion) DecodeError!void {
     const encoded = try cursor.readByte();
-    if (encoded != @as(u8, @intCast(@intFromEnum(expected.version))))
+    if (encoded != @as(u8, @intCast(@backingInt(expected.version))))
         return error.Corrupt;
 }
 

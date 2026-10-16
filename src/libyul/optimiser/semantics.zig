@@ -16,8 +16,8 @@ const Utilities = @import("../utilities.zig");
 const YulName = @import("../yul_name.zig").YulName;
 
 fn lessFunctionHandle(left: AST.FunctionHandle, right: AST.FunctionHandle) bool {
-    const left_tag = @intFromEnum(left);
-    const right_tag = @intFromEnum(right);
+    const left_tag = @backingInt(left);
+    const right_tag = @backingInt(right);
     if (left_tag != right_tag) return left_tag < right_tag;
     return switch (left) {
         .user => |name| name.lessThan(right.user),

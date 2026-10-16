@@ -150,8 +150,7 @@ pub const ScopeFiller = struct {
     ) FillError!bool {
         if (try scope.registerVariable(value.name)) return true;
         const name = try value.name.str();
-        const description = try std.fmt.allocPrint(
-            self.error_reporter.allocator,
+        const description = try self.error_reporter.allocator.print(
             "Variable name {s} already taken in this scope.",
             .{name},
         );
@@ -170,8 +169,7 @@ pub const ScopeFiller = struct {
             definition.return_variables.items.len,
         )) return true;
         const name = try definition.name.str();
-        const description = try std.fmt.allocPrint(
-            self.error_reporter.allocator,
+        const description = try self.error_reporter.allocator.print(
             "Function name {s} already taken in this scope.",
             .{name},
         );

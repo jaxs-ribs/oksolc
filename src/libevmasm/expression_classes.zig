@@ -367,7 +367,7 @@ pub const ExpressionClasses = struct {
 fn makeKey(item: *const AssemblyItem, arguments: []const Id, sequence_number: u32) ExpressionKey {
     return .{
         .item_type = item.item_type,
-        .instruction = if (item.item_type == .Operation) @intFromEnum(item.instruction_value.?) else 0,
+        .instruction = if (item.item_type == .Operation) @backingInt(item.instruction_value.?) else 0,
         .data = if (item.item_type == .Operation) 0 else item.data_value,
         .arguments = arguments,
         .sequence_number = sequence_number,

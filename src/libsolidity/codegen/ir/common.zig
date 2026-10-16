@@ -48,8 +48,7 @@ pub fn externalFunctionABIWrapperAlloc(
         declaration.payload.function_definition.kind == .Constructor)
         return error.InvalidAst;
     const name = (declaration.declarationConst() orelse return error.InvalidAst).name;
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "external_fun_{s}_{d}",
         .{ name, try compatibilityId(compatibility_ids, declaration) },
     );
@@ -73,8 +72,7 @@ pub fn functionAlloc(
             scope.contract orelse return error.InvalidAst,
         );
     }
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "fun_{s}_{d}",
         .{ definition.callable.declaration.name, try compatibilityId(compatibility_ids, function) },
     );
@@ -86,8 +84,7 @@ pub fn getterFunctionAlloc(
     variable: *const AST.Node,
 ) CommonError![]u8 {
     if (variable.nodeKind() != .variable_declaration) return error.InvalidAst;
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "getter_fun_{s}_{d}",
         .{
             variable.payload.variable_declaration.declaration.name,
@@ -112,8 +109,7 @@ pub fn modifierInvocationAlloc(
         else => return error.InvalidAst,
     };
     if (modifier_name.len == 0) return error.InvalidAst;
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "modifier_{s}_{d}",
         .{ modifier_name, try compatibilityId(compatibility_ids, invocation) },
     );
@@ -125,8 +121,7 @@ pub fn functionWithModifierInnerAlloc(
     function: *const AST.Node,
 ) CommonError![]u8 {
     if (function.nodeKind() != .function_definition) return error.InvalidAst;
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "fun_{s}_{d}_inner",
         .{
             function.payload.function_definition.callable.declaration.name,
@@ -141,8 +136,7 @@ pub fn creationObjectAlloc(
     contract: *const AST.Node,
 ) CommonError![]u8 {
     const data = try contractData(contract);
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "{s}_{d}",
         .{ data.declaration.name, try compatibilityId(compatibility_ids, contract) },
     );
@@ -154,8 +148,7 @@ pub fn deployedObjectAlloc(
     contract: *const AST.Node,
 ) CommonError![]u8 {
     const data = try contractData(contract);
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "{s}_{d}_deployed",
         .{ data.declaration.name, try compatibilityId(compatibility_ids, contract) },
     );
@@ -165,8 +158,7 @@ pub fn internalDispatchAlloc(
     allocator: std.mem.Allocator,
     arity: YulArity,
 ) std.mem.Allocator.Error![]u8 {
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "dispatch_internal_in_{d}_out_{d}",
         .{ arity.in, arity.out },
     );
@@ -178,8 +170,7 @@ pub fn constructorAlloc(
     contract: *const AST.Node,
 ) CommonError![]u8 {
     const data = try contractData(contract);
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "constructor_{s}_{d}",
         .{ data.declaration.name, try compatibilityId(compatibility_ids, contract) },
     );
@@ -197,8 +188,7 @@ pub fn constantValueFunctionAlloc(
     if (variable.nodeKind() != .variable_declaration or
         variable.payload.variable_declaration.mutability != .Constant)
         return error.InvalidAst;
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "constant_{s}_{d}",
         .{
             variable.payload.variable_declaration.declaration.name,
@@ -213,8 +203,7 @@ pub fn localVariableDeclarationAlloc(
     declaration: *const AST.Node,
 ) CommonError![]u8 {
     if (declaration.nodeKind() != .variable_declaration) return error.InvalidAst;
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "var_{s}_{d}",
         .{
             declaration.payload.variable_declaration.declaration.name,
@@ -229,8 +218,7 @@ pub fn localVariableExpressionAlloc(
     expression: *const AST.Node,
 ) CommonError![]u8 {
     if (!expression.isExpression()) return error.InvalidAst;
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "expr_{d}",
         .{try compatibilityId(compatibility_ids, expression)},
     );
@@ -247,8 +235,7 @@ pub fn trySuccessConditionVariableAlloc(
         .function_call => |call| if (!call.try_call) return error.InvalidAst,
         else => return error.InvalidAst,
     }
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "trySuccessCondition_{d}",
         .{try compatibilityId(compatibility_ids, expression)},
     );
@@ -258,7 +245,7 @@ pub fn tupleComponentAlloc(
     allocator: std.mem.Allocator,
     index: usize,
 ) std.mem.Allocator.Error![]u8 {
-    return std.fmt.allocPrint(allocator, "component_{d}", .{index + 1});
+    return allocator.print("component_{d}", .{index + 1});
 }
 
 pub fn zeroValueAlloc(
@@ -273,7 +260,7 @@ pub fn zeroValueAlloc(
         type_ref,
     );
     defer allocator.free(identifier);
-    return std.fmt.allocPrint(allocator, "zero_{s}{s}", .{ identifier, variable_name });
+    return allocator.print("zero_{s}{s}", .{ identifier, variable_name });
 }
 
 pub fn dispenseLocationCommentAlloc(
@@ -292,7 +279,7 @@ pub fn dispenseLocationCommentAlloc(
     );
     defer allocator.free(debug_info);
     if (debug_info.len == 0) return allocator.alloc(u8, 0);
-    return std.fmt.allocPrint(allocator, "/// {s}", .{debug_info});
+    return allocator.print("/// {s}", .{debug_info});
 }
 
 pub fn dispenseNodeLocationCommentAlloc(

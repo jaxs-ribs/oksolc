@@ -392,8 +392,7 @@ pub fn compileSolidityStandardJsonAlloc(
         if (objectMember(source_entry, "keccak256")) |hash_value| {
             if (jsonString(hash_value)) |hash| {
                 if (!hashMatchesContent(hash, source_contents)) {
-                    const message = try std.fmt.allocPrint(
-                        arena,
+                    const message = try arena.print(
                         "Mismatch between content and supplied hash for \"{s}\"",
                         .{source_name},
                     );
@@ -419,6 +418,7 @@ pub fn compileSolidityStandardJsonAlloc(
     var reporter = Diagnostics.ErrorReporter.init(allocator);
     defer reporter.deinit();
 
+    // zlinter-disable-next-line require_errdefer_dealloc - deferred optional payload cleanup covers success and error returns
     var parsing_probe: ?ProfilerModule.OptionalProbe =
         ProfilerModule.OptionalProbe.init(profiler, "Solidity parsing");
     defer if (parsing_probe) |*probe| probe.deinit();
@@ -525,8 +525,7 @@ pub fn compileSolidityStandardJsonAlloc(
                 );
             defer callback_result.deinit();
             if (!callback_result.success) {
-                const message = try std.fmt.allocPrint(
-                    arena,
+                const message = try arena.print(
                     "Source \"{s}\" not found: {s}",
                     .{ import_path, callback_result.response_or_error_message },
                 );
@@ -895,8 +894,7 @@ fn analyzeSolidityFrontend(
             }
             const annotated_path = (try annotation.absolute_path.get()).*;
             const imported_index = parsed_source_index.parsedIndexForName(annotated_path) orelse {
-                const message = try std.fmt.allocPrint(
-                    allocator,
+                const message = try allocator.print(
                     "Source \"{s}\" not found: File not supplied initially.",
                     .{annotated_path},
                 );
@@ -2077,8 +2075,7 @@ fn appendSolidityViaIRArtifacts(
                 metadata_options,
             ) catch |err| {
                 if (err == error.OutOfMemory) return error.OutOfMemory;
-                const message = try std.fmt.allocPrint(
-                    allocator,
+                const message = try allocator.print(
                     "Zig port: Solidity metadata generation does not yet support this contract ({s}).",
                     .{@errorName(err)},
                 );
@@ -2162,8 +2159,7 @@ fn appendSolidityViaIRArtifacts(
                 metadata_options,
             ) catch |err| {
                 if (err == error.OutOfMemory) return error.OutOfMemory;
-                const message = try std.fmt.allocPrint(
-                    allocator,
+                const message = try allocator.print(
                     "Zig port: Solidity CBOR metadata generation failed ({s}).",
                     .{@errorName(err)},
                 );
@@ -2199,8 +2195,7 @@ fn appendSolidityViaIRArtifacts(
                     0,
                 ) catch |err| {
                     if (err == error.OutOfMemory) return error.OutOfMemory;
-                    const message = try std.fmt.allocPrint(
-                        allocator,
+                    const message = try allocator.print(
                         "Zig port: via-IR lowering does not yet support this contract ({s}).",
                         .{@errorName(err)},
                     );
@@ -2256,8 +2251,7 @@ fn appendSolidityViaIRArtifacts(
                 var probe = ProfilerModule.OptionalProbe.init(profiler, "Yul optimizer total");
                 defer probe.deinit();
                 stack.optimizeTypedSolidity() catch |err| {
-                    const message = try std.fmt.allocPrint(
-                        allocator,
+                    const message = try allocator.print(
                         "Yul optimizer failed: {s}",
                         .{@errorName(err)},
                     );
@@ -2300,8 +2294,7 @@ fn appendSolidityViaIRArtifacts(
                         try completeSolidityMetadata(allocator, scratch_allocator, type_provider, compatibility_ids, parsed_sources, source_order, &settings.projection.output_selection, metadata_sources, metadata_options, contracts_output);
                         return error.StackTooDeep;
                     }
-                    const message = try std.fmt.allocPrint(
-                        allocator,
+                    const message = try allocator.print(
                         "Yul code generation failed: {s}",
                         .{@errorName(err)},
                     );
@@ -2513,7 +2506,7 @@ const ParallelProgress = struct {
 
     fn reportCurrent(self: *ParallelProgress, item_name: []const u8) void {
         const reporter = self.reporter orelse return;
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         reporter.report(.{
             .stage = .generating_contracts,
@@ -2525,7 +2518,7 @@ const ParallelProgress = struct {
 
     fn complete(self: *ParallelProgress, item_name: []const u8) void {
         const reporter = self.reporter orelse return;
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.completed_items += 1;
         reporter.report(.{
@@ -3075,8 +3068,7 @@ fn appendSolidityViaIRArtifactsParallel(
                     metadata_options,
                 ) catch |err| {
                     if (err == error.OutOfMemory) return error.OutOfMemory;
-                    const message = try std.fmt.allocPrint(
-                        allocator,
+                    const message = try allocator.print(
                         "Zig port: Solidity metadata generation does not yet support this contract ({s}).",
                         .{@errorName(err)},
                     );
@@ -3162,8 +3154,7 @@ fn appendSolidityViaIRArtifactsParallel(
                     metadata_options,
                 ) catch |err| {
                     if (err == error.OutOfMemory) return error.OutOfMemory;
-                    const message = try std.fmt.allocPrint(
-                        allocator,
+                    const message = try allocator.print(
                         "Zig port: Solidity CBOR metadata generation failed ({s}).",
                         .{@errorName(err)},
                     );
@@ -3201,8 +3192,7 @@ fn appendSolidityViaIRArtifactsParallel(
                         0,
                     ) catch |err| {
                         if (err == error.OutOfMemory) return error.OutOfMemory;
-                        const message = try std.fmt.allocPrint(
-                            allocator,
+                        const message = try allocator.print(
                             "Zig port: via-IR lowering does not yet support this contract ({s}).",
                             .{@errorName(err)},
                         );
@@ -3244,8 +3234,7 @@ fn appendSolidityViaIRArtifactsParallel(
             .out_of_memory => return error.OutOfMemory,
             .internal => return error.ParallelBackendFailure,
             .optimizer => |error_name| {
-                const message = try std.fmt.allocPrint(
-                    allocator,
+                const message = try allocator.print(
                     "Yul optimizer failed: {s}",
                     .{error_name},
                 );
@@ -3261,8 +3250,7 @@ fn appendSolidityViaIRArtifactsParallel(
                 return false;
             },
             .assembly => |error_name| {
-                const message = try std.fmt.allocPrint(
-                    allocator,
+                const message = try allocator.print(
                     "Yul code generation failed: {s}",
                     .{error_name},
                 );
@@ -3431,7 +3419,7 @@ fn gasConsumptionJson(
     gas: SolidityGasEstimator.GasConsumption,
 ) !Json {
     if (gas.is_infinite) return ownedString(allocator, "infinite");
-    const value = try std.fmt.allocPrint(allocator, "{d}", .{gas.value});
+    const value = try allocator.print("{d}", .{gas.value});
     return .{ .string = value };
 }
 
@@ -4076,8 +4064,7 @@ pub fn compileYulStandardJsonAlloc(
     if (objectMember(source_entry, "keccak256")) |hash_value| {
         if (jsonString(hash_value)) |hash| {
             if (!hashMatchesContent(hash, source_contents)) {
-                const message = try std.fmt.allocPrint(
-                    arena,
+                const message = try arena.print(
                     "Mismatch between content and supplied hash for \"{s}\"",
                     .{source_name},
                 );
@@ -4126,7 +4113,7 @@ pub fn compileYulStandardJsonAlloc(
 
         stack.optimize() catch |err| {
             if (err == error.OutOfMemory) return error.OutOfMemory;
-            const message = try std.fmt.allocPrint(arena, "Yul optimizer failed: {s}", .{@errorName(err)});
+            const message = try arena.print("Yul optimizer failed: {s}", .{@errorName(err)});
             try appendError(arena, errors_value, .YulException, message, message, null, null);
             return finishOutput(allocator, &output);
         };
@@ -4142,7 +4129,7 @@ pub fn compileYulStandardJsonAlloc(
             backend_cache,
         ) catch |err| {
             if (err == error.OutOfMemory) return error.OutOfMemory;
-            const message = try std.fmt.allocPrint(arena, "Yul code generation failed: {s}", .{@errorName(err)});
+            const message = try arena.print("Yul code generation failed: {s}", .{@errorName(err)});
             try appendError(arena, errors_value, .YulException, message, message, null, null);
             return finishOutput(allocator, &output);
         };
@@ -4265,8 +4252,7 @@ fn parseSettings(
             EVMVersion.init(.Constantinople),
         );
         if (result.frontend.evm_version.isExperimental() and !result.frontend.experimental) {
-            const message = try std.fmt.allocPrint(
-                allocator,
+            const message = try allocator.print(
                 "EVM version '{s}' is experimental and can only be used with the 'settings.experimental' option enabled.",
                 .{result.frontend.evm_version.name()},
             );
@@ -4312,8 +4298,7 @@ fn parseSettings(
             const text = jsonString(remapping_value) orelse
                 return .{ .fatal = .{ .message = "\"settings.remappings\" must be an array of strings" } };
             const remapping = SolidityImportRemapper.parseRemapping(text) orelse {
-                const message = try std.fmt.allocPrint(
-                    allocator,
+                const message = try allocator.print(
                     "Invalid remapping: \"{s}\"",
                     .{text},
                 );
@@ -4349,15 +4334,13 @@ fn parseSettings(
                     .from_hex,
                     .fail_if_different,
                 ) catch {
-                    const message = try std.fmt.allocPrint(
-                        allocator,
+                    const message = try allocator.print(
                         "Invalid library address (\"{s}\") supplied.",
                         .{address_text},
                     );
                     return .{ .fatal = .{ .message = message } };
                 };
-                const qualified_name = try std.fmt.allocPrint(
-                    allocator,
+                const qualified_name = try allocator.print(
                     "{s}:{s}",
                     .{ source_name, library_name },
                 );
@@ -4478,8 +4461,7 @@ fn parseOptimizer(allocator: std.mem.Allocator, input: *const Json) !OptimizerRe
     };
     for (&detail_fields) |detail| if (objectMember(details, detail.name)) |value| {
         detail.field.* = jsonBool(value) orelse {
-            const message = try std.fmt.allocPrint(
-                allocator,
+            const message = try allocator.print(
                 "\"settings.optimizer.details.{s}\" must be Boolean",
                 .{detail.name},
             );
@@ -4510,8 +4492,7 @@ fn parseOptimizer(allocator: std.mem.Allocator, input: *const Json) !OptimizerRe
             if (!settings.run_yul_optimiser and !OptimiserSuite.isEmptyOptimizerSequence(sequence))
                 return .{ .fatal = .{ .message = "If Yul optimizer is disabled, only an empty optimizerSteps sequence is accepted. Note that the empty optimizer sequence is properly denoted by \":\"." } };
             OptimiserSuite.validateSequence(sequence) catch |err| {
-                const message = try std.fmt.allocPrint(
-                    allocator,
+                const message = try allocator.print(
                     "Invalid optimizer step sequence in \"settings.optimizer.details.yulDetails.optimizerSteps\": {s}",
                     .{@errorName(err)},
                 );
@@ -4551,8 +4532,7 @@ fn validateOutputSelection(allocator: std.mem.Allocator, input: *const Json) !?F
     };
     for (selection.keys(), selection.values()) |source_name, *source_value| {
         const source = jsonObject(source_value) orelse {
-            const message = try std.fmt.allocPrint(
-                allocator,
+            const message = try allocator.print(
                 "\"settings.outputSelection.{s}\" must be an object",
                 .{source_name},
             );
@@ -4560,16 +4540,14 @@ fn validateOutputSelection(allocator: std.mem.Allocator, input: *const Json) !?F
         };
         for (source.keys(), source.values()) |contract_name, *contract_value| {
             const artifacts = jsonArray(contract_value) orelse {
-                const message = try std.fmt.allocPrint(
-                    allocator,
+                const message = try allocator.print(
                     "\"settings.outputSelection.{s}.{s}\" must be a string array",
                     .{ source_name, contract_name },
                 );
                 return .{ .message = message };
             };
             for (artifacts.items) |*artifact| if (jsonString(artifact) == null) {
-                const message = try std.fmt.allocPrint(
-                    allocator,
+                const message = try allocator.print(
                     "\"settings.outputSelection.{s}.{s}\" must be a string array",
                     .{ source_name, contract_name },
                 );
@@ -4607,7 +4585,7 @@ fn appendMachineObject(
     evm_version: EVMVersion,
     include_generated_sources: bool,
 ) !void {
-    const prefix = try std.fmt.allocPrint(allocator, "evm.{s}", .{kind});
+    const prefix = try allocator.print("evm.{s}", .{kind});
     const component_names = [_][]const u8{
         "",                 "object",         "opcodes",  "sourceMap",           "functionDebugData",
         "generatedSources", "linkReferences", "ethdebug", "immutableReferences",
@@ -4621,7 +4599,7 @@ fn appendMachineObject(
             const artifact = if (component.len == 0)
                 prefix
             else
-                try std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, component });
+                try allocator.print("{s}.{s}", .{ prefix, component });
             if (isArtifactRequested(output_selection, source_name, contract_name, artifact, true)) {
                 any_component = true;
                 break;
@@ -4689,7 +4667,7 @@ fn appendEmptyMachineObject(
     kind: []const u8,
     deployed: bool,
 ) !void {
-    const prefix = try std.fmt.allocPrint(allocator, "evm.{s}", .{kind});
+    const prefix = try allocator.print("evm.{s}", .{kind});
     defer allocator.free(prefix);
     if (!requestsMachineObject(
         output_selection,
@@ -4737,7 +4715,7 @@ fn requestsMachineObject(
     deployed: bool,
 ) bool {
     var prefix_buffer: [64]u8 = undefined;
-    const prefix = std.fmt.bufPrint(&prefix_buffer, "evm.{s}", .{kind}) catch
+    const prefix = std.mem.print(&prefix_buffer, "evm.{s}", .{kind}) catch
         return false;
     if (isArtifactRequested(
         output_selection,
@@ -4759,7 +4737,7 @@ fn requestsMachineObject(
     for (components) |component| {
         if (!deployed and std.mem.eql(u8, component, "immutableReferences")) continue;
         var artifact_buffer: [96]u8 = undefined;
-        const artifact = std.fmt.bufPrint(
+        const artifact = std.mem.print(
             &artifact_buffer,
             "{s}.{s}",
             .{ prefix, component },
@@ -4783,7 +4761,7 @@ fn requestedElement(
     element: []const u8,
 ) bool {
     var buffer: [128]u8 = undefined;
-    const artifact = std.fmt.bufPrint(&buffer, "{s}.{s}", .{ prefix, element }) catch return false;
+    const artifact = std.mem.print(&buffer, "{s}.{s}", .{ prefix, element }) catch return false;
     return isArtifactRequested(output_selection, source_name, contract_name, artifact, true);
 }
 
@@ -4993,7 +4971,7 @@ fn appendDiagnosticWithProvider(
         &diagnostic.secondary,
     );
     if (include_error_code and diagnostic.error_id.value != 0) {
-        const error_code = try std.fmt.allocPrint(allocator, "{d}", .{diagnostic.error_id.value});
+        const error_code = try allocator.print("{d}", .{diagnostic.error_id.value});
         const appended = &errors_value.array.items[errors_value.array.items.len - 1];
         try appended.object.put(allocator, "errorCode", .{ .string = error_code });
     }
@@ -5099,7 +5077,7 @@ fn checkKeys(
     name: []const u8,
 ) !?Fatal {
     if (!jsonEmpty(input) and input.* != .object) {
-        const message = try std.fmt.allocPrint(allocator, "\"{s}\" must be an object", .{name});
+        const message = try allocator.print("\"{s}\" must be an object", .{name});
         return .{ .message = message };
     }
     const object = jsonObject(input) orelse return null;
@@ -5109,7 +5087,7 @@ fn checkKeys(
         if (unknown == null or std.mem.order(u8, key, unknown.?) == .lt) unknown = key;
     }
     if (unknown) |key| {
-        const message = try std.fmt.allocPrint(allocator, "Unknown key \"{s}\"", .{key});
+        const message = try allocator.print("Unknown key \"{s}\"", .{key});
         return .{ .message = message };
     }
     return null;

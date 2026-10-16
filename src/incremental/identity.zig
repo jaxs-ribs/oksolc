@@ -11,11 +11,11 @@ pub const SourceId = enum(u32) {
     _,
 
     pub fn init(raw_index: u32) SourceId {
-        return @enumFromInt(raw_index);
+        return @fromBackingInt(@intCast(raw_index));
     }
 
     pub fn index(self: SourceId) u32 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 };
 
@@ -23,11 +23,11 @@ pub const ContractId = enum(u32) {
     _,
 
     pub fn init(raw_index: u32) ContractId {
-        return @enumFromInt(raw_index);
+        return @fromBackingInt(@intCast(raw_index));
     }
 
     pub fn index(self: ContractId) u32 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 };
 
@@ -37,11 +37,11 @@ pub const LocalNodeId = enum(u32) {
     _,
 
     pub fn init(raw_index: u32) LocalNodeId {
-        return @enumFromInt(raw_index);
+        return @fromBackingInt(@intCast(raw_index));
     }
 
     pub fn index(self: LocalNodeId) u32 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 };
 

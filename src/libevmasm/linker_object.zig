@@ -459,7 +459,7 @@ test "linker invalid late reference preserves ownership and permits retry" {
         @memset(address.mutableBytes(), 0xab);
         const addresses = [_]LibraryAddress{.{ .name = "A", .address = address }};
         try std.testing.expectError(error.ReferenceOutOfBounds, object.link(allocator, &addresses));
-        try std.testing.expectEqualSlices(u8, &([_]u8{0} ** 40), object.bytecode.items);
+        try std.testing.expectEqualSlices(u8, &@as([40]u8, @splat(0)), object.bytecode.items);
         try std.testing.expectEqual(@as(usize, 3), object.link_references.items.len);
         try std.testing.expectEqual(original_name, object.link_references.items[0].library_name.ptr);
         try std.testing.expectEqualStrings("A", object.link_references.items[0].library_name);

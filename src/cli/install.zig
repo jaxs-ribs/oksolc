@@ -49,7 +49,7 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, project_root: []const u8, j
                 return error.InvalidRemapping;
             };
             if (std.mem.findScalar(u8, remapping.target, 0) != null) return error.InvalidRemapping;
-            const target = try std.Io.Dir.path.resolve(scratch, &.{ project_root, remapping.target });
+            const target = try std.Io.Dir.path.resolveAlloc(scratch, &.{ project_root, remapping.target });
             const directory_target = remapping.target.len == 0 or std.Io.Dir.path.isSep(remapping.target[remapping.target.len - 1]);
             var matched = false;
             for (modules) |*module| {
@@ -69,7 +69,7 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, project_root: []const u8, j
 
     var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(scratch);
-    try argv.appendSlice(scratch, &.{ "git", "--literal-pathspecs", "-C", repository, "submodule", "update", "--init", "--recursive", "--checkout", "--jobs", try std.fmt.allocPrint(scratch, "{d}", .{jobs}), "--" });
+    try argv.appendSlice(scratch, &.{ "git", "--literal-pathspecs", "-C", repository, "submodule", "update", "--init", "--recursive", "--checkout", "--jobs", try scratch.print("{d}", .{jobs}), "--" });
     var selected: usize = 0;
     for (modules) |module| if (module.selected) {
         try argv.append(scratch, module.path);
@@ -129,7 +129,7 @@ fn modulesAlloc(allocator: std.mem.Allocator, repository: []const u8, config: []
         const separator = std.mem.findScalar(u8, record, '\n') orelse return error.InvalidGitOutput;
         const path = record[separator + 1 ..];
         ProjectSources.validatePath(path) catch return error.InvalidSubmodulePath;
-        const absolute = try std.Io.Dir.path.resolve(allocator, &.{ repository, path });
+        const absolute = try std.Io.Dir.path.resolveAlloc(allocator, &.{ repository, path });
         errdefer allocator.free(absolute);
         if (!ProjectSources.pathContainedBy(repository, absolute) or std.mem.eql(u8, absolute, repository)) return error.InvalidSubmodulePath;
         if (modules.items.len >= 4096) return error.TooManySubmodules;
@@ -197,7 +197,7 @@ test "install owns sorted paths and rejects malformed Git metadata across OOM" {
         }
     }.check, .{});
     for ([_][]const u8{ "../outside", ".", "/absolute" }) |path| {
-        const config = try std.fmt.allocPrint(std.testing.allocator, "submodule.a.path\n{s}\x00", .{path});
+        const config = try std.testing.allocator.print("submodule.a.path\n{s}\x00", .{path});
         defer std.testing.allocator.free(config);
         try std.testing.expectError(error.InvalidSubmodulePath, modulesAlloc(std.testing.allocator, "/project", config));
     }

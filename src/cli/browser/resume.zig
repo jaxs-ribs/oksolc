@@ -29,11 +29,11 @@ pub fn authentic(key: Key, candidate: Store.Resume) bool {
 }
 
 test "resume receipt authenticates actual bodies, context, manifest and key" {
-    const key: Key = [_]u8{0x37} ** 32;
+    const key: Key = @splat(0x37);
     const tag = seal(key, "context", "request", "output", "manifest");
     var candidate: Store.Resume = .{ .id = 1, .request = "request", .output = "output", .receipt = .{ .context = "context", .manifest = "manifest", .seal = &tag } };
     try std.testing.expect(authentic(key, candidate));
-    try std.testing.expect(!authentic([_]u8{0x38} ** 32, candidate));
+    try std.testing.expect(!authentic(@splat(0x38), candidate));
     inline for (.{ "request", "output" }) |field| {
         var altered = candidate;
         @field(altered, field) = "changed";

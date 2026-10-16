@@ -79,8 +79,7 @@ test "parked analysis settings are rejected by stateless and incremental compila
     var session = solidity.CompilerSession.init(std.testing.allocator);
     defer session.deinit();
     for ([_][]const u8{ "true", "false" }) |enabled| {
-        const input = try std.fmt.allocPrint(
-            std.testing.allocator,
+        const input = try std.testing.allocator.print(
             "{{\"language\":\"Solidity\",\"sources\":{{\"C.sol\":{{\"content\":\"contract C {{}}\"}}}},\"settings\":{{\"abstractInterpretation\":{{\"enabled\":{s}}}}}}}",
             .{enabled},
         );
@@ -2150,8 +2149,7 @@ test "experimental Solidity backends fail explicitly without semantic substituti
         var dispatcher: libsolc.Dispatcher = .{};
         var output = try dispatcher.compiler().compile(std.testing.allocator, .{ .input = case.input });
         defer output.deinit();
-        const expected = try std.fmt.allocPrint(
-            std.testing.allocator,
+        const expected = try std.testing.allocator.print(
             "{{\"errors\":[{{\"component\":\"general\",\"formattedMessage\":\"{s}\",\"message\":\"{s}\",\"severity\":\"error\",\"type\":\"UnimplementedFeatureError\"}}]}}\n",
             .{ case.message, case.message },
         );

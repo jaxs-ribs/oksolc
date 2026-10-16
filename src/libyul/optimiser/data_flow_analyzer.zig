@@ -49,7 +49,7 @@ const NameMap = ordered.OrderedMap(YulName, YulName, lessYulName);
 pub const VarId = enum(u32) { _ };
 
 fn varIndex(id: VarId) usize {
-    return @intFromEnum(id);
+    return @backingInt(id);
 }
 
 fn lessVarIdByName(names: []const YulName, left: VarId, right: VarId) bool {
@@ -196,7 +196,7 @@ fn State(comptime memory_and_storage: MemoryAndStorage) type {
             try self.variables.ensureUnusedCapacity(allocator, 1);
             const entry = try self.variable_ids.getOrPut(allocator, variable_name);
             if (entry.found_existing) return entry.value_ptr.*;
-            const id: VarId = @enumFromInt(@as(u32, @intCast(self.variables.items.len)));
+            const id: VarId = @fromBackingInt(@intCast(@as(u32, @intCast(self.variables.items.len))));
             entry.value_ptr.* = id;
             self.variable_names.appendAssumeCapacity(variable_name);
             self.variables.appendAssumeCapacity(.{});
@@ -354,13 +354,13 @@ pub fn DataFlowAnalyzer(
                 ),
             };
             if (comptime memory_and_storage == .analyze) {
-                result.store_function_handles[@intFromEnum(StoreLoadLocation.memory)] =
+                result.store_function_handles[@backingInt(StoreLoadLocation.memory)] =
                     dialect.memoryStoreFunctionHandle();
-                result.load_function_handles[@intFromEnum(StoreLoadLocation.memory)] =
+                result.load_function_handles[@backingInt(StoreLoadLocation.memory)] =
                     dialect.memoryLoadFunctionHandle();
-                result.store_function_handles[@intFromEnum(StoreLoadLocation.storage)] =
+                result.store_function_handles[@backingInt(StoreLoadLocation.storage)] =
                     dialect.storageStoreFunctionHandle();
-                result.load_function_handles[@intFromEnum(StoreLoadLocation.storage)] =
+                result.load_function_handles[@backingInt(StoreLoadLocation.storage)] =
                     dialect.storageLoadFunctionHandle();
             }
             return result;
@@ -1224,7 +1224,7 @@ pub fn DataFlowAnalyzer(
                     const owner_id = old_owners[old_edge_index];
                     const owner = self.state.variableConst(owner_id);
                     if (isCurrentDependencyEdge(owner, old_edge_index))
-                        old_owners[old_edge_index] = @enumFromInt(invalid_pool_index);
+                        old_owners[old_edge_index] = @fromBackingInt(@intCast(invalid_pool_index));
                     old_edge_index = old_next_edges[old_edge_index];
                 }
                 referenced_variable.reverse_head = invalid_pool_index;
@@ -1232,14 +1232,14 @@ pub fn DataFlowAnalyzer(
 
             var rebuilt_forward_edges: usize = 0;
             for (0..self.state.variables.items.len) |owner_index| {
-                const owner_id: VarId = @enumFromInt(@as(u32, @intCast(owner_index)));
+                const owner_id: VarId = @fromBackingInt(@intCast(@as(u32, @intCast(owner_index))));
                 const owner = self.state.variable(owner_id);
                 if (owner.reference_start == invalid_pool_index) continue;
                 const old_start: usize = owner.reference_start;
                 const reference_start: u32 = @intCast(dependency_edges.len);
                 for (old_start..old_start + owner.reference_len) |old_edge_index| {
                     const referenced_variable = old_referenced_variables[old_edge_index];
-                    const is_linked = @intFromEnum(old_owners[old_edge_index]) ==
+                    const is_linked = @backingInt(old_owners[old_edge_index]) ==
                         invalid_pool_index;
                     const next = if (is_linked)
                         self.state.variableConst(referenced_variable).reverse_head
@@ -1333,7 +1333,7 @@ pub fn DataFlowAnalyzer(
                 .builtin => |builtin| builtin.handle,
                 .identifier => return null,
             };
-            if (!optionalHandleEqual(self.store_function_handles[@intFromEnum(location)], handle) or
+            if (!optionalHandleEqual(self.store_function_handles[@backingInt(location)], handle) or
                 call.arguments.items.len != 2) return null;
             const key = switch (call.arguments.items[0]) {
                 .identifier => |identifier| identifier.name,
@@ -1360,7 +1360,7 @@ pub fn DataFlowAnalyzer(
                 .builtin => |builtin| builtin.handle,
                 .identifier => return null,
             };
-            if (!optionalHandleEqual(self.load_function_handles[@intFromEnum(location)], handle) or
+            if (!optionalHandleEqual(self.load_function_handles[@backingInt(location)], handle) or
                 call.arguments.items.len != 1) return null;
             return switch (call.arguments.items[0]) {
                 .identifier => |identifier| identifier.name,
@@ -1507,8 +1507,8 @@ test "dense variable IDs are stable within a function frame" {
 
     const first_id = try state.getOrCreateId(allocator, first_name);
     const second_id = try state.getOrCreateId(allocator, second_name);
-    try std.testing.expectEqual(@as(u32, 0), @intFromEnum(first_id));
-    try std.testing.expectEqual(@as(u32, 1), @intFromEnum(second_id));
+    try std.testing.expectEqual(@as(u32, 0), @backingInt(first_id));
+    try std.testing.expectEqual(@as(u32, 1), @backingInt(second_id));
     try std.testing.expectEqual(first_id, try state.getOrCreateId(allocator, first_name));
     try std.testing.expect(state.name(first_id).eql(first_name));
     try std.testing.expect(state.name(second_id).eql(second_name));
@@ -1517,8 +1517,8 @@ test "dense variable IDs are stable within a function frame" {
 
 test "sparse variable scratch logically clears stale indices" {
     const allocator = std.testing.allocator;
-    const first: VarId = @enumFromInt(1);
-    const third: VarId = @enumFromInt(3);
+    const first: VarId = @fromBackingInt(@intCast(1));
+    const third: VarId = @fromBackingInt(@intCast(3));
     var set: SparseVarSet = .{};
     defer set.deinit(allocator);
 

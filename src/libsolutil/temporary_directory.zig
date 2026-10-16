@@ -40,8 +40,7 @@ pub const TemporaryDirectory = struct {
         var entropy: [8]u8 = undefined;
         std.Io.random(io, &entropy);
         const hex = std.fmt.bytesToHex(entropy, .lower);
-        const relative_name = try std.fmt.allocPrint(
-            allocator,
+        const relative_name = try allocator.print(
             "{s}-{s}-{s}-{s}-{s}",
             .{ prefix, hex[0..4], hex[4..8], hex[8..12], hex[12..16] },
         );

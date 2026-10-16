@@ -167,7 +167,7 @@ pub fn optimise(
     // Descriptors outside the final live slice were moved, not cloned owners.
     if (separate_output) |buffer| {
         allocator.free(items.allocatedSlice());
-        items.* = .{ .items = buffer, .capacity = buffer.len };
+        items.* = .fromOwnedSlice(buffer);
     } else items.items.len = written;
     return true;
 }

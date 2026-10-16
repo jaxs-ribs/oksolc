@@ -130,8 +130,7 @@ pub const DocStringParser = struct {
             '\n',
         )) |offset| description_start + offset else self.text.len;
         if (description_start == newline) {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "No description given for param {s}",
                 .{parameter_name},
             );

@@ -11,7 +11,7 @@ pub const multihash_size: usize = 34;
 pub const Multihash = [multihash_size]u8;
 
 const Chunk = struct {
-    hash: Multihash = [_]u8{0} ** multihash_size,
+    hash: Multihash = @splat(0),
     size: usize = 0,
     block_size: usize = 0,
 };
@@ -98,7 +98,7 @@ fn buildNextLevel(
 
 pub fn ipfsHash(allocator: std.mem.Allocator, input: []const u8) !Multihash {
     const maximum_chunk_size: usize = 256 * 1024;
-    const chunk_count = @max(@as(usize, 1), (input.len + maximum_chunk_size - 1) / maximum_chunk_size);
+    const chunk_count = @max(@as(usize, 1), @divCeil(input.len, maximum_chunk_size));
     var chunks: std.ArrayList(Chunk) = .empty;
     defer chunks.deinit(allocator);
     try chunks.ensureTotalCapacity(allocator, chunk_count);

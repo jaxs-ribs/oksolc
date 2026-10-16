@@ -24,6 +24,7 @@ comptime {
 test "compiler module inventory" {
     _ = modules;
     _ = modules.libevm;
+    _ = modules.libsolidity.@"ast/ast_forward";
     // Keep every public incremental component in the normal compiler test
     // root, including components introduced before their pipeline wiring.
     _ = modules.incremental;

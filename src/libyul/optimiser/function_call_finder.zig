@@ -32,7 +32,7 @@ pub fn findFunctionCalls(
 }
 
 pub fn functionHandlesEqual(left: AST.FunctionHandle, right: AST.FunctionHandle) bool {
-    if (@intFromEnum(left) != @intFromEnum(right)) return false;
+    if (@backingInt(left) != @backingInt(right)) return false;
     return switch (left) {
         .user => |name| name.eql(right.user),
         .builtin => |handle| handle.id == right.builtin.id,

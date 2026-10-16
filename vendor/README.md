@@ -1,6 +1,8 @@
 # Vendored dependencies
 
-Most packages in this directory support the optional `zig build lint` step.
+The Zig packages in this directory are legacy snapshots from the Zig 0.16
+toolchain. The `zig build lint` step uses the Zig 0.17 compatible zlinter
+revision pinned in the root `build.zig.zon`; it no longer depends on ZLS.
 SQLite's official amalgamation is linked into `oksolc` and `libsolc` for the
 persistent compiler cache and browser snapshots.
 

@@ -672,8 +672,7 @@ pub const IRGenerator = struct {
             return error.InvalidAst;
         const contract_name = (contract.declarationConst() orelse
             return error.InvalidAst).name;
-        const name = try std.fmt.allocPrint(
-            self.allocator,
+        const name = try self.allocator.print(
             "copy_arguments_for_constructor_{d}_object_{s}_{d}",
             .{
                 try self.compatibilityId(constructor),
@@ -720,8 +719,8 @@ pub const IRGenerator = struct {
             for (functions.items) |function| {
                 const delegatecall_check = if (contract.payload.contract_definition.contract_kind == .Library and
                     function.declaration.nodeKind() == .function_definition and
-                    @intFromEnum(function.declaration.payload.function_definition.state_mutability) >
-                        @intFromEnum(Types.StateMutability.View))
+                    @backingInt(function.declaration.payload.function_definition.state_mutability) >
+                        @backingInt(Types.StateMutability.View))
                 blk: {
                     const revert = try utils.revertReasonIfDebugFunction(
                         "Non-view function of library called without DELEGATECALL",
@@ -740,7 +739,7 @@ pub const IRGenerator = struct {
                 try case_body.add("@0()", .{wrapper});
                 const label: Yul.Literal = .{ .debug_data = generator.debug_data, .kind = .Number, .value = .{
                     .numeric_value = function.selector,
-                    .string_value = try std.fmt.allocPrint(generator.allocator(), "0x{x:0>8}", .{function.selector}),
+                    .string_value = try generator.allocator().print("0x{x:0>8}", .{function.selector}),
                 } };
                 dispatch.switch_statement.cases.appendAssumeCapacity(try generator.case(label, case_body.take()));
             }
@@ -896,7 +895,7 @@ pub const IRGenerator = struct {
             if (getter_type.parameter_types.len != 0 or
                 try TypeBehavior.sizeOnStack(type_ref) != 1)
                 return error.InvalidAst;
-            const label = try std.fmt.allocPrint(generator.allocator(), "{d}", .{try self.compatibilityId(variable)});
+            const label = try generator.allocator().print("{d}", .{try self.compatibilityId(variable)});
             defer generator.allocator().free(label);
             const body = try generator.statements("rval := loadimmutable(@0)", .{label});
             try self.collectFunction(generator, name, &[_][]const u8{}, &[_][]const u8{"rval"}, body, try self.astId(variable), true);
@@ -934,8 +933,7 @@ pub const IRGenerator = struct {
 
         var current_type = type_ref;
         for (getter_type.parameter_types, 0..) |parameter_type, index| {
-            const key_name = try std.fmt.allocPrint(
-                self.allocator,
+            const key_name = try self.allocator.print(
                 "key_{d}",
                 .{index},
             );
@@ -1015,8 +1013,7 @@ pub const IRGenerator = struct {
                     structure.*,
                     return_name,
                 );
-                const result_name = try std.fmt.allocPrint(
-                    self.allocator,
+                const result_name = try self.allocator.print(
                     "ret_{d}",
                     .{return_variables.items.len},
                 );
@@ -1493,7 +1490,7 @@ pub const IRGenerator = struct {
         var variables = try self.immutableVariablesAlloc(contract);
         defer variables.deinit(self.allocator);
         for (variables.items) |variable| {
-            const label = try std.fmt.allocPrint(generator.allocator(), "{d}", .{try self.compatibilityId(variable)});
+            const label = try generator.allocator().print("{d}", .{try self.compatibilityId(variable)});
             defer generator.allocator().free(label);
             try output.add("setimmutable(@0, @1, mload(@2))", .{ code_offset, label, try self.context.immutableMemoryOffset(variable) });
         }

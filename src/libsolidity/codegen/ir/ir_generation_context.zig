@@ -376,7 +376,7 @@ pub const IRGenerationContext = struct {
     pub fn newYulVariable(self: *IRGenerationContext) ContextError![]u8 {
         self.variable_counter = std.math.add(usize, self.variable_counter, 1) catch
             return error.Overflow;
-        return std.fmt.allocPrint(self.allocator, "_{d}", .{self.variable_counter});
+        return self.allocator.print("_{d}", .{self.variable_counter});
     }
 
     pub fn initializeInternalDispatch(

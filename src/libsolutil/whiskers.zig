@@ -183,7 +183,7 @@ pub const Whiskers = struct {
         prefix: []const u8,
         parameter: []const u8,
     ) Error!void {
-        const tag = try std.fmt.allocPrint(self.allocator, "<{s}{s}>", .{ prefix, parameter });
+        const tag = try self.allocator.print("<{s}{s}>", .{ prefix, parameter });
         defer self.allocator.free(tag);
         if (std.mem.find(u8, self.template, tag) == null) return error.TagNotFound;
     }

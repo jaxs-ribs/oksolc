@@ -94,14 +94,12 @@ pub const SourceLocation = struct {
     ) std.mem.Allocator.Error![]u8 {
         if (!self.isValid()) return allocator.dupe(u8, "NO_LOCATION_SPECIFIED");
         if (self.source_name) |source_name| {
-            return std.fmt.allocPrint(
-                allocator,
+            return allocator.print(
                 "{s}[{d},{d}]",
                 .{ source_name, self.start, self.end },
             );
         }
-        return std.fmt.allocPrint(
-            allocator,
+        return allocator.print(
             "[{d},{d}]",
             .{ self.start, self.end },
         );

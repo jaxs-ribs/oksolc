@@ -158,8 +158,7 @@ pub const LabelIDDispenser = struct {
             const parent_label = original_labels[parent_label_index];
             var generated_label: []u8 = undefined;
             while (true) {
-                generated_label = try std.fmt.allocPrint(
-                    self.allocator,
+                generated_label = try self.allocator.print(
                     "{s}_{d}",
                     .{ parent_label, label_suffixes[parent_label_id] },
                 );

@@ -460,7 +460,8 @@ test "full inliner splices empty singleton and growing bodies across allocation 
                 const original_len = block.statements.items.len;
                 @memcpy(storage[0..original_len], block.statements.items);
                 block.statements.deinit(failing);
-                block.statements = .{ .items = storage[0..original_len], .capacity = capacity };
+                block.statements = .fromOwnedSlice(storage);
+                block.statements.items.len = original_len;
                 const first_payload = block.statements.items[1].expression_statement.expression.function_call.arguments.items[0].literal.value.string_value.?.ptr;
                 const second_payload = block.statements.items[3].expression_statement.expression.function_call.arguments.items[0].literal.value.string_value.?.ptr;
                 var reserved: NameCollector.NameSet = .{};
@@ -493,10 +494,10 @@ test "full inliner splices empty singleton and growing bodies across allocation 
                 }
                 try std.testing.expectEqual(final_len, next);
                 var expected_block = input.root().statements.items[0].block;
-                expected_block.statements = .{ .items = expected_items[0..next], .capacity = expected_items.len };
+                expected_block.statements = .fromOwnedSlice(expected_items[0..next]);
                 var expected_statements = [_]AST.Statement{ .{ .block = expected_block }, input.root().statements.items[1] };
                 var expected_root = input.root().*;
-                expected_root.statements = .{ .items = &expected_statements, .capacity = expected_statements.len };
+                expected_root.statements = .fromOwnedSlice(&expected_statements);
                 try std.testing.expectEqualDeep(try Encoding.hashBlock(&expected_root), try Encoding.hashBlock(&ast));
                 try std.testing.expectEqual(first_payload, block.statements.items[body_items.len].expression_statement.expression.function_call.arguments.items[0].literal.value.string_value.?.ptr);
                 try std.testing.expectEqual(second_payload, block.statements.items[2 * body_items.len + 1].expression_statement.expression.function_call.arguments.items[0].literal.value.string_value.?.ptr);
@@ -651,8 +652,11 @@ fn checkPassOwnership(comptime Pass: type, input: *const AST.AST) !void {
     // All retained nodes must be destructible with the AST allocator after
     // scratch destruction, including when analysis or publication fails.
     var expected: ?Hash = null;
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, Check.run, .{ input, false, &expected });
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, Check.run, .{ input, true, &expected });
+    // SafeAllocator's in-place growth depends on bucket occupancy. Force the
+    // allocation fallback so every replay has the same failure points.
+    var backing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(backing.allocator(), Check.run, .{ input, false, &expected });
+    try std.testing.checkAllAllocationFailures(backing.allocator(), Check.run, .{ input, true, &expected });
 }
 
 test "unused store passes preserve ownership across branches and loop exits" {

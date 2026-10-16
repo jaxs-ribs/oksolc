@@ -17,16 +17,14 @@ pub fn stackSlotToStringAlloc(
     dialect: @import("../../ast.zig").Dialect,
 ) ![]u8 {
     return switch (slot) {
-        .function_call_return_label => |value| std.fmt.allocPrint(
-            allocator,
+        .function_call_return_label => |value| allocator.print(
             "RET[{s}]",
             .{try Utilities.resolveFunctionName(&value.call.function_name, dialect)},
         ),
         .function_return_label => allocator.dupe(u8, "RET"),
         .variable => |value| allocator.dupe(u8, try value.variable.name.str()),
         .literal => |value| Numeric.toCompactHexWithPrefixAlloc(u256, allocator, value.value),
-        .temporary => |value| std.fmt.allocPrint(
-            allocator,
+        .temporary => |value| allocator.print(
             "TMP[{s}, {d}]",
             .{ try Utilities.resolveFunctionName(&value.call.function_name, dialect), value.index },
         ),
@@ -381,11 +379,12 @@ fn createStackLayoutImpl(
             if (!ops.isCompatible(index, index)) break :final;
         return finishLayout(current_stack, target_stack);
     }
-    var scratch = std.heap.stackFallback(8192, allocator);
+    var scratch_buffer: [8192]u8 = undefined;
+    var scratch: std.heap.BufferFirstAllocator = .init(&scratch_buffer, allocator);
     var counts: ?StackMultiplicity = null;
     defer if (counts) |*value| value.deinit();
     if (cache_counts) {
-        counts = try StackMultiplicity.init(scratch.get(), current_stack.items, target_stack);
+        counts = try StackMultiplicity.init(scratch.allocator(), current_stack.items, target_stack);
         ops.multiplicities = &counts.?;
     }
     try shuffleWithOperations(&ops);
@@ -586,5 +585,7 @@ test "stack multiplicity cache releases fallback storage and partial shuffles on
             try createStackLayout(allocator, &short, target[0..16], callbacks, 16);
         }
     };
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, Check.run, .{});
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{});
 }

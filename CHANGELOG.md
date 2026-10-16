@@ -1,13 +1,33 @@
 # Changelog
 
-## 0.1.7-dev
+## 0.2.0-dev
 
 Solidity compatibility target: `0.8.36`.
+
+### Changed
+
+- Require Zig 0.17.0 and migrate the compiler and build system to its current
+  standard library and build APIs.
+- Use the pinned official `translate-c` package for C bindings and reuse Zig's
+  configuration cache across unchanged builds.
+
+### Performance
+
+- Index function-flow lookups and memoize semantic dependency-mask updates.
+- Cache stack-slot multiplicities while constructing EVM stack layouts.
+- Reuse exact assembly common-subexpression chunks across optimization rounds
+  with bounded retained storage.
 
 ### Fixed
 
 - Format multiline diagnostic highlights independently of closing-line
   indentation.
+- Refresh compiler identities at build time, reject concurrent edits during
+  header translation or compilation, and recover on unchanged retries.
+- Preserve offline package settings, dependency overrides, and linter
+  passthrough arguments in nested lint builds.
+- Keep allocation-failure tests deterministic across platforms with Zig 0.17's
+  allocator.
 
 ## 0.1.6 - 2026-10-12
 

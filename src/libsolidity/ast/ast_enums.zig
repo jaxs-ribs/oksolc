@@ -78,11 +78,11 @@ pub const FuncCallArguments = struct {
 };
 
 test "frontend enums retain ABI order and spelling" {
-    try std.testing.expectEqual(@as(c_int, 0), @intFromEnum(VirtualLookup.Static));
-    try std.testing.expectEqual(@as(c_int, 2), @intFromEnum(VirtualLookup.Super));
-    try std.testing.expectEqual(@as(c_int, 4), @intFromEnum(Visibility.External));
+    try std.testing.expectEqual(@as(c_int, 0), @backingInt(VirtualLookup.Static));
+    try std.testing.expectEqual(@as(c_int, 2), @backingInt(VirtualLookup.Super));
+    try std.testing.expectEqual(@as(c_int, 4), @backingInt(Visibility.External));
     try std.testing.expectEqualStrings("nonpayable", stateMutabilityToString(.NonPayable));
-    try std.testing.expectEqual(@as(c_int, 2), @intFromEnum(ContractKind.Library));
+    try std.testing.expectEqual(@as(c_int, 2), @backingInt(ContractKind.Library));
 }
 
 test "function-call argument counts distinguish positional and named calls" {

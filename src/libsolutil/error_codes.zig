@@ -34,12 +34,12 @@ test "panic codes retain their externally observed ABI values" {
         .invalid_internal_function,
     };
     for (actual, expected) |code, value| {
-        try std.testing.expectEqual(value, @intFromEnum(code));
+        try std.testing.expectEqual(value, @backingInt(code));
     }
     try std.testing.expectEqual(@sizeOf(c_int), @sizeOf(PanicCode));
     const tag_type = @typeInfo(PanicCode).@"enum".tag_type;
     try std.testing.expectEqual(
-        std.builtin.Signedness.signed,
+        std.lang.Signedness.signed,
         @typeInfo(tag_type).int.signedness,
     );
 }

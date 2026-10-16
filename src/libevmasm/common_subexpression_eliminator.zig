@@ -353,8 +353,8 @@ pub const CSECodeGenerator = struct {
         var index: usize = 0;
         while (index < self.store_groups.items.len) : (index += 1) {
             const group = &self.store_groups.items[index];
-            const group_target = @intFromEnum(group.target);
-            const operation_target = @intFromEnum(operation.target);
+            const group_target = @backingInt(group.target);
+            const operation_target = @backingInt(operation.target);
             if (group_target > operation_target or
                 (group_target == operation_target and group.slot >= operation.slot)) break;
         }
@@ -807,7 +807,9 @@ test "assembly CSE final output survives every analysis owner and allocation fai
             if (stats) |value| value.* = .{ .bytes = counter.allocated_bytes, .calls = counter.allocations };
         }
     };
-    const allocator = std.testing.allocator;
+    // Keep measurements and OOM replays independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    const allocator = deterministic.allocator();
     const I = AssemblyItem;
     var payload = try I.initVerbatim(allocator, &.{ 0x60, 0x2a }, 0, 1);
     defer payload.deinit(allocator);

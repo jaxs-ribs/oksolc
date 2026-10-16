@@ -99,7 +99,7 @@ pub const VariableOccurrence = struct {
         const lhs_id = ASTAnnotations.compatibilityId(lhs.declaration);
         const rhs_id = ASTAnnotations.compatibilityId(rhs.declaration);
         if (lhs_id != rhs_id) return lhs_id < rhs_id;
-        return @intFromEnum(lhs.kind) < @intFromEnum(rhs.kind);
+        return @backingInt(lhs.kind) < @backingInt(rhs.kind);
     }
 };
 
@@ -279,5 +279,7 @@ test "CFG function-flow index preserves ordered positions and contract identity 
             try std.testing.expect(cfg.functionFlow(&identities[0], &identities[66]) == null);
         }
     };
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, Check.run, .{});
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{});
 }

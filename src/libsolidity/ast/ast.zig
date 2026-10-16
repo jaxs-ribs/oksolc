@@ -308,7 +308,7 @@ pub fn isInternalCallableParameter(variable: *const AST.Node) bool {
         .event_definition,
         .error_definition,
         => if (enclosing.effectiveVisibility()) |visibility|
-            @intFromEnum(visibility) <= @intFromEnum(AST.Visibility.Internal)
+            @backingInt(visibility) <= @backingInt(AST.Visibility.Internal)
         else
             false,
         else => false,
@@ -529,8 +529,7 @@ pub fn fullyQualifiedContractNameAlloc(
 ) AstError![]u8 {
     if (contract.nodeKind() != .contract_definition) return error.InvalidAst;
     const source_name = sourceUnitName(contract) orelse return error.MissingAnnotation;
-    return std.fmt.allocPrint(
-        allocator,
+    return allocator.print(
         "{s}:{s}",
         .{ source_name, contract.payload.contract_definition.declaration.name },
     );
@@ -678,7 +677,7 @@ pub fn functionTypeViaContractName(
     switch (access_kind) {
         .Local => {
             if (functionIsLibrary(function) or
-                @intFromEnum(visibility) <= @intFromEnum(AST.Visibility.Private))
+                @backingInt(visibility) <= @backingInt(AST.Visibility.Private))
                 return error.InvalidAst;
             if (!function.isVisibleInContract() or
                 !function.payload.function_definition.implemented())
@@ -1283,7 +1282,7 @@ pub fn literalChecksummedAddressAlloc(
     defer allocator.free(cleaned);
     const address = cleaned[2..];
     if (address.len > 40) return allocator.dupe(u8, "");
-    var padded: [40]u8 = [_]u8{'0'} ** 40;
+    var padded: [40]u8 = @splat('0');
     @memcpy(padded[40 - address.len ..], address);
     return CommonData.getChecksummedAddressAlloc(allocator, &padded);
 }
@@ -2958,16 +2957,16 @@ pub const Identifier = struct { name: []const u8 };
 pub const ElementaryTypeNameExpression = struct { type_name: *Node };
 
 pub const LiteralSubDenomination = enum(c_uint) {
-    None = @intFromEnum(Token.Illegal),
-    Wei = @intFromEnum(Token.SubWei),
-    Gwei = @intFromEnum(Token.SubGwei),
-    Ether = @intFromEnum(Token.SubEther),
-    Second = @intFromEnum(Token.SubSecond),
-    Minute = @intFromEnum(Token.SubMinute),
-    Hour = @intFromEnum(Token.SubHour),
-    Day = @intFromEnum(Token.SubDay),
-    Week = @intFromEnum(Token.SubWeek),
-    Year = @intFromEnum(Token.SubYear),
+    None = @backingInt(Token.Illegal),
+    Wei = @backingInt(Token.SubWei),
+    Gwei = @backingInt(Token.SubGwei),
+    Ether = @backingInt(Token.SubEther),
+    Second = @backingInt(Token.SubSecond),
+    Minute = @backingInt(Token.SubMinute),
+    Hour = @backingInt(Token.SubHour),
+    Day = @backingInt(Token.SubDay),
+    Week = @backingInt(Token.SubWeek),
+    Year = @backingInt(Token.SubYear),
 };
 
 pub const Literal = struct {
@@ -3277,7 +3276,7 @@ pub const Node = struct {
 
     pub fn isPublic(self: *const Node) bool {
         const visibility = self.effectiveVisibility() orelse return false;
-        return @intFromEnum(visibility) >= @intFromEnum(Visibility.Public);
+        return @backingInt(visibility) >= @backingInt(Visibility.Public);
     }
 
     pub fn isVisibleInContract(self: *const Node) bool {
@@ -3298,12 +3297,12 @@ pub const Node = struct {
         }
         const visibility = self.effectiveVisibility() orelse return false;
         return self.isVisibleInContract() and
-            @intFromEnum(visibility) >= @intFromEnum(Visibility.Internal);
+            @backingInt(visibility) >= @backingInt(Visibility.Internal);
     }
 
     pub fn isVisibleAsLibraryMember(self: *const Node) bool {
         const visibility = self.effectiveVisibility() orelse return false;
-        return @intFromEnum(visibility) >= @intFromEnum(Visibility.Internal);
+        return @backingInt(visibility) >= @backingInt(Visibility.Internal);
     }
 
     pub fn isVisibleViaContractTypeAccess(self: *const Node) bool {
@@ -3325,7 +3324,7 @@ pub const Node = struct {
     ) bool {
         return switch (access_kind) {
             .Local => if (self.effectiveVisibility()) |visibility|
-                @intFromEnum(visibility) > @intFromEnum(Visibility.Private)
+                @backingInt(visibility) > @backingInt(Visibility.Private)
             else
                 false,
             .Foreign => self.isVisibleViaContractTypeAccess(),

@@ -78,7 +78,7 @@ pub const Profiler = struct {
         scope_name: []const u8,
         observation: ScopeObservation,
     ) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const metrics = self.entry(Metrics, &self.metrics, scope_name) catch |err| {
             self.recording_failure = err;
@@ -102,7 +102,7 @@ pub const Profiler = struct {
     /// Individual observations remain inspectable after failure; only a
     /// successful report establishes that recording remained complete.
     pub fn metricsFor(self: *Self, name: []const u8) ?Metrics {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.metrics.get(name);
     }
@@ -111,7 +111,7 @@ pub const Profiler = struct {
     /// accumulate locally and call this once per pass invocation rather than
     /// taking the profiler lock in inner loops.
     pub fn recordCounter(self: *Self, name: []const u8, value: u64) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.addCounter(name, value) catch |err| {
             self.recording_failure = err;
@@ -124,7 +124,7 @@ pub const Profiler = struct {
     /// call does not latch its own insertion failure. A prior latched error is
     /// still returned without publishing another observation.
     pub fn tryRecordCounter(self: *Self, name: []const u8, value: u64) std.mem.Allocator.Error!void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         try self.addCounter(name, value);
     }
@@ -152,13 +152,13 @@ pub const Profiler = struct {
 
     /// Individual counter snapshot; report methods also check completeness.
     pub fn counterFor(self: *Self, name: []const u8) ?CounterMetrics {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.counters.get(name);
     }
 
     pub fn reportAlloc(self: *Self, allocator: std.mem.Allocator) std.mem.Allocator.Error![]u8 {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         if (self.recording_failure) |err| return err;
         const indices = try allocator.alloc(usize, self.metrics.count());
@@ -239,7 +239,7 @@ pub const Profiler = struct {
     /// Returns a stable machine-readable report. Scope rows are sorted by name
     /// so repeated profiles can be diffed without timing-dependent row order.
     pub fn reportJsonAlloc(self: *Self, allocator: std.mem.Allocator) ![]u8 {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         if (self.recording_failure) |err| return err;
         var arena_state = std.heap.ArenaAllocator.init(allocator);
@@ -514,7 +514,7 @@ test "profiler JSON reports retain canonical name order for empty and large reve
             try std.testing.expectEqual(count, rows.len);
             for (rows, 0..) |row, index| {
                 var buffer: [64]u8 = undefined;
-                const name = try std.fmt.bufPrint(&buffer, "item-{d:0>5}", .{index});
+                const name = try std.mem.print(&buffer, "item-{d:0>5}", .{index});
                 try std.testing.expectEqualStrings(name, row.object.get("name").?.string);
             }
         }
@@ -527,7 +527,7 @@ test "profiler JSON reports retain canonical name order for empty and large reve
 
 fn recordReportFixture(profiler: *Profiler, index: usize) !void {
     var buffer: [64]u8 = undefined;
-    const name = try std.fmt.bufPrint(&buffer, "item-{d:0>5}", .{index});
+    const name = try std.mem.print(&buffer, "item-{d:0>5}", .{index});
     profiler.recordObservation(name, .{ .duration_microseconds = index, .cpu_duration_microseconds = index * 2 });
     profiler.recordCounter(name, index + 1);
     profiler.recordCounter(name, index + 2);
@@ -541,8 +541,10 @@ test "profiler report allocation failures preserve the owner" {
     defer std.testing.allocator.free(before);
     const before_text = try profiler.reportAlloc(std.testing.allocator);
     defer std.testing.allocator.free(before_text);
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
     for ([_]bool{ false, true }) |json|
-        try std.testing.checkAllAllocationFailures(std.testing.allocator, exerciseReportAllocation, .{ &profiler, json });
+        try std.testing.checkAllAllocationFailures(deterministic.allocator(), exerciseReportAllocation, .{ &profiler, json });
     const after_text = try profiler.reportAlloc(std.testing.allocator);
     defer std.testing.allocator.free(after_text);
     try std.testing.expectEqualStrings(before_text, after_text);
@@ -569,7 +571,7 @@ fn exerciseRecordingAllocation(allocator: std.mem.Allocator, kind: RecordingKind
     defer profiler.deinit();
     for (0..32) |index| {
         var buffer: [32]u8 = undefined;
-        const name = try std.fmt.bufPrint(&buffer, "item-{d:0>5}", .{index});
+        const name = try std.mem.print(&buffer, "item-{d:0>5}", .{index});
         switch (kind) {
             .scope => profiler.recordObservation(name, .{ .duration_microseconds = index, .cpu_duration_microseconds = index * 2 }),
             .counter => profiler.recordCounter(name, index + 1),
@@ -598,7 +600,7 @@ fn exerciseRecordingAllocation(allocator: std.mem.Allocator, kind: RecordingKind
     }
     for (0..32) |index| {
         var buffer: [32]u8 = undefined;
-        const name = try std.fmt.bufPrint(&buffer, "item-{d:0>5}", .{index});
+        const name = try std.mem.print(&buffer, "item-{d:0>5}", .{index});
         switch (kind) {
             .scope, .probe, .deferred_probe => try std.testing.expectEqual(@as(usize, 1), profiler.metricsFor(name).?.call_count),
             .counter => try std.testing.expectEqual(@as(u64, index + 1), profiler.counterFor(name).?.total),
@@ -632,13 +634,13 @@ fn exerciseCounterAllocation(allocator: std.mem.Allocator) !void {
     defer profiler.deinit();
     for (0..32) |index| {
         var buffer: [32]u8 = undefined;
-        const name = try std.fmt.bufPrint(&buffer, "counter-{d}", .{index});
+        const name = try std.mem.print(&buffer, "counter-{d}", .{index});
         profiler.tryRecordCounter(name, index + 1) catch |err| {
             try std.testing.expectEqual(index, profiler.counters.count());
             try std.testing.expect(profiler.counterFor(name) == null);
             try std.testing.expect(profiler.recording_failure == null);
             for (0..index) |prior| {
-                const prior_name = try std.fmt.bufPrint(&buffer, "counter-{d}", .{prior});
+                const prior_name = try std.mem.print(&buffer, "counter-{d}", .{prior});
                 try std.testing.expectEqual(@as(u64, prior + 1), profiler.counterFor(prior_name).?.total);
                 try std.testing.expectEqual(@as(usize, 1), profiler.counterFor(prior_name).?.sample_count);
             }
@@ -683,7 +685,7 @@ test "profiler concurrent publication preserves owned entries and failure state"
     const Worker = struct {
         fn run(profiler: *Profiler, worker: usize) void {
             var buffer: [32]u8 = undefined;
-            const name = std.fmt.bufPrint(&buffer, "worker-{d}", .{worker}) catch unreachable;
+            const name = std.mem.print(&buffer, "worker-{d}", .{worker}) catch unreachable;
             for (0..50) |_| {
                 profiler.recordObservation("shared", .{ .duration_microseconds = 1, .cpu_duration_microseconds = 2 });
                 profiler.recordCounter("shared", 1);

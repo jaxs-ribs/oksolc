@@ -179,7 +179,7 @@ fn replaceAll(buffer: []u8, input: []const u8, needle: []const u8, replacement: 
 }
 
 fn replaceMangleDelimiters(buffer: []u8, input: []const u8) []const u8 {
-    var output: std.ArrayList(u8) = .{ .items = buffer[0..0], .capacity = buffer.len };
+    var output: std.ArrayList(u8) = .initBuffer(buffer);
     var index: usize = 0;
     while (index < input.len) {
         if (index + 1 < input.len and
@@ -197,7 +197,7 @@ fn replaceMangleDelimiters(buffer: []u8, input: []const u8) []const u8 {
 }
 
 fn removeNumericIdsBeforeNonHex(buffer: []u8, input: []const u8) []const u8 {
-    var output: std.ArrayList(u8) = .{ .items = buffer[0..0], .capacity = buffer.len };
+    var output: std.ArrayList(u8) = .initBuffer(buffer);
     var index: usize = 0;
     while (index < input.len) {
         if (input[index] == '_' and index + 1 < input.len and std.ascii.isDigit(input[index + 1])) {
@@ -246,7 +246,7 @@ fn shortenStringLiteral(buffer: []u8, input: []const u8) []const u8 {
         if (!isLowerHex(character)) return input;
     var end = digits_start + 4;
     while (end < input.len and isLowerHex(input[end])) end += 1;
-    var output: std.ArrayList(u8) = .{ .items = buffer[0..0], .capacity = buffer.len };
+    var output: std.ArrayList(u8) = .initBuffer(buffer);
     output.appendSliceAssumeCapacity(input[0 .. digits_start + 4]);
     output.appendSliceAssumeCapacity(input[end..]);
     return output.items;
@@ -258,7 +258,7 @@ fn removeLastStorageWord(buffer: []u8, input: []const u8) []const u8 {
     const relative_last = std.mem.findLast(u8, remaining, "storage") orelse
         return input;
     const last = first + "storage".len + relative_last;
-    var output: std.ArrayList(u8) = .{ .items = buffer[0..0], .capacity = buffer.len };
+    var output: std.ArrayList(u8) = .initBuffer(buffer);
     output.appendSliceAssumeCapacity(input[0..last]);
     output.appendSliceAssumeCapacity(input[last + "storage".len ..]);
     return output.items;
@@ -271,7 +271,7 @@ fn removeContractMangle(buffer: []u8, input: []const u8) []const u8 {
     var capture_end = capture_start;
     while (capture_end < input.len and input[capture_end] != '_') capture_end += 1;
     const consumed_end = if (capture_end < input.len) capture_end + 1 else capture_end;
-    var output: std.ArrayList(u8) = .{ .items = buffer[0..0], .capacity = buffer.len };
+    var output: std.ArrayList(u8) = .initBuffer(buffer);
     output.appendSliceAssumeCapacity(input[0..start]);
     output.appendSliceAssumeCapacity(input[capture_start..capture_end]);
     output.appendAssumeCapacity('_');

@@ -34,7 +34,7 @@ test('browser build enforces strict types, cache invalidation, deterministic emb
 const std = @import("std");
 pub fn build(b: *std.Build) void {
     const browser = b.option(bool, "browser", "Include the web browser") orelse false;
-    const module = b.createModule(.{ .root_source_file = b.path("main.zig"), .target = b.standardTargetOptions(.{}), .optimize = .ReleaseSafe });
+    const module = b.createModule(.{ .root_source_file = b.path("main.zig"), .target = b.standardTargetOptions(.{}), .optimize = .safe });
     const options = b.addOptions();
     options.addOption(bool, "browser", browser);
     module.addOptions("options", options);

@@ -6,35 +6,40 @@
     .name = .solidity_zig,
     .version = "0.1.6",
     .fingerprint = 0x532998ed66b1991d, // Changing this has security and trust implications.
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .httpz = .{
             .lazy = true,
-            .url = "https://github.com/karlseguin/http.zig/archive/9b14af98fde5e98abb9a8376fe02b42003e835bf.tar.gz",
-            .hash = "httpz-0.0.0-PNVzrMgTCQDhzfBLRRebTx9LU056Ph2erdN9-42rFbhj",
+            .url = "git+https://github.com/karlseguin/http.zig.git#e8272bfd5727aade0dcee3e2aba6c50f57c374b6",
+            .hash = "httpz-0.0.0-PNVzrNAXCQDHb-rRH2jq07A3Ekv3GS6XOTkiqZJtKeqv",
         },
         .zqlite = .{
-            .url = "https://github.com/karlseguin/zqlite.zig/archive/b519eea9b1a2b5fcad68af6d0629e717e8746684.tar.gz",
-            .hash = "zqlite-0.0.1-RWLaY8M8nAB4m0tlSpT9A5PGUwX_JfWC5VlPjLe7lG2Q",
+            .url = "git+https://github.com/karlseguin/zqlite.zig.git#865223b734a5113f731ab1eb1d7d81c8ac252913",
+            .hash = "zqlite-0.0.1-RWLaY4Y8nADz2l5aBE-JVyDyM3sZzHjq0agNykuVZKqQ",
         },
         .clap = .{
-            .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.12.0.tar.gz",
-            .hash = "clap-0.12.0-oBajB7foAQDqlSwaSG5g0yq7xGbQARUsBk5T64gAOqP5",
+            .url = "git+https://github.com/Hejsil/zig-clap.git#05faf3905e8548f5cc269a8836e154065e70128d",
+            .hash = "clap-0.12.0-oBajB4XpAQCF1WRKnD5KOKPsnwwT_NNdAJ7Ww3irYJac",
         },
         .yyjson = .{
             .url = "https://github.com/ibireme/yyjson/archive/refs/tags/0.12.0.tar.gz",
             .hash = "N-V-__8AADJobAAfcT3EULUqTBZto6rfWBxzeDyfBxrSCP_b",
         },
         .zbench = .{
-            .url = "https://github.com/hendriknielaender/zBench/archive/c24d128bfa80ec6a1b495b84ec827c6a0bec7865.tar.gz",
-            .hash = "zbench-0.11.2-YTdc76Q_AQAxonIKZ2-H1PdcESJGwyuYylw6RkPiBqyx",
+            .url = "git+https://github.com/hendriknielaender/zBench.git#f12a2262bcd9d300207890555c577da5e29de453",
+            .hash = "zbench-0.14.1-YTdc781OAQCR6wxqkgAwm9bG4TnFGzm8c9aE-ZPiTAU1",
         },
         .zlinter = .{
-            .path = "vendor/zlinter",
+            .url = "git+https://github.com/KurtWagner/zlinter.git#06dd3de40c2b69294376fe960844203dabbbc996",
+            .hash = "zlinter-0.0.1-OjQ08VewFQD0_VeKYjUlovRp4GGlG0Jpu2ZF0MFY4Vcb",
         },
         .toml = .{
-            .url = "git+https://github.com/sam701/zig-toml?ref=zig-0.16#8685923e32e8b8a795eb2715684236975a70faed",
-            .hash = "toml-0.3.0-bV14BRmKAQAWR0FT0KUKFwVJTImaFhWjSe6HfSMtNZOH",
+            .url = "git+https://github.com/sam701/zig-toml.git#c661327bd9f02f774426c4fe78f60621411b7173",
+            .hash = "toml-0.3.0-bV14BRmkAQDSILPPyXc31aAXPtJa1Uh8Frug3i6InAUc",
+        },
+        .translate_c = .{
+            .url = "git+https://codeberg.org/ziglang/translate-c#c11030012dc325d446474d17b78c242fd1d622ec",
+            .hash = "translate_c-2.0.2-Q_BUWvBNBwBgPKQJPblip6M7AHNK_IPNPmyv4rSIQMQc",
         },
     },
     .paths = .{

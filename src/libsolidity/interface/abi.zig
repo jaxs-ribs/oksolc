@@ -412,7 +412,7 @@ fn appendABIType(
         null;
     if (library and effective_location == .Storage) {
         const canonical = try TypeBehavior.canonicalNameAlloc(allocator, type_ref);
-        const abi_name = try std.fmt.allocPrint(allocator, "{s} storage", .{canonical});
+        const abi_name = try allocator.print("{s} storage", .{canonical});
         try result.object.put(allocator, "type", .{ .string = abi_name });
         return;
     }
@@ -461,10 +461,10 @@ fn appendABIType(
                 );
                 const base_name = subtype.object.get("type") orelse return error.InvalidAst;
                 const suffix = if (array.length) |length|
-                    try std.fmt.allocPrint(allocator, "[{d}]", .{length})
+                    try allocator.print("[{d}]", .{length})
                 else
                     try allocator.dupe(u8, "[]");
-                const name = try std.fmt.allocPrint(allocator, "{s}{s}", .{ base_name.string, suffix });
+                const name = try allocator.print("{s}{s}", .{ base_name.string, suffix });
                 try result.object.put(allocator, "type", .{ .string = name });
                 if (subtype.object.get("components")) |components|
                     try result.object.put(allocator, "components", components);
@@ -525,8 +525,8 @@ fn appendUniqueNode(
 }
 
 fn libraryFunctionExcluded(function: *const AST.Node) GenerateError!bool {
-    if (@intFromEnum(function.payload.function_definition.state_mutability) >
-        @intFromEnum(AST.StateMutability.View)) return true;
+    if (@backingInt(function.payload.function_definition.state_mutability) >
+        @backingInt(AST.StateMutability.View)) return true;
     const callable = function.payload.function_definition.callable;
     for (callable.parameters.payload.parameter_list.parameters) |parameter|
         if (TypeBehavior.dataStoredIn(try variableType(parameter), .Storage)) return true;

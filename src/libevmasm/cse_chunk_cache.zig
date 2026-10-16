@@ -104,12 +104,12 @@ pub const Cache = struct {
     }
 
     fn key(self: *const Cache, input: []const Item, version: EVMVersion, msize: bool) u64 {
-        var hash: u64 = @as(u64, @intCast(@intFromEnum(version.version))) | (@as(u64, @intFromBool(msize)) << 32);
+        var hash: u64 = @as(u64, @intCast(@backingInt(version.version))) | (@as(u64, @intFromBool(msize)) << 32);
         for (input) |item| {
             // Fixed words avoid streaming tiny fragments through a hash buffer.
             // Omitted fields are still checked by equalItems on every hit.
             const words = [_]u64{
-                @as(u64, @intCast(@intFromEnum(item.item_type))) | (@as(u64, if (item.instruction_value) |op| @intFromEnum(op) else 256) << 32),
+                @as(u64, @intCast(@backingInt(item.item_type))) | (@as(u64, if (item.instruction_value) |op| @backingInt(op) else 256) << 32),
                 @truncate(item.data_value),
                 @truncate(item.data_value >> 64),
                 @truncate(item.data_value >> 128),

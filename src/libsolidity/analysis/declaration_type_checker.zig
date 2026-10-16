@@ -257,8 +257,7 @@ pub const DeclarationTypeChecker = struct {
         if (underlying.category() == .UserDefinedValueType) return error.InvalidAst;
         _ = try self.type_provider.userDefinedValueType(node, underlying);
         if (!TypeBehavior.isValueType(underlying)) {
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "The underlying type of the user defined value type \"{s}\" is not a value type.",
                 .{value.declaration.name},
             );
@@ -431,8 +430,7 @@ pub const DeclarationTypeChecker = struct {
                 conflict = std.mem.eql(u8, value.key_name, current_value_name);
             }
             if (conflict) {
-                const message = try std.fmt.allocPrint(
-                    self.allocator,
+                const message = try self.allocator.print(
                     "Conflicting parameter name \"{s}\" in mapping.",
                     .{value.key_name},
                 );
@@ -674,8 +672,7 @@ pub const DeclarationTypeChecker = struct {
             try output.appendSlice(self.allocator, "Data location must be ");
             var names: [5][]const u8 = undefined;
             var count: usize = 0;
-            inline for (std.meta.fields(AST.VariableLocation)) |field| {
-                const location: AST.VariableLocation = @enumFromInt(field.value);
+            inline for (std.enums.values(AST.VariableLocation)) |location| {
                 if (allowed[locationIndex(location)]) {
                     names[count] = variableLocationDiagnosticName(location);
                     count += 1;
@@ -789,7 +786,7 @@ fn allowedDataLocations(
     variable: *const AST.Node,
     has_reference_or_mapping: bool,
 ) [5]bool {
-    var allowed = [_]bool{false} ** 5;
+    var allowed: [5]bool = @splat(false);
     if (isStateVariable(variable)) {
         allowed[locationIndex(.Unspecified)] = true;
         allowed[locationIndex(.Transient)] = true;
@@ -814,8 +811,7 @@ fn allowedDataLocations(
 }
 
 fn firstAllowedLocation(allowed: [5]bool) ?AST.VariableLocation {
-    inline for (std.meta.fields(AST.VariableLocation)) |field| {
-        const location: AST.VariableLocation = @enumFromInt(field.value);
+    inline for (std.enums.values(AST.VariableLocation)) |location| {
         if (allowed[locationIndex(location)]) return location;
     }
     return null;
@@ -832,7 +828,7 @@ fn variableLocationDiagnosticName(location: AST.VariableLocation) []const u8 {
 }
 
 fn locationIndex(location: AST.VariableLocation) usize {
-    return @intCast(@intFromEnum(location));
+    return @intCast(@backingInt(location));
 }
 
 fn isStateVariable(variable: *const AST.Node) bool {

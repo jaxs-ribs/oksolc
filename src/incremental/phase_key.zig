@@ -167,7 +167,7 @@ pub const PhaseKeyBuilder = struct {
 
     pub fn init(kind: ArtifactKind, compiler: CompilerFingerprint) PhaseKeyBuilder {
         var hasher = KeyHasher.init("compiler.artifact", schema_version);
-        hasher.addU8(1, @intFromEnum(kind));
+        hasher.addU8(1, @backingInt(kind));
         const compiler_digest = compiler.digest();
         hasher.addDigest(2, &compiler_digest);
         return .{ .hasher = hasher };

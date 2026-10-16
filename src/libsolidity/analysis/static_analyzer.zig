@@ -164,8 +164,7 @@ pub const StaticAnalyzer = struct {
                 true,
             );
             defer self.allocator.free(type_name);
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "Type {s} covers a large part of storage and thus makes collisions likely. Either use mappings or dynamic arrays and allow their size to be increased only in small quantities per transaction.",
                 .{type_name},
             );

@@ -261,7 +261,7 @@ pub fn singleLineSnippetFromTextAlloc(
 ) std.mem.Allocator.Error![]u8 {
     const snippet = singleLineSnippetFromText(source_code, location);
     if (!snippet.truncated) return allocator.dupe(u8, snippet.prefix);
-    return std.fmt.allocPrint(allocator, "{s}...", .{snippet.prefix});
+    return allocator.print("{s}...", .{snippet.prefix});
 }
 
 /// A borrowed source prefix and its presentation-only truncation marker.

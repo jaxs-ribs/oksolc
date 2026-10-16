@@ -291,8 +291,8 @@ pub const FullInliner = struct {
 
         var aggressive = if (EVMDialectModule.fromDialect(self.dialect)) |evm|
             evm.providesObjectAccess() and
-                @intFromEnum(evm.evmVersion().version) >
-                    @intFromEnum(@import("../../liblangutil/evm_version.zig").Version.Homestead)
+                @backingInt(evm.evmVersion().version) >
+                    @backingInt(@import("../../liblangutil/evm_version.zig").Version.Homestead)
         else
             false;
         if (!self.has_memory_guard or

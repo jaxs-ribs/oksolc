@@ -365,7 +365,7 @@ const ExpressionGraph = struct {
 };
 
 fn borrowedEqual(left: *const AST.Expression, right: *const AST.Expression) bool {
-    if (@intFromEnum(left.*) != @intFromEnum(right.*)) return false;
+    if (@backingInt(left.*) != @backingInt(right.*)) return false;
     return switch (left.*) {
         .identifier => |identifier| identifier.name.eql(right.identifier.name),
         .literal => |*literal| literal.value.eql(&right.literal.value),

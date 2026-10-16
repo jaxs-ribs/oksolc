@@ -17,8 +17,7 @@ pub fn report(
     sizes: Sizes,
 ) !void {
     if (evm_version.atLeast(.SpuriousDragon) and sizes.deployed > 0x6000) {
-        const message = try std.fmt.allocPrint(
-            allocator,
+        const message = try allocator.print(
             "Contract code size is {d} bytes and exceeds 24576 bytes (a limit introduced in Spurious Dragon). " ++
                 "This contract may not be deployable on Mainnet. Consider enabling the optimizer (with a low \"runs\" value!), " ++
                 "turning off revert strings, or using libraries.",
@@ -28,8 +27,7 @@ pub fn report(
         try reporter.warning(.{ .value = 5574 }, location, message);
     }
     if (evm_version.atLeast(.Shanghai) and sizes.creation > 0xc000) {
-        const message = try std.fmt.allocPrint(
-            allocator,
+        const message = try allocator.print(
             "Contract initcode size is {d} bytes and exceeds 49152 bytes (a limit introduced in Shanghai). " ++
                 "This contract may not be deployable on Mainnet. Consider enabling the optimizer (with a low \"runs\" value!), " ++
                 "turning off revert strings, or using libraries.",

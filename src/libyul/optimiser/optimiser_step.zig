@@ -302,7 +302,9 @@ test "function analysis cache owns results separately from recursive graph scrat
             try std.testing.expect(cache.side_effects == null);
         }
     };
-    try std.testing.checkAllAllocationFailures(allocator, Check.run, .{&ast});
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{&ast});
     try std.testing.expectEqualDeep(before, try Encoding.hashBlock(ast.root()));
 }
 

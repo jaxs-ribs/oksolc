@@ -15,7 +15,7 @@ pub const DependencyMaskMarker = struct {
     graph: *const SourceGraph,
     masks: []Fingerprint.DependencyMaskEntry,
     importer: ?SourceId = null,
-    seen: std.DynamicBitSetUnmanaged,
+    seen: std.bit_set.Dynamic,
 
     /// Graph topology and mask keys must stay frozen until deinit. Only this
     /// marker may mutate categories, monotonically widening them to `.all`.

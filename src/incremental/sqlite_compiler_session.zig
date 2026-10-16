@@ -312,8 +312,7 @@ fn acquireRecoveryLock(
     var directory = try openRecoveryDirectory(io, directory_path);
     defer directory.close(io);
 
-    const lock_name = try std.fmt.allocPrint(
-        allocator,
+    const lock_name = try allocator.print(
         "{s}.recovery.lock",
         .{database_name},
     );
@@ -359,7 +358,7 @@ fn acquireRecoveryLock(
 fn validateRecoveryLockStat(stat: std.Io.File.Stat) !void {
     if (stat.kind != .file or stat.nlink != 1)
         return error.InvalidRecoveryLock;
-    if (comptime @import("builtin").os.tag != .windows) {
+    if (comptime @import("builtin").target.os.tag != .windows) {
         if (stat.permissions.toMode() & 0o777 != 0o600)
             return error.InsecureRecoveryLockPermissions;
     }
@@ -372,7 +371,7 @@ fn recoveryDirectoryPathAlloc(
 ) ![]u8 {
     const relative_directory = std.Io.Dir.path.dirname(database_path) orelse ".";
     if (std.Io.Dir.path.isAbsolute(relative_directory))
-        return std.Io.Dir.path.resolve(allocator, &.{relative_directory});
+        return std.Io.Dir.path.resolveAlloc(allocator, &.{relative_directory});
 
     const current_directory = try std.Io.Dir.cwd().realPathFileAlloc(
         io,
@@ -380,7 +379,7 @@ fn recoveryDirectoryPathAlloc(
         allocator,
     );
     defer allocator.free(current_directory);
-    return std.Io.Dir.path.resolve(
+    return std.Io.Dir.path.resolveAlloc(
         allocator,
         &.{ current_directory, relative_directory },
     );
@@ -425,7 +424,7 @@ fn openRecoveryDirectory(io: std.Io, canonical: []const u8) !std.Io.Dir {
     const actual_length = try current.realPath(io, &actual_buffer);
     if (!std.mem.eql(u8, canonical, actual_buffer[0..actual_length]))
         return error.RecoveryDirectoryChanged;
-    if (comptime @import("builtin").os.tag != .windows) {
+    if (comptime @import("builtin").target.os.tag != .windows) {
         const stat = try current.stat(io);
         if (stat.permissions.toMode() & 0o022 != 0)
             return error.InsecureRecoveryDirectory;
@@ -442,8 +441,7 @@ fn quarantineDatabase(
     std.Io.random(io, &entropy);
     const suffix = std.fmt.bytesToHex(entropy, .lower);
 
-    const quarantined_path = try std.fmt.allocPrint(
-        allocator,
+    const quarantined_path = try allocator.print(
         "{s}.rejected-{s}",
         .{ database_path, suffix },
     );
@@ -457,14 +455,12 @@ fn quarantineDatabase(
 
     const sidecars = [_][]const u8{ "-wal", "-shm", "-journal" };
     for (sidecars) |sidecar| {
-        const source_path = try std.fmt.allocPrint(
-            allocator,
+        const source_path = try allocator.print(
             "{s}{s}",
             .{ database_path, sidecar },
         );
         defer allocator.free(source_path);
-        const destination_path = try std.fmt.allocPrint(
-            allocator,
+        const destination_path = try allocator.print(
             "{s}{s}",
             .{ quarantined_path, sidecar },
         );
@@ -477,7 +473,7 @@ fn quarantineDatabase(
     return quarantined_path;
 }
 
-const test_authentication_key: AuthenticationKey = [_]u8{0x6b} ** 32;
+const test_authentication_key: AuthenticationKey = @splat(0x6b);
 
 fn testSessionInit(
     allocator: std.mem.Allocator,
@@ -505,8 +501,7 @@ fn testStoreInit(
 test "SQLite compiler session quarantines a corrupt database" {
     var temporary = std.testing.tmpDir(.{});
     defer temporary.cleanup();
-    const path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/cache.sqlite",
         .{&temporary.sub_path},
     );
@@ -554,8 +549,7 @@ test "SQLite compiler session quarantines a corrupt database" {
 test "SQLite compiler session does not race an active cache recovery" {
     var temporary = std.testing.tmpDir(.{});
     defer temporary.cleanup();
-    const path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/cache.sqlite",
         .{&temporary.sub_path},
     );
@@ -591,7 +585,7 @@ test "SQLite compiler session does not race an active cache recovery" {
 }
 
 test "SQLite recovery lock rejects symlinks without modifying their target" {
-    if (comptime @import("builtin").os.tag == .windows)
+    if (comptime @import("builtin").target.os.tag == .windows)
         return error.SkipZigTest;
 
     var temporary = std.testing.tmpDir(.{});
@@ -633,8 +627,7 @@ test "SQLite recovery lock rejects symlinks without modifying their target" {
         "cache/cache.sqlite.recovery.lock",
         .{},
     );
-    const path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/cache/cache.sqlite",
         .{&temporary.sub_path},
     );
@@ -666,7 +659,7 @@ test "SQLite recovery lock rejects symlinks without modifying their target" {
 }
 
 test "SQLite recovery lock rejects hard links without modifying their target" {
-    if (comptime @import("builtin").os.tag == .windows)
+    if (comptime @import("builtin").target.os.tag == .windows)
         return error.SkipZigTest;
 
     var temporary = std.testing.tmpDir(.{});
@@ -709,8 +702,7 @@ test "SQLite recovery lock rejects hard links without modifying their target" {
         std.testing.io,
         .{},
     );
-    const path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/cache/cache.sqlite",
         .{&temporary.sub_path},
     );
@@ -744,8 +736,7 @@ test "SQLite recovery lock rejects hard links without modifying their target" {
 test "SQLite compiler session replaces an incompatible database" {
     var temporary = std.testing.tmpDir(.{});
     defer temporary.cleanup();
-    const path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/cache.sqlite",
         .{&temporary.sub_path},
     );
@@ -787,8 +778,7 @@ test "SQLite compiler session replaces an incompatible database" {
 test "SQLite compiler session leaves a newer cache schema untouched" {
     var temporary = std.testing.tmpDir(.{});
     defer temporary.cleanup();
-    const path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/cache.sqlite",
         .{&temporary.sub_path},
     );
@@ -832,8 +822,7 @@ test "SQLite compiler session leaves a newer cache schema untouched" {
 test "SQLite compiler session falls back to memory" {
     var temporary = std.testing.tmpDir(.{});
     defer temporary.cleanup();
-    const path = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const path = try std.testing.allocator.print(
         ".zig-cache/tmp/{s}/missing/cache.sqlite",
         .{&temporary.sub_path},
     );
