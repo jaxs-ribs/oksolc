@@ -406,6 +406,7 @@ pub fn shuffleWithOperations(ops: anytype) !void {
 
 fn shuffle(comptime cache_counts: bool, ops: anytype, scratch_allocator: std.mem.Allocator) !void {
     var counts: ?StackMultiplicity = null;
+    var cache_allowed = cache_counts;
     defer if (cache_counts) if (counts) |*value| {
         ops.multiplicities = null;
         value.deinit();
@@ -417,8 +418,15 @@ fn shuffle(comptime cache_counts: bool, ops: anytype, scratch_allocator: std.mem
         if (cache_counts) {
             // A few scans cost less than preparing a table. Initialize between
             // operations, after callbacks and source mutations have completed.
-            if (needs_more and counts == null and ops.uncached_queries >= 4 and !layoutIsFinal(ops)) {
-                counts = try StackMultiplicity.init(scratch_allocator, ops.current_stack.items, ops.target_stack);
+            if (cache_allowed and needs_more and counts == null and ops.uncached_queries >= 4 and !layoutIsFinal(ops)) {
+                counts = StackMultiplicity.init(scratch_allocator, ops.current_stack.items, ops.target_stack) catch |err| switch (err) {
+                    error.OutOfMemory => {
+                        // Preparing counts has not touched the stack or callbacks.
+                        // Resume scans and avoid retrying optional allocations.
+                        cache_allowed = false;
+                        continue;
+                    },
+                };
                 ops.multiplicities = &counts.?;
             }
         }
@@ -460,6 +468,41 @@ test "stack multiplicity cheap top swaps stay allocation free at every stack siz
         try std.testing.expect(!rejecting.has_induced_failure);
         for (current.items, target[0..length]) |actual, expected| try expectSameSlot(actual, expected);
     }
+}
+
+test "stack multiplicity cache OOM preserves uncached operations and required allocation errors" {
+    const allocator = std.testing.allocator;
+    var target: [256]CFG.StackSlot = undefined;
+    for (&target, 0..) |*slot, index| slot.* = .{ .literal = .{ .value = index } };
+    var stacks = [_]CFG.Stack{ .empty, .empty };
+    defer for (&stacks) |*stack| stack.deinit(allocator);
+    var events = [_]std.ArrayList(ShuffleEvent){ .empty, .empty };
+    defer for (&events) |*list| list.deinit(allocator);
+    for (&stacks, &events) |*stack, *list| {
+        try stack.appendSlice(allocator, &target);
+        try list.ensureTotalCapacity(allocator, 128);
+    }
+    // Multiple swaps eventually justify a table; none of the actual shuffle
+    // operations needs storage after provisioning the stacks and traces.
+    std.mem.reverse(CFG.StackSlot, target[240..]);
+    inline for (.{ false, true }, 0..) |cached, index| {
+        var rejecting = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
+        try createStackLayoutImpl(cached, rejecting.allocator(), &stacks[index], &target, ShuffleRecorder{
+            .allocator = allocator,
+            .events = &events[index],
+        }, 16);
+        try std.testing.expectEqual(cached, rejecting.has_induced_failure);
+        for (stacks[index].items, target) |actual, expected| try expectSameSlot(actual, expected);
+    }
+    try std.testing.expectEqualDeep(events[0].items, events[1].items);
+    var empty: CFG.Stack = .empty;
+    defer empty.deinit(allocator);
+    var rejecting = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
+    try std.testing.expectError(error.OutOfMemory, createStackLayout(rejecting.allocator(), &empty, target[0..1], ShuffleRecorder{
+        .allocator = allocator,
+        .events = &events[1],
+    }, 16));
+    try std.testing.expectEqual(@as(usize, 0), empty.items.len);
 }
 
 test "stack shuffler creates exact layouts with duplication, swaps, pops, and junk" {

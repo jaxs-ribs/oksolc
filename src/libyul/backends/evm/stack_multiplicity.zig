@@ -228,3 +228,16 @@ test "stack multiplicity hashed identity ignores debug data and distinguishes sl
             try std.testing.expectEqual(left.eql(right), id == interner.intern(&slots[previous]));
     }
 }
+
+test "stack multiplicity cache initialization unwinds every partial allocation" {
+    const Check = struct {
+        fn run(allocator: std.mem.Allocator) !void {
+            var slots: [256]CFG.StackSlot = undefined;
+            for (&slots, 0..) |*slot, index| slot.* = .{ .literal = .{ .value = index } };
+            var counts = try StackMultiplicity.init(allocator, &slots, &slots);
+            defer counts.deinit();
+        }
+    };
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{});
+}
