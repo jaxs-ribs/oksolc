@@ -1470,7 +1470,7 @@ fn resolveParallelOptions(
         null;
     const source_path = try init.gpa.dupe(u8, config.source_path orelse "src");
     errdefer init.gpa.free(source_path);
-    solidity.libyul.yul_string.setSharded(parallel_jobs > 1);
+    try solidity.libyul.yul_string.setSharded(parallel_jobs > 1);
     return .{
         .allocator = init.gpa,
         .project_root = project_root,

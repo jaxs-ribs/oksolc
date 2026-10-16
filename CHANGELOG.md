@@ -15,6 +15,8 @@ Solidity compatibility target: `0.8.36`.
   `revision.markDependencyUsed(graph, importer, referenced)` with
   `marker.mark(importer, referenced)` and call `marker.deinit()` after collection.
   See the [Zig API migration example](README.md#zig-api-migration-for-020-dev).
+- Return `error.InternerAlreadyInitialized` from the lower-level Zig
+  `yul_string.setSharded` API instead of silently ignoring late configuration.
 
 ### Performance
 

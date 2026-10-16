@@ -103,6 +103,15 @@ fn collectDependencies(
 Initialization failure leaves the mask list empty and permits retrying on the
 same revision. Standard JSON and C ABI callers need no migration.
 
+Call `try solidity.libyul.yul_string.setSharded(true)` before interning strings
+or starting compilation workers to enable the process-global sharded interner.
+It returns `error.InternerAlreadyInitialized` after a repository is initialized,
+including when requesting the existing mode. Reset only after all users of
+interned handles and cached dialects have stopped; reset invalidates those
+handles and allows reconfiguration. The CLI selects sharding only when its
+resolved worker count exceeds one. The public `Repository.generatedHandle`
+method remains available for callers managing their own repositories.
+
 ## Requirements
 
 - Zig `0.17.0`

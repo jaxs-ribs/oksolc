@@ -5,7 +5,8 @@
 //! Interned Yul strings with deterministic FNV hashes.
 //!
 //! Handles borrow process-global repository storage and become invalid after
-//! `reset`, matching the lifetime contract of the C++ repository.
+//! `reset`, matching the lifetime contract of the C++ repository. Configure
+//! sharding before starting workers; reset only after all handle users stop.
 
 const std = @import("std");
 
@@ -179,11 +180,12 @@ var shards: [shard_count]Shard = @splat(.{});
 var shard_mask: u64 = 0;
 
 /// Use all shards (parallel compilation) or one (serial). Equal strings must
-/// always reach the same shard, so this only takes effect while nothing is
-/// interned: call it once at startup, before any compilation thread exists.
-/// The CLI does so in `resolveParallelOptions` (cli/main.zig).
-pub fn setSharded(sharded: bool) void {
-    for (shards) |shard| if (shard.repository != null) return;
+/// always reach the same shard. Call at startup before any compilation thread
+/// exists, or after `reset` with all users quiescent. An initialized repository
+/// returns `InternerAlreadyInitialized` without changing the routing mode,
+/// even when the requested mode is unchanged.
+pub fn setSharded(sharded: bool) error{InternerAlreadyInitialized}!void {
+    for (&shards) |*shard| if (shard.repository != null) return error.InternerAlreadyInitialized;
     shard_mask = if (sharded) shard_count - 1 else 0;
 }
 
@@ -194,6 +196,8 @@ fn shardIndex(string_hash: u64, mask: u64) usize {
     return @intCast(std.hash.Wyhash.hash(0, std.mem.asBytes(&string_hash)) & mask);
 }
 
+/// Invalidates every outstanding handle and cached dialect. All users must be
+/// quiescent: shard locks do not extend the lifetime of returned string slices.
 pub fn reset() std.mem.Allocator.Error!void {
     lockGlobal();
     const callbacks = std.heap.page_allocator.dupe(ResetCallback, reset_callbacks.items) catch |err| { // zlinter-disable-current-line no_hidden_allocations - copying callbacks avoids invoking user code while holding the global lock
@@ -365,10 +369,10 @@ test "owned Yul name insertion rolls back every allocation failure" {
 test "generated Yul name boundaries share ordinary handles in both modes" {
     for ([_]bool{ false, true }) |sharded| {
         try reset();
-        setSharded(sharded);
+        try setSharded(sharded);
         defer {
-            reset() catch {};
-            setSharded(false);
+            reset() catch unreachable;
+            setSharded(false) catch unreachable;
         }
         const base_bytes: [4094]u8 = @splat('x');
         var expected_buffer: [4096]u8 = undefined;
@@ -384,6 +388,30 @@ test "generated Yul name boundaries share ordinary handles in both modes" {
             try std.testing.expect(!generated.eql(try YulString.initGenerated(base, 1)));
         }
     }
+}
+
+test "Yul shard configuration rejects initialized repositories until reset" {
+    try reset();
+    defer {
+        reset() catch unreachable;
+        setSharded(false) catch unreachable;
+    }
+    for ([_]bool{ false, true }) |sharded| {
+        try setSharded(!sharded);
+        const empty = try YulString.init("");
+        try std.testing.expect(empty.empty());
+        try setSharded(sharded);
+        const configured_mask = shard_mask;
+        const first = try YulString.init("configured");
+        try std.testing.expectError(error.InternerAlreadyInitialized, setSharded(!sharded));
+        try std.testing.expectError(error.InternerAlreadyInitialized, setSharded(sharded));
+        try std.testing.expectEqual(configured_mask, shard_mask);
+        try std.testing.expect(first.eql(try YulString.init("configured")));
+        try reset();
+    }
+    try setSharded(false);
+    const reused = try YulString.init("after reset");
+    try std.testing.expect(reused.eql(try YulString.init("after reset")));
 }
 
 test "Yul strings shard routing keeps shard tables evenly filled" {
@@ -403,10 +431,10 @@ test "Yul strings shard routing keeps shard tables evenly filled" {
 
 test "Yul strings stay canonical when sharded across threads" {
     try reset();
-    setSharded(true);
+    try setSharded(true);
     defer {
-        reset() catch {};
-        setSharded(false);
+        reset() catch unreachable;
+        setSharded(false) catch unreachable;
     }
     const workers = 12;
     const count = 1024;
