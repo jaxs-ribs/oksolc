@@ -558,7 +558,7 @@ pub const Assembly = struct {
         return self.tag_replacements.?.items;
     }
 
-    fn optimiseCSE(self: *Assembly, iteration_count: *u32, scratch_backing_allocator: ?std.mem.Allocator, cache: *CSEChunkCache.Cache) AssemblyError!void {
+    fn optimiseCSE(self: *Assembly, iteration_count: *u32, scratch_backing_allocator: ?std.mem.Allocator, cache: ?*CSEChunkCache.Cache) AssemblyError!void {
         var scratch_arena = if (scratch_backing_allocator) |backing|
             std.heap.ArenaAllocator.init(backing)
         else
@@ -582,16 +582,19 @@ pub const Assembly = struct {
                 if (!arena.reset(.{ .retain_with_limit = 8 * 1024 * 1024 }))
                     _ = arena.reset(.free_all);
             };
-            const tail = self.assembly_items.items[index..];
-            const length = CommonSubexpressionEliminator.CommonSubexpressionEliminator.chunkLength(tail, uses_msize);
-            const query = cache.request(tail[0..length], self.evm_version, uses_msize);
-            if (cache.lookup(query)) |entry| {
-                const selected = if (entry.outcome == .replacement) entry.output else query.input;
+            const query: ?CSEChunkCache.Request = if (cache) |storage| query: {
+                if (!storage.isActive()) break :query null;
+                const tail = self.assembly_items.items[index..];
+                const length = CommonSubexpressionEliminator.CommonSubexpressionEliminator.chunkLength(tail, uses_msize);
+                break :query storage.request(tail[0..length], self.evm_version, uses_msize);
+            } else null;
+            if (query) |request| if (cache.?.lookup(request)) |entry| {
+                const selected = if (entry.outcome == .replacement) entry.output else request.input;
                 if (entry.outcome == .replacement) iteration_count.* += 1;
                 for (selected) |*item| try appendClone(self.allocator, &optimized, item);
-                index += query.input.len;
+                index += request.input.len;
                 continue;
-            }
+            };
             var state = try KnownState.init(scratch_allocator);
             defer state.deinit();
             var eliminator = try CommonSubexpressionEliminator.CommonSubexpressionEliminator.init(
@@ -607,8 +610,10 @@ pub const Assembly = struct {
             // owned output survives until copied into the assembly allocator.
             var chunk = eliminator.finish() catch |err| switch (err) {
                 error.StackTooDeep, error.ItemNotAvailable => {
-                    std.debug.assert(consumed == query.input.len);
-                    try cache.record(query, &.{}, if (err == error.StackTooDeep) .stack_too_deep else .item_not_available);
+                    if (query) |request| {
+                        std.debug.assert(consumed == request.input.len);
+                        cache.?.recordBestEffort(request, &.{}, if (err == error.StackTooDeep) .stack_too_deep else .item_not_available);
+                    }
                     for (self.assembly_items.items[index .. index + consumed]) |*item|
                         try appendClone(self.allocator, &optimized, item);
                     index += consumed;
@@ -617,9 +622,11 @@ pub const Assembly = struct {
                 else => return err,
             };
             defer deinitItems(scratch_allocator, &chunk);
-            std.debug.assert(consumed == query.input.len);
             const changed = chunk.items.len < consumed;
-            try cache.record(query, if (changed) chunk.items else &.{}, if (changed) .replacement else .unchanged);
+            if (query) |request| {
+                std.debug.assert(consumed == request.input.len);
+                cache.?.recordBestEffort(request, if (changed) chunk.items else &.{}, if (changed) .replacement else .unchanged);
+            }
             if (chunk.items.len < consumed) {
                 iteration_count.* += 1;
                 for (chunk.items) |*item| try appendClone(self.allocator, &optimized, item);
@@ -2330,11 +2337,8 @@ test "assembly CSE cached rounds preserve complete items and change counters" {
             var cache = CSEChunkCache.Cache.init(allocator);
             defer cache.deinit();
             cache.min_items = 1;
-            // A full cache must still execute the original analysis. Use its
-            // admission boundary as the differential oracle for every round.
-            var full_cache = CSEChunkCache.Cache.init(allocator);
-            defer full_cache.deinit();
-            full_cache.max_entries = 0;
+            // Null bypasses the complete cache path, including boundary scans
+            // and hashing, and retains the original analysis as an oracle.
             // Two fresh inputs exercise positive replay; later rounds exercise
             // unchanged results after the first round's replacement.
             for (0..2) |_| {
@@ -2345,7 +2349,7 @@ test "assembly CSE cached rounds preserve complete items and change counters" {
                 for (0..3) |_| {
                     var plain_changes: u32 = 0;
                     var cached_changes: u32 = 0;
-                    try plain.optimiseCSE(&plain_changes, allocator, &full_cache);
+                    try plain.optimiseCSE(&plain_changes, allocator, null);
                     try cached.optimiseCSE(&cached_changes, allocator, &cache);
                     try std.testing.expectEqual(plain_changes, cached_changes);
                     try std.testing.expect(CSEChunkCache.equalItems(plain.assembly_items.items, cached.assembly_items.items));
@@ -2353,14 +2357,36 @@ test "assembly CSE cached rounds preserve complete items and change counters" {
             }
             try std.testing.expect(cache.hits > 0);
             try std.testing.expect(cache.replacement_hits > 0);
-            try std.testing.expectEqual(@as(usize, 0), full_cache.hits);
-            try std.testing.expectEqual(@as(usize, 0), full_cache.entries.items.len);
         }
     };
     try Fixture.run(std.testing.allocator);
     // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
     var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
     try std.testing.checkAllAllocationFailures(deterministic.allocator(), Fixture.run, .{});
+    // Isolate optional storage failures from the working analysis/output owners.
+    for (0..4) |fail_index| {
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index, .resize_fail_index = 0 });
+        var cache = CSEChunkCache.Cache.init(failing.allocator());
+        defer cache.deinit();
+        var plain = try Fixture.make(std.testing.allocator);
+        defer plain.deinit();
+        var cached = try Fixture.make(std.testing.allocator);
+        defer cached.deinit();
+        var plain_changes: u32 = 0;
+        var cached_changes: u32 = 0;
+        try plain.optimiseCSE(&plain_changes, std.testing.allocator, null);
+        try cached.optimiseCSE(&cached_changes, std.testing.allocator, &cache);
+        try std.testing.expect(failing.has_induced_failure);
+        try std.testing.expect(!cache.admissions_enabled);
+        try std.testing.expectEqual(plain_changes, cached_changes);
+        try std.testing.expect(CSEChunkCache.equalItems(plain.itemsConst(), cached.itemsConst()));
+    }
+    var output_owner = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var required = try Fixture.make(output_owner.allocator());
+    defer required.deinit();
+    output_owner.fail_index = output_owner.alloc_index;
+    var changes: u32 = 0;
+    try std.testing.expectError(error.OutOfMemory, required.optimiseCSE(&changes, std.testing.allocator, null));
 }
 
 test "assembly CSE scratch releases nested analyses before output use" {

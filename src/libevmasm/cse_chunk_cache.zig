@@ -34,6 +34,7 @@ pub const Cache = struct {
     max_entries: usize = 2048,
     max_payload_bytes: usize = 8 * 1024 * 1024,
     payload_bytes: usize = 0,
+    admissions_enabled: bool = true,
     hits: if (builtin.is_test) usize else u0 = 0,
     replacement_hits: if (builtin.is_test) usize else u0 = 0,
     hash_mask: if (builtin.is_test) u64 else u0 = if (builtin.is_test) std.math.maxInt(u64) else 0,
@@ -50,6 +51,19 @@ pub const Cache = struct {
         self.entries.deinit(self.allocator);
         self.heads.deinit(self.allocator);
         self.* = undefined;
+    }
+
+    pub fn isActive(self: *const Cache) bool {
+        return self.entries.items.len != 0 or
+            (self.admissions_enabled and self.max_entries != 0 and self.max_payload_bytes != 0);
+    }
+
+    /// Remembering an already usable result is optional. After storage OOM,
+    /// keep existing hits available and stop attempting further admissions.
+    pub fn recordBestEffort(self: *Cache, query: Request, output: []const Item, outcome: Outcome) void {
+        self.record(query, output, outcome) catch |err| switch (err) {
+            error.OutOfMemory => self.admissions_enabled = false,
+        };
     }
 
     /// The input remains immutable until lookup/record complete. Compute its
@@ -79,7 +93,7 @@ pub const Cache = struct {
 
     pub fn record(self: *Cache, query: Request, output: []const Item, outcome: Outcome) !void {
         const input = query.input;
-        if (input.len < self.min_items) return;
+        if (!self.admissions_enabled or input.len < self.min_items) return;
         std.debug.assert(if (outcome == .replacement) output.len < input.len else output.len == 0);
         const bytes = payloadSize(input) +| payloadSize(output);
         if (self.entries.items.len >= self.max_entries or bytes > self.max_payload_bytes -| self.payload_bytes) return;
