@@ -27,7 +27,7 @@ pub fn FixedHash(comptime N: usize) type {
         pub const size = N;
         pub const Arith = @Int(.unsigned, N * 8);
 
-        storage: [N]u8 = [_]u8{0} ** N,
+        storage: [N]u8 = @splat(0),
 
         pub fn init() Self {
             return .{};

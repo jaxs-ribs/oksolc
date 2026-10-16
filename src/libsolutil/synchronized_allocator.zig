@@ -35,7 +35,7 @@ pub const SynchronizedAllocator = struct {
         return_address: usize,
     ) ?[*]u8 {
         const self: *SynchronizedAllocator = @ptrCast(@alignCast(opaque_self));
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.child.rawAlloc(len, alignment, return_address);
     }
@@ -48,7 +48,7 @@ pub const SynchronizedAllocator = struct {
         return_address: usize,
     ) bool {
         const self: *SynchronizedAllocator = @ptrCast(@alignCast(opaque_self));
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.child.rawResize(memory, alignment, new_len, return_address);
     }
@@ -61,7 +61,7 @@ pub const SynchronizedAllocator = struct {
         return_address: usize,
     ) ?[*]u8 {
         const self: *SynchronizedAllocator = @ptrCast(@alignCast(opaque_self));
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.child.rawRemap(memory, alignment, new_len, return_address);
     }
@@ -73,7 +73,7 @@ pub const SynchronizedAllocator = struct {
         return_address: usize,
     ) void {
         const self: *SynchronizedAllocator = @ptrCast(@alignCast(opaque_self));
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.child.rawFree(memory, alignment, return_address);
     }

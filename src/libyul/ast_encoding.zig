@@ -211,15 +211,15 @@ const Encoder = struct {
     fn expression(self: *Encoder, value: *const AST.Expression) anyerror!void {
         switch (value.*) {
             .literal => |*item| {
-                try self.writer.writeByte(@intFromEnum(ExpressionTag.literal));
+                try self.writer.writeByte(@backingInt(ExpressionTag.literal));
                 try self.literal(item);
             },
             .identifier => |*item| {
-                try self.writer.writeByte(@intFromEnum(ExpressionTag.identifier));
+                try self.writer.writeByte(@backingInt(ExpressionTag.identifier));
                 try self.identifier(item);
             },
             .function_call => |*item| {
-                try self.writer.writeByte(@intFromEnum(ExpressionTag.call));
+                try self.writer.writeByte(@backingInt(ExpressionTag.call));
                 try self.debug(item.debug_data);
                 switch (item.function_name) {
                     .builtin => |builtin| {
@@ -258,7 +258,7 @@ const Encoder = struct {
             .leave_statement => .leave,
             .block => .block,
         };
-        try self.writer.writeByte(@intFromEnum(tag));
+        try self.writer.writeByte(@backingInt(tag));
         switch (value.*) {
             .expression_statement => |*item| {
                 try self.debug(item.debug_data);
@@ -422,7 +422,7 @@ const Decoder = struct {
         const count = try self.integer(u32);
         if (count > self.reader.bufferedLen() / min_bytes) return error.CorruptAST;
         const items = try self.allocator.alloc(T, count);
-        return .{ .items = items, .capacity = count };
+        return .fromOwnedSlice(items);
     }
 
     fn namedValues(self: *Decoder) DecodeError!AST.NameWithDebugDataList {
@@ -740,17 +740,17 @@ test "stored Yul AST validates corruption, schema, bounds and syntax" {
     Helper.updateChecksum(trailing);
     try std.testing.expectError(error.CorruptAST, Snapshot.decode(allocator, trailing, dialect));
     const break_statement: AST.Statement = .{ .break_statement = .{} };
-    const invalid_loop: AST.Block = .{ .statements = .{ .items = @constCast(&[_]AST.Statement{break_statement}), .capacity = 1 } };
+    const invalid_loop: AST.Block = .{ .statements = .fromOwnedSlice(@constCast(&[_]AST.Statement{break_statement})) };
     try Helper.reject(&invalid_loop, dialect);
     const leave_statement: AST.Statement = .{ .leave_statement = .{} };
-    const invalid_leave: AST.Block = .{ .statements = .{ .items = @constCast(&[_]AST.Statement{leave_statement}), .capacity = 1 } };
+    const invalid_leave: AST.Block = .{ .statements = .fromOwnedSlice(@constCast(&[_]AST.Statement{leave_statement})) };
     try Helper.reject(&invalid_leave, dialect);
 
     var deep: AST.Block = .{};
     for (0..1201) |_| {
         const items = try arena.allocator().alloc(AST.Statement, 1);
         items[0] = .{ .block = deep };
-        deep = .{ .statements = .{ .items = items, .capacity = 1 } };
+        deep = .{ .statements = .fromOwnedSlice(items) };
     }
     try Helper.reject(&deep, dialect);
 }

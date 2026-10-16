@@ -36,7 +36,7 @@ pub const CategoryMask = struct {
     pub const exported_only: CategoryMask = from(.exported_symbols);
 
     pub fn from(category: Category) CategoryMask {
-        return .{ .bits = @as(u8, 1) << @intFromEnum(category) };
+        return .{ .bits = @as(u8, 1) << @backingInt(category) };
     }
 
     pub fn contains(self: CategoryMask, category: Category) bool {
@@ -313,11 +313,11 @@ fn addContractHeader(
     node: *const AST.Node,
 ) void {
     const contract = node.payload.contract_definition;
-    builder.inheritance.addU32(10, @intCast(@intFromEnum(contract.contract_kind)));
+    builder.inheritance.addU32(10, @intCast(@backingInt(contract.contract_kind)));
     builder.inheritance.addBool(11, contract.abstract);
-    builder.storage_layout.addU32(10, @intCast(@intFromEnum(contract.contract_kind)));
+    builder.storage_layout.addU32(10, @intCast(@backingInt(contract.contract_kind)));
     builder.storage_layout.addBool(11, contract.abstract);
-    builder.abi_types.addU32(10, @intCast(@intFromEnum(contract.contract_kind)));
+    builder.abi_types.addU32(10, @intCast(@backingInt(contract.contract_kind)));
     builder.abi_types.addBool(11, contract.abstract);
     addDeclarationName(&builder.inheritance, 12, node);
     addDeclarationName(&builder.storage_layout, 12, node);
@@ -375,7 +375,7 @@ fn addDocumentation(
 }
 
 fn hashExportedDeclaration(hasher: *KeyHasher, node: *const AST.Node) void {
-    hasher.addU32(3, @intFromEnum(node.nodeKind()));
+    hasher.addU32(3, @backingInt(node.nodeKind()));
     addDeclarationName(hasher, 4, node);
 }
 

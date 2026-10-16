@@ -250,7 +250,7 @@ fn temporaryNameAlloc(
     prefix: []const u8,
     index: usize,
 ) ![]u8 {
-    return std.fmt.allocPrint(allocator, "{s}{d}", .{ prefix, index });
+    return allocator.print("{s}{d}", .{ prefix, index });
 }
 
 fn appendFormat(
@@ -259,7 +259,7 @@ fn appendFormat(
     comptime format: []const u8,
     arguments: anytype,
 ) !void {
-    const rendered = try std.fmt.allocPrint(allocator, format, arguments);
+    const rendered = try allocator.print(format, arguments);
     defer allocator.free(rendered);
     try output.appendSlice(allocator, rendered);
 }

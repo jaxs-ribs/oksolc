@@ -27,7 +27,7 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, store: *Store, port: u16, l
     router.get("/app.js", script, .{});
     router.get("/api/:route", api, .{});
     var buffer: [256]u8 = undefined;
-    try std.Io.File.stderr().writeStreamingAll(io, try std.fmt.bufPrint(&buffer, "oksolc browser: http://127.0.0.1:{d}/\nPress Ctrl+C to stop.\n", .{port}));
+    try std.Io.File.stderr().writeStreamingAll(io, try std.mem.print(&buffer, "oksolc browser: http://127.0.0.1:{d}/\nPress Ctrl+C to stop.\n", .{port}));
     // listen owns and joins the library's bounded workers. The caller joins
     // the single live compiler task before destroying the shared store.
     try server.listen();
@@ -72,8 +72,8 @@ const Handler = struct {
 fn allowedRequest(host: ?[]const u8, origin: ?[]const u8, site: ?[]const u8, port: u16) bool {
     var ip_buffer: [32]u8 = undefined;
     var name_buffer: [32]u8 = undefined;
-    const ip = std.fmt.bufPrint(&ip_buffer, "127.0.0.1:{d}", .{port}) catch return false;
-    const name = std.fmt.bufPrint(&name_buffer, "localhost:{d}", .{port}) catch return false;
+    const ip = std.mem.print(&ip_buffer, "127.0.0.1:{d}", .{port}) catch return false;
+    const name = std.mem.print(&name_buffer, "localhost:{d}", .{port}) catch return false;
     const value = host orelse return false;
     if (!std.mem.eql(u8, value, ip) and !std.mem.eql(u8, value, name)) return false;
     if (site) |fetch_site| if (std.mem.eql(u8, fetch_site, "cross-site")) return false;

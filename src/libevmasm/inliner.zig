@@ -519,10 +519,12 @@ test "assembly inliner retains rejected output and cleans private copies on fail
             }
         }
     };
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var backing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
     for (std.enums.values(Check.Case)) |case| {
         for ([_]EVMVersion{ .init(.London), .init(.Shanghai) }) |version| {
             for ([_]bool{ false, true }) |creation|
-                try std.testing.checkAllAllocationFailures(std.testing.allocator, Check.run, .{ case, version, creation });
+                try std.testing.checkAllAllocationFailures(backing.allocator(), Check.run, .{ case, version, creation });
         }
     }
 }

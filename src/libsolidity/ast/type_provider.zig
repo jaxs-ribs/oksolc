@@ -126,12 +126,12 @@ pub const TypeProvider = struct {
 
         for (0..32) |index| {
             const bits: u16 = @intCast((index + 1) * 8);
-            self.integer_types[@as(usize, @intCast(@intFromEnum(Types.IntegerModifier.Unsigned)))][index] =
+            self.integer_types[@as(usize, @intCast(@backingInt(Types.IntegerModifier.Unsigned)))][index] =
                 try self.createType(.{ .Integer = .{
                     .bits = bits,
                     .modifier = .Unsigned,
                 } });
-            self.integer_types[@as(usize, @intCast(@intFromEnum(Types.IntegerModifier.Signed)))][index] =
+            self.integer_types[@as(usize, @intCast(@backingInt(Types.IntegerModifier.Signed)))][index] =
                 try self.createType(.{ .Integer = .{
                     .bits = bits,
                     .modifier = .Signed,
@@ -233,7 +233,7 @@ pub const TypeProvider = struct {
         integer_modifier: Types.IntegerModifier,
     ) ProviderError!*const Types.Type {
         if (bits == 0 or bits > 256 or bits % 8 != 0) return error.InvalidIntegerType;
-        return self.integer_types[@as(usize, @intCast(@intFromEnum(integer_modifier)))][bits / 8 - 1];
+        return self.integer_types[@as(usize, @intCast(@backingInt(integer_modifier)))][bits / 8 - 1];
     }
 
     pub fn uint(self: *const TypeProvider, bits: u16) ProviderError!*const Types.Type {
@@ -241,11 +241,11 @@ pub const TypeProvider = struct {
     }
 
     pub fn uint256(self: *const TypeProvider) *const Types.Type {
-        return self.integer_types[@as(usize, @intCast(@intFromEnum(Types.IntegerModifier.Unsigned)))][31];
+        return self.integer_types[@as(usize, @intCast(@backingInt(Types.IntegerModifier.Unsigned)))][31];
     }
 
     pub fn int256(self: *const TypeProvider) *const Types.Type {
-        return self.integer_types[@as(usize, @intCast(@intFromEnum(Types.IntegerModifier.Signed)))][31];
+        return self.integer_types[@as(usize, @intCast(@backingInt(Types.IntegerModifier.Signed)))][31];
     }
 
     pub fn byte(self: *const TypeProvider) *const Types.Type {
@@ -1080,7 +1080,7 @@ pub const TypeProvider = struct {
         kind: Types.MagicKind,
     ) ProviderError!*const Types.Type {
         if (kind == .MetaType) return error.InvalidMetaType;
-        return self.magic_types[@as(usize, @intCast(@intFromEnum(kind)))];
+        return self.magic_types[@as(usize, @intCast(@backingInt(kind)))];
     }
 
     pub fn meta(
@@ -1516,5 +1516,7 @@ fn exerciseProviderInitialization(allocator: std.mem.Allocator) !void {
 
 test "provider initialization has one cleanup owner at every allocation failure" {
     try exerciseProviderInitialization(std.testing.allocator);
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, exerciseProviderInitialization, .{});
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), exerciseProviderInitialization, .{});
 }

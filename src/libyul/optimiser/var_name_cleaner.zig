@@ -153,8 +153,7 @@ pub const VarNameCleaner = struct {
         const entry = try self.next_suffix.getOrPut(stripped);
         if (!entry.found_existing or entry.value_ptr.* == 0) entry.value_ptr.* = 1;
         while (entry.value_ptr.* < std.math.maxInt(usize)) {
-            const candidate_string = try std.fmt.allocPrint(
-                self.allocator,
+            const candidate_string = try self.allocator.print(
                 "{s}_{d}",
                 .{ try stripped.str(), entry.value_ptr.* },
             );

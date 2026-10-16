@@ -88,8 +88,8 @@ pub const Exception = struct {
     }
 
     pub fn lineInfoAlloc(self: *const Exception, allocator: std.mem.Allocator) ![]u8 {
-        if (self.line) |line| return std.fmt.allocPrint(allocator, "{s}:{d}", .{ self.file, line });
-        return std.fmt.allocPrint(allocator, "{s}:", .{self.file});
+        if (self.line) |line| return allocator.print("{s}:{d}", .{ self.file, line });
+        return allocator.print("{s}:", .{self.file});
     }
 };
 

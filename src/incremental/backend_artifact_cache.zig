@@ -60,7 +60,7 @@ pub const AssemblyResult = struct {
 const ArtifactRefContext = struct {
     pub fn hash(_: ArtifactRefContext, reference: ArtifactRef) u64 {
         var hasher = std.hash.Wyhash.init(0);
-        hasher.update(&.{@intFromEnum(reference.kind)});
+        hasher.update(&.{@backingInt(reference.kind)});
         hasher.update(reference.key.bytes());
         return hasher.final();
     }
@@ -122,7 +122,7 @@ pub const BackendArtifactCache = struct {
     /// keep the caller's allocation policy to avoid slower cache-hit decoding.
     release_temporary_payloads: bool = false,
     memory_store_mutex: std.Io.Mutex = .init,
-    flight_shards: [shard_count]FlightShard = [_]FlightShard{.{}} ** shard_count,
+    flight_shards: [shard_count]FlightShard = @splat(.{}),
     blueprint_hit_count: std.atomic.Value(u64) = .init(0),
     blueprint_miss_count: std.atomic.Value(u64) = .init(0),
     machine_hit_count: std.atomic.Value(u64) = .init(0),
@@ -208,7 +208,7 @@ pub const BackendArtifactCache = struct {
     }
 
     pub fn statistics(self: *BackendArtifactCache) Statistics {
-        std.Io.Threaded.mutexLock(&self.memory_store_mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.memory_store_mutex);
         defer std.Io.Threaded.mutexUnlock(&self.memory_store_mutex);
         return .{
             .blueprint_hits = self.blueprint_hit_count.load(.monotonic),
@@ -630,7 +630,7 @@ pub const BackendArtifactCache = struct {
     }
 
     fn memoryStore(self: *BackendArtifactCache) *MemoryArtifactStore {
-        std.Io.Threaded.mutexLock(&self.memory_store_mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.memory_store_mutex);
         defer std.Io.Threaded.mutexUnlock(&self.memory_store_mutex);
         if (self.memory_store == null)
             self.memory_store = MemoryArtifactStore.initWithLimits(
@@ -645,7 +645,7 @@ pub const BackendArtifactCache = struct {
         reference: ArtifactRef,
     ) std.mem.Allocator.Error!GateLease {
         const shard = &self.flight_shards[shardIndex(reference)];
-        std.Io.Threaded.mutexLock(&shard.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&shard.mutex);
         const gate = gate: {
             if (shard.gates.get(reference)) |existing| {
                 existing.lease_count += 1;
@@ -666,7 +666,7 @@ pub const BackendArtifactCache = struct {
             break :gate created;
         };
         std.Io.Threaded.mutexUnlock(&shard.mutex);
-        std.Io.Threaded.mutexLock(&gate.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&gate.mutex);
         return .{ .owner = self, .reference = reference, .gate = gate };
     }
 
@@ -677,7 +677,7 @@ pub const BackendArtifactCache = struct {
     ) void {
         const shard = &self.flight_shards[shardIndex(reference)];
         var destroy = false;
-        std.Io.Threaded.mutexLock(&shard.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&shard.mutex);
         const current = shard.gates.get(reference).?;
         std.debug.assert(current == gate);
         std.debug.assert(gate.lease_count != 0);

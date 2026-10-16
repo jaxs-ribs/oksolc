@@ -237,8 +237,7 @@ pub const NameAndTypeResolver = struct {
                     );
                     defer self.allocator.free(declarations);
                     if (declarations.len == 0) {
-                        const message = try std.fmt.allocPrint(
-                            self.allocator,
+                        const message = try self.allocator.print(
                             "Declaration \"{s}\" not found in \"{s}\" (referenced as \"{s}\").",
                             .{ symbol_name, absolute_path, import.path },
                         );
@@ -789,16 +788,14 @@ pub fn registerDeclarationChecked(
         return error.InvalidRegistration;
 
     if (isReservedName(name) and !ASTImplementation.isPublicFunctionOrEvent(declaration)) {
-        const message = try std.fmt.allocPrint(
-            reporter.allocator,
+        const message = try reporter.allocator.print(
             "The name \"{s}\" is reserved.",
             .{name},
         );
         defer reporter.allocator.free(message);
         try reporter.declarationError(errorId(3726), location.*, message);
     } else if (Token.isFutureSolidityKeyword(name)) {
-        const message = try std.fmt.allocPrint(
-            reporter.allocator,
+        const message = try reporter.allocator.print(
             "\"{s}\" will be promoted to keyword in the future and will not be allowed as an identifier anymore.",
             .{name},
         );

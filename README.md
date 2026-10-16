@@ -71,8 +71,8 @@ comparisons; SemVer precedence ignores the build metadata after `+`.
 
 ## Requirements
 
-- Zig `0.16.0`
-- TypeScript `7.0.2` (`tsc`) and Bun `1.4.2` only for the optional web browser
+- Zig `0.17.0`
+- TypeScript `7.0.2` (`tsc`) and Bun `1.4.3` only for the optional web browser
 - libc and a working C toolchain
 - Clang with ASan/UBSan runtimes for `fuzz-json-adapter` and `fuzz` (limited to
   the yyjson adapter for now)
@@ -103,6 +103,13 @@ zig build -Doptimize=ReleaseFast --prefix "$HOME/.local"
 For development, omit `-Doptimize` for Debug mode, or use
 `-Doptimize=ReleaseSafe` for an optimized build with runtime safety checks. To
 build only the CLI, use `zig build build-cli`.
+
+C bindings use the pinned official `translate-c` package. Zig 0.17 can reuse
+configuration while compiler inputs are hashed at build time. Source edits,
+additions, and removals refresh the compiler identity. Header translation waits
+for this identity; a post-build check rejects edits during translation or
+compilation, and an unchanged retry recovers automatically.
+`zig build test-build-cache` checks this behavior.
 
 The web browser is disabled by default, so ordinary builds require neither Bun
 nor TypeScript. To include `oksolc browse` and `oksolc serve --browse`, install
@@ -349,6 +356,10 @@ zig build fuzz --fuzz=10K -Dadapter-fuzz-runs=10000 -j2
 
 Run benchmarks on an otherwise idle machine with a native ReleaseFast build.
 Reports are written under `build/benchmarks`.
+
+To compile the CLI and benchmark executables together before timing, use
+`zig build build-benchmarks -Doptimize=ReleaseFast`. Zig schedules independent
+builds across the available cores; use `-jN` to set a concurrency limit.
 
 The local suite checks exact Standard JSON output against system `solc`, then
 times three contracts:

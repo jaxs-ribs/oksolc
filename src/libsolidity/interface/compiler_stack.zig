@@ -212,14 +212,12 @@ fn metadataSources(
                 .dont_add,
                 .lower,
             );
-            try urls.append(.{ .string = try std.fmt.allocPrint(
-                allocator,
+            try urls.append(.{ .string = try allocator.print(
                 "bzz-raw://{s}",
                 .{swarm_hex},
             ) });
             const ipfs = try IpfsHash.ipfsHashBase58Alloc(allocator, source.tree.source);
-            try urls.append(.{ .string = try std.fmt.allocPrint(
-                allocator,
+            try urls.append(.{ .string = try allocator.print(
                 "dweb:/ipfs/{s}",
                 .{ipfs},
             ) });
@@ -308,8 +306,7 @@ fn metadataRemappings(
     const rendered = try allocator.alloc([]const u8, remappings.len);
     for (remappings, rendered) |normalized, *entry| {
         const remapping = normalized.original();
-        entry.* = try std.fmt.allocPrint(
-            allocator,
+        entry.* = try allocator.print(
             "{s}:{s}={s}",
             .{ remapping.context, remapping.prefix, remapping.target },
         );
@@ -377,16 +374,14 @@ fn metadataOptimiserSettings(
             allocator,
             &yul_details,
             "optimizerSteps",
-            try std.fmt.allocPrint(
-                allocator,
+            try allocator.print(
                 "{s}:{s}",
                 .{ settings.yul_optimiser_steps, settings.yul_optimiser_cleanup_steps },
             ),
         );
         try details.object.put(allocator, "yulDetails", yul_details);
     } else if (OptimiserSuite.isEmptyOptimizerSequence(
-        try std.fmt.allocPrint(
-            allocator,
+        try allocator.print(
             "{s}:{s}",
             .{ settings.yul_optimiser_steps, settings.yul_optimiser_cleanup_steps },
         ),
@@ -439,7 +434,7 @@ fn canonicalContractName(contract: *const AST.Node) []const u8 {
 fn unsignedJson(allocator: std.mem.Allocator, value: u64) !Json {
     if (value <= std.math.maxInt(i64))
         return .{ .integer = @intCast(value) };
-    return .{ .number_string = try std.fmt.allocPrint(allocator, "{d}", .{value}) };
+    return .{ .number_string = try allocator.print("{d}", .{value}) };
 }
 
 fn putString(

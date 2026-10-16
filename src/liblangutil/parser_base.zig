@@ -59,8 +59,7 @@ pub const ParserBase = struct {
         if (token == .Identifier) return self.allocator.dupe(u8, "identifier");
         if (token == .EOS) return self.allocator.dupe(u8, "end of source");
         if (TokenModule.isReservedKeyword(token)) {
-            return std.fmt.allocPrint(
-                self.allocator,
+            return self.allocator.print(
                 "reserved keyword '{s}'",
                 .{TokenModule.friendlyName(token)},
             );
@@ -69,9 +68,9 @@ pub const ParserBase = struct {
             const elementary = try self.scanner.currentElementaryTypeNameToken();
             const name = try elementary.renderAlloc(self.allocator, false);
             defer self.allocator.free(name);
-            return std.fmt.allocPrint(self.allocator, "'{s}'", .{name});
+            return self.allocator.print("'{s}'", .{name});
         }
-        return std.fmt.allocPrint(self.allocator, "'{s}'", .{TokenModule.friendlyName(token)});
+        return self.allocator.print("'{s}'", .{TokenModule.friendlyName(token)});
     }
 
     pub fn expectToken(
@@ -85,8 +84,7 @@ pub const ParserBase = struct {
             defer self.allocator.free(expected_name);
             const actual_name = try self.tokenNameAlloc(actual);
             defer self.allocator.free(actual_name);
-            const description = try std.fmt.allocPrint(
-                self.allocator,
+            const description = try self.allocator.print(
                 "Expected {s} but got {s}",
                 .{ expected_name, actual_name },
             );

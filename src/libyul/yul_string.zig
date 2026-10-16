@@ -75,8 +75,7 @@ pub const Repository = struct {
         base: Handle,
         counter: usize,
     ) std.mem.Allocator.Error!Handle {
-        const owned = try std.fmt.allocPrint(
-            self.allocator,
+        const owned = try self.allocator.print(
             "{s}_{d}",
             .{ handleString(base), counter },
         );
@@ -184,7 +183,7 @@ pub const YulString = struct {
 
     pub fn initGenerated(base: YulString, counter: usize) std.mem.Allocator.Error!YulString {
         var buffer: [256]u8 = undefined;
-        const generated = std.fmt.bufPrint(
+        const generated = std.mem.print(
             &buffer,
             "{s}_{d}",
             .{ handleString(base.handle), counter },
@@ -220,7 +219,7 @@ pub const YulString = struct {
 };
 
 fn lockGlobal() void {
-    std.Io.Threaded.mutexLock(&global_mutex);
+    std.Io.Threaded.mutexLockUncancelable(&global_mutex);
 }
 
 fn unlockGlobal() void {
@@ -248,7 +247,7 @@ test "repository hash index returns stable handles" {
 
     var name_buffer: [64]u8 = undefined;
     for (0..4096) |index| {
-        const name = try std.fmt.bufPrint(&name_buffer, "generated_name_{d}", .{index});
+        const name = try std.mem.print(&name_buffer, "generated_name_{d}", .{index});
         const inserted = try repository.stringToHandle(name);
         try std.testing.expect(inserted.entry != null);
         const repeated = try repository.stringToHandle(name);

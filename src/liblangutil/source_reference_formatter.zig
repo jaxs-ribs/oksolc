@@ -87,8 +87,7 @@ fn appendSourceLocation(
         return;
     }
 
-    const line_number = try std.fmt.allocPrint(
-        allocator,
+    const line_number = try allocator.print(
         "{d}",
         .{reference.position.line + 1},
     );
@@ -100,7 +99,7 @@ fn appendSourceLocation(
     try output.append(allocator, ':');
     try output.appendSlice(allocator, line_number);
     try output.append(allocator, ':');
-    const column = try std.fmt.allocPrint(allocator, "{d}:\n", .{reference.position.column + 1});
+    const column = try allocator.print("{d}:\n", .{reference.position.column + 1});
     defer allocator.free(column);
     try output.appendSlice(allocator, column);
 
@@ -118,7 +117,7 @@ fn appendSourceLocation(
     try appendColorized(output, allocator, colored, frame_codes, "|");
     try output.append(allocator, '\n');
 
-    const numbered_frame = try std.fmt.allocPrint(allocator, "{s} |", .{line_number});
+    const numbered_frame = try allocator.print("{s} |", .{line_number});
     defer allocator.free(numbered_frame);
     try appendColorized(output, allocator, colored, frame_codes, numbered_frame);
     try output.append(allocator, ' ');
@@ -196,11 +195,11 @@ fn appendPrimaryMessage(
         Diagnostics.formatTypeOrSeverity(type_or_severity),
     );
     if (with_error_ids) if (error_id) |id| {
-        const formatted_id = try std.fmt.allocPrint(allocator, " ({d})", .{id.value});
+        const formatted_id = try allocator.print(" ({d})", .{id.value});
         defer allocator.free(formatted_id);
         try appendColorized(output, allocator, colored, error_codes, formatted_id);
     };
-    const full_message = try std.fmt.allocPrint(allocator, ": {s}\n", .{message});
+    const full_message = try allocator.print(": {s}\n", .{message});
     defer allocator.free(full_message);
     try appendColorized(
         output,
@@ -241,7 +240,7 @@ pub fn formatMessageAlloc(
         const note = if (secondary.message.len == 0)
             try allocator.dupe(u8, ":")
         else
-            try std.fmt.allocPrint(allocator, ": {s}", .{secondary.message});
+            try allocator.print(": {s}", .{secondary.message});
         defer allocator.free(note);
         try appendColorized(
             &output,

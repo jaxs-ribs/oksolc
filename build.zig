@@ -5,24 +5,31 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const zlinter = @import("zlinter");
+const CompilerHeader = @import("build_support/compiler_header.zig");
+const CompilerIdentity = @import("build_support/compiler_identity.zig");
 const package = @import("build.zig.zon");
 
 const required_zig_version: std.SemanticVersion = .{
     .major = 0,
-    .minor = 16,
+    .minor = 17,
     .patch = 0,
 };
 
 comptime {
     if (builtin.zig_version.order(required_zig_version) != .eq) {
         @compileError(
-            "solidity-zig requires Zig 0.16.0; found " ++
+            "solidity-zig requires Zig 0.17.0; found " ++
                 builtin.zig_version_string,
         );
     }
 }
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
+    const lint_worker = b.option(
+        bool,
+        "lint-worker",
+        "Internal: configure zlinter in a separate build process",
+    ) orelse false;
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const browser_enabled = b.option(
@@ -67,17 +74,7 @@ pub fn build(b: *std.Build) void {
         "compiler-build-identity",
         "Content-derived compiler build identity for persistent cache isolation",
     );
-    const detected_compiler_build = detectCompilerBuildIdentity(b);
-    const compiler_build_identity = compiler_build_identity_override orelse
-        detected_compiler_build.identity;
-    const compiler_build_identity_available = compiler_build_identity_override != null or
-        detected_compiler_build.available;
-    const compiler_build_validation_identity = if (compiler_build_identity_override == null)
-        detected_compiler_build.validation_identity
-    else
-        null;
-    if (compiler_build_identity_override) |identity|
-        if (identity.len == 0) @panic("-Dcompiler-build-identity must not be empty");
+    const compiler_build_validation_identity = CompilerIdentity.create(b, compiler_build_identity_override);
 
     const build_options = b.addOptions();
     build_options.addOption([]const u8, "oksolc_version", package.version);
@@ -87,17 +84,13 @@ pub fn build(b: *std.Build) void {
         "third_party_licenses",
         @embedFile("THIRD_PARTY_LICENSES.txt"),
     );
-    build_options.addOption(
-        []const u8,
-        "compiler_build_identity",
-        compiler_build_identity,
-    );
-    build_options.addOption(
-        bool,
-        "compiler_build_identity_available",
-        compiler_build_identity_available,
-    );
-    const build_options_module = build_options.createModule();
+    const build_options_module = b.createModule(.{
+        .root_source_file = b.path("build_support/build_options.zig"),
+        .imports = &.{.{ .name = "package_options", .module = build_options.createModule() }},
+    });
+    build_options_module.addAnonymousImport("compiler_identity", .{
+        .root_source_file = compiler_build_validation_identity.file,
+    });
 
     const common_module = b.createModule(.{
         .root_source_file = b.path("src/common/root.zig"),
@@ -127,17 +120,21 @@ pub fn build(b: *std.Build) void {
     });
 
     const yyjson_dependency = b.dependency("yyjson", .{});
-    const translated_yyjson_adapter = b.addTranslateC(.{
-        .root_source_file = b.path("include/yyjson_adapter.h"),
+    const translate_c = b.dependency("translate_c", .{
+        .target = b.graph.host,
+        .optimize = .fast,
+    });
+    const translated_yyjson_adapter = CompilerHeader.translate(translate_c, compiler_build_validation_identity.file, .{
+        .c_source_file = b.path("include/yyjson_adapter.h"),
         .target = target,
         .optimize = optimize,
     });
-    const translated_sqlite = b.addTranslateC(.{
-        .root_source_file = b.path("vendor/sqlite/sqlite3.h"),
+    const translated_sqlite = CompilerHeader.translate(translate_c, compiler_build_validation_identity.file, .{
+        .c_source_file = b.path("vendor/sqlite/sqlite3.h"),
         .target = target,
         .optimize = optimize,
     });
-    const sqlite_c_module = translated_sqlite.createModule();
+    const sqlite_c_module = translated_sqlite.mod;
     const zqlite_dependency = b.dependency("zqlite", .{});
     // One SQLite implementation per artifact. Use zqlite's Zig wrapper with
     // our pinned amalgamation, C translation, and existing compile flags.
@@ -159,7 +156,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "common", .module = common_module },
             .{ .name = "cxx_compat", .module = cxx_compat_module },
             .{ .name = "zqlite", .module = zqlite_module },
-            .{ .name = "yyjson_adapter_c", .module = translated_yyjson_adapter.createModule() },
+            .{ .name = "yyjson_adapter_c", .module = translated_yyjson_adapter.mod },
         },
     });
     compiler_module.addIncludePath(b.path("include"));
@@ -238,7 +235,7 @@ pub fn build(b: *std.Build) void {
     });
     cli_module.addOptions("cli_options", cli_options);
     if (browser_enabled) {
-        const httpz_dependency = b.lazyDependency("httpz", .{ .target = target, .optimize = optimize }) orelse return;
+        const httpz_dependency = try b.dependencyLazy("httpz", .{ .target = target, .optimize = optimize });
         cli_module.addImport("httpz", httpz_dependency.module("httpz"));
     }
     @import("build_support/browser.zig").build(b, if (browser_enabled) cli_module else null);
@@ -257,39 +254,39 @@ pub fn build(b: *std.Build) void {
     b.step("build-cli", "Install the oksolc CLI").dependOn(&install_cli.step);
     if (browser_enabled) {
         const browser_smoke = b.addSystemCommand(&.{"python3"});
-        browser_smoke.addFileArg(b.path("test/zig/cli/browser_smoke.py"));
-        browser_smoke.addArtifactArg(cli);
+        browser_smoke.addFileArg2(b.path("test/zig/cli/browser_smoke.py"), .{});
+        browser_smoke.addArtifactArg2(cli, .{});
         dependOnValidation(&browser_smoke.step, cli_identity_validation);
         b.step("browser-smoke", "Test the localhost compiler browser over HTTP").dependOn(&browser_smoke.step);
         const live_browser_smoke = b.addSystemCommand(&.{"python3"});
-        live_browser_smoke.addFileArg(b.path("test/zig/cli/live_browser_smoke.py"));
-        live_browser_smoke.addArtifactArg(cli);
+        live_browser_smoke.addFileArg2(b.path("test/zig/cli/live_browser_smoke.py"), .{});
+        live_browser_smoke.addArtifactArg2(cli, .{});
         dependOnValidation(&live_browser_smoke.step, cli_identity_validation);
         b.step("live-browser-smoke", "Test the combined source watcher and live SQL browser").dependOn(&live_browser_smoke.step);
         const diagnostic_limit_smoke = b.addSystemCommand(&.{"python3"});
-        diagnostic_limit_smoke.addFileArg(b.path("test/zig/cli/diagnostic_limit_smoke.py"));
-        diagnostic_limit_smoke.addArtifactArg(cli);
+        diagnostic_limit_smoke.addFileArg2(b.path("test/zig/cli/diagnostic_limit_smoke.py"), .{});
+        diagnostic_limit_smoke.addArtifactArg2(cli, .{});
         dependOnValidation(&diagnostic_limit_smoke.step, cli_identity_validation);
         b.step("diagnostic-limit-smoke", "Test diagnostic-limit publication and session recovery").dependOn(&diagnostic_limit_smoke.step);
         const browser_startup_smoke = b.addSystemCommand(&.{"python3"});
-        browser_startup_smoke.addFileArg(b.path("test/zig/cli/browser_startup_smoke.py"));
-        browser_startup_smoke.addArtifactArg(cli);
+        browser_startup_smoke.addFileArg2(b.path("test/zig/cli/browser_startup_smoke.py"), .{});
+        browser_startup_smoke.addArtifactArg2(cli, .{});
         dependOnValidation(&browser_startup_smoke.step, cli_identity_validation);
         b.step("browser-startup-smoke", "Test immediate live HTTP and workspace availability").dependOn(&browser_startup_smoke.step);
         const browser_resume_smoke = b.addSystemCommand(&.{"python3"});
-        browser_resume_smoke.addFileArg(b.path("test/zig/cli/browser_resume_smoke.py"));
-        browser_resume_smoke.addArtifactArg(cli);
+        browser_resume_smoke.addFileArg2(b.path("test/zig/cli/browser_resume_smoke.py"), .{});
+        browser_resume_smoke.addArtifactArg2(cli, .{});
         dependOnValidation(&browser_resume_smoke.step, cli_identity_validation);
         b.step("browser-resume-smoke", "Test persistent live snapshot reuse and invalidation").dependOn(&browser_resume_smoke.step);
     }
     const source_serve_smoke = b.addSystemCommand(&.{"python3"});
-    source_serve_smoke.addFileArg(b.path("test/zig/cli/source_serve_smoke.py"));
-    source_serve_smoke.addArtifactArg(cli);
+    source_serve_smoke.addFileArg2(b.path("test/zig/cli/source_serve_smoke.py"), .{});
+    source_serve_smoke.addArtifactArg2(cli, .{});
     dependOnValidation(&source_serve_smoke.step, cli_identity_validation);
     b.step("source-serve-smoke", "Test source-root and imported dependency watching").dependOn(&source_serve_smoke.step);
     const install_smoke = b.addSystemCommand(&.{"python3"});
-    install_smoke.addFileArg(b.path("test/zig/cli/install_smoke.py"));
-    install_smoke.addArtifactArg(cli);
+    install_smoke.addFileArg2(b.path("test/zig/cli/install_smoke.py"), .{});
+    install_smoke.addArtifactArg2(cli, .{});
     dependOnValidation(&install_smoke.step, cli_identity_validation);
     b.step("install-smoke", "Test remapped Git submodule installation with local repositories").dependOn(&install_smoke.step);
     const reference_corpus_module = b.createModule(.{
@@ -310,7 +307,7 @@ pub fn build(b: *std.Build) void {
         // Zig 0.16.0's Debug test runner cannot rebuild fuzz tests with
         // coverage instrumentation. ReleaseSafe retains safety checks and is
         // fast enough for sustained fuzzing.
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
         .imports = &.{
             .{ .name = "build_options", .module = build_options_module },
             .{ .name = "big_int", .module = big_int_module },
@@ -320,7 +317,7 @@ pub fn build(b: *std.Build) void {
     const json_fuzz_module = b.createModule(.{
         .root_source_file = b.path("src/fuzz_json.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
     });
     // Zig 0.16's native fuzz runner cannot consume sanitizer-coverage tables
     // emitted by imported C objects. Keep those objects uninstrumented here;
@@ -331,7 +328,7 @@ pub fn build(b: *std.Build) void {
     const standard_json_fuzz_compiler_module = b.createModule(.{
         .root_source_file = b.path("src/compiler.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
         .link_libc = true,
         .imports = &.{
             .{ .name = "build_options", .module = build_options_module },
@@ -339,7 +336,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "common", .module = common_module },
             .{ .name = "cxx_compat", .module = cxx_compat_module },
             .{ .name = "zqlite", .module = zqlite_module },
-            .{ .name = "yyjson_adapter_c", .module = translated_yyjson_adapter.createModule() },
+            .{ .name = "yyjson_adapter_c", .module = translated_yyjson_adapter.mod },
         },
     });
     standard_json_fuzz_compiler_module.addIncludePath(b.path("include"));
@@ -381,7 +378,7 @@ pub fn build(b: *std.Build) void {
     const standard_json_fuzz_module = b.createModule(.{
         .root_source_file = b.path("src/fuzz_standard_json.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
         .imports = &.{.{
             .name = "compiler",
             .module = standard_json_fuzz_compiler_module,
@@ -396,24 +393,22 @@ pub fn build(b: *std.Build) void {
     const cli_smoke_step = b.step("cli-smoke", "Exercise the oksolc CLI");
     if (!browser_enabled) {
         const browser_disabled_smoke = b.addSystemCommand(&.{"python3"});
-        browser_disabled_smoke.addFileArg(b.path("test/zig/cli/browser_disabled_smoke.py"));
-        browser_disabled_smoke.addArtifactArg(cli);
+        browser_disabled_smoke.addFileArg2(b.path("test/zig/cli/browser_disabled_smoke.py"), .{});
+        browser_disabled_smoke.addArtifactArg2(cli, .{});
         dependOnValidation(&browser_disabled_smoke.step, cli_identity_validation);
         cli_smoke_step.dependOn(&browser_disabled_smoke.step);
     }
     const cache_lifecycle_smoke = b.addSystemCommand(&.{"python3"});
-    cache_lifecycle_smoke.addFileArg(b.path("test/zig/cli/cache_lifecycle_smoke.py"));
-    cache_lifecycle_smoke.addArtifactArg(cli);
+    cache_lifecycle_smoke.addFileArg2(b.path("test/zig/cli/cache_lifecycle_smoke.py"), .{});
+    cache_lifecycle_smoke.addArtifactArg2(cli, .{});
     dependOnValidation(&cache_lifecycle_smoke.step, cli_identity_validation);
     b.step("cache-lifecycle-smoke", "Test persistent cache deletion, restart and recovery").dependOn(&cache_lifecycle_smoke.step);
     cli_smoke_step.dependOn(&cache_lifecycle_smoke.step);
     const cli_version_smoke = b.addSystemCommand(&.{"python3"});
-    cli_version_smoke.addFileArg(b.path("test/zig/cli/version_smoke.py"));
-    cli_version_smoke.addArtifactArg(cli);
-    cli_version_smoke.addArgs(&.{
-        package.version,
-        if (compiler_build_identity_available) compiler_build_identity else "",
-    });
+    cli_version_smoke.addFileArg2(b.path("test/zig/cli/version_smoke.py"), .{});
+    cli_version_smoke.addArtifactArg2(cli, .{});
+    cli_version_smoke.addArg(package.version);
+    cli_version_smoke.addFileContentArg2(compiler_build_validation_identity.file, .{});
     dependOnValidation(&cli_version_smoke.step, cli_identity_validation);
     b.step("version-smoke", "Check product and solc-compatible version reporting").dependOn(&cli_version_smoke.step);
     cli_smoke_step.dependOn(&cli_version_smoke.step);
@@ -621,7 +616,7 @@ pub fn build(b: *std.Build) void {
     dependOnValidation(&cli_cache_first.step, cli_identity_validation);
     cli_cache_first.step.dependOn(&run_cli_cache_config.step);
     cli_cache_first.addArgs(&.{ "--standard-json", "--base-path" });
-    cli_cache_first.addDirectoryArg(cli_project_root);
+    cli_cache_first.addDirectoryArg2(cli_project_root, .{});
     cli_cache_first.setStdIn(.{
         .lazy_path = b.path("test/zig/standard-json/yul-basic.json"),
     });
@@ -640,7 +635,7 @@ pub fn build(b: *std.Build) void {
     dependOnValidation(&cli_cache_restart.step, cli_identity_validation);
     cli_cache_restart.step.dependOn(&cli_cache_first_check.step);
     cli_cache_restart.addArgs(&.{ "--standard-json", "--base-path" });
-    cli_cache_restart.addDirectoryArg(cli_project_root);
+    cli_cache_restart.addDirectoryArg2(cli_project_root, .{});
     cli_cache_restart.setStdIn(.{
         .lazy_path = b.path("test/zig/standard-json/yul-basic.json"),
     });
@@ -657,7 +652,7 @@ pub fn build(b: *std.Build) void {
     isolateCliSmokeEnvironment(b, run_cli_cache_seed);
     run_cli_cache_seed.step.dependOn(&cli_cache_restart_check.step);
     run_cli_cache_seed.addArg("seed");
-    run_cli_cache_seed.addDirectoryArg(cli_project_root);
+    run_cli_cache_seed.addDirectoryArg2(cli_project_root, .{});
 
     const cli_cache_stats = b.addRunArtifact(cli);
     cli_cache_stats.has_side_effects = true;
@@ -767,7 +762,7 @@ pub fn build(b: *std.Build) void {
     dependOnValidation(&cli_no_cache.step, cli_identity_validation);
     cli_no_cache.step.dependOn(&cli_cache_after_clean_check.step);
     cli_no_cache.addArgs(&.{ "--standard-json", "--no-cache", "--base-path" });
-    cli_no_cache.addDirectoryArg(cli_project_root);
+    cli_no_cache.addDirectoryArg2(cli_project_root, .{});
     cli_no_cache.setStdIn(.{
         .lazy_path = b.path("test/zig/standard-json/yul-basic.json"),
     });
@@ -830,7 +825,7 @@ pub fn build(b: *std.Build) void {
     dependOnValidation(&cli_config_no_cache.step, cli_identity_validation);
     cli_config_no_cache.step.dependOn(&cli_config_no_cache_clean_check.step);
     cli_config_no_cache.addArgs(&.{ "--standard-json", "--base-path" });
-    cli_config_no_cache.addDirectoryArg(cli_config_no_cache_root);
+    cli_config_no_cache.addDirectoryArg2(cli_config_no_cache_root, .{});
     cli_config_no_cache.setStdIn(.{
         .lazy_path = b.path("test/zig/standard-json/yul-basic.json"),
     });
@@ -927,7 +922,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("test/zig/compare_ir_output.zig"),
             .target = b.graph.host,
-            .optimize = .ReleaseSafe,
+            .optimize = .safe,
             .imports = &.{.{ .name = "solidity", .module = solidity_module }},
         }),
     });
@@ -947,8 +942,8 @@ pub fn build(b: *std.Build) void {
             .basename = b.fmt("oksolc-parallel-{s}-standard-json.json", .{jobs}),
         });
         const cli_parallel_check = b.addRunArtifact(compare_ir_output);
-        cli_parallel_check.addFileArg(b.path("test/zig/standard-json/expected/via-ir-smoke.json"));
-        cli_parallel_check.addFileArg(cli_parallel_output);
+        cli_parallel_check.addFileArg2(b.path("test/zig/standard-json/expected/via-ir-smoke.json"), .{});
+        cli_parallel_check.addFileArg2(cli_parallel_output, .{});
         cli_smoke_step.dependOn(&cli_parallel_check.step);
     }
 
@@ -1023,6 +1018,19 @@ pub fn build(b: *std.Build) void {
     // the broad suite does not optimize another copy of every test binary.
     const unit_test_step = b.step("test-unit", "Run unit, ownership, and terminal tests without compiler smoke tests or fuzzers");
     test_step.dependOn(unit_test_step);
+    const compiler_cache_check = b.addSystemCommand(&.{"python3"});
+    compiler_cache_check.addFileArg2(b.path("test/zig/compiler_identity_cache.py"), .{});
+    compiler_cache_check.addFileArg2(.zig_exe, .{ .make_absolute = true });
+    compiler_cache_check.addDirectoryArg2(translate_c.path("."), .{ .make_absolute = true });
+    compiler_cache_check.addDirectoryArg2(yyjson_dependency.path(".."), .{ .make_absolute = true });
+    compiler_cache_check.addArg(package.dependencies.translate_c.hash);
+    b.step("test-build-cache", "Test compiler identity and Zig configure cache invalidation").dependOn(&compiler_cache_check.step);
+    unit_test_step.dependOn(&compiler_cache_check.step);
+    const lint_worker_check = b.addSystemCommand(&.{"python3"});
+    lint_worker_check.addFileArg2(b.path("test/zig/lint_worker.py"), .{});
+    lint_worker_check.addFileArg2(.zig_exe, .{ .make_absolute = true });
+    b.step("test-lint-worker", "Test offline lint workers and passthrough arguments").dependOn(&lint_worker_check.step);
+    unit_test_step.dependOn(&lint_worker_check.step);
     const terminal_probe = b.addExecutable(.{
         .name = "common-io-terminal-probe",
         .root_module = b.createModule(.{
@@ -1038,8 +1046,8 @@ pub fn build(b: *std.Build) void {
         }),
     });
     const terminal_smoke = b.addSystemCommand(&.{"python3"});
-    terminal_smoke.addFileArg(b.path("test/zig/common_io_terminal_smoke.py"));
-    terminal_smoke.addArtifactArg(terminal_probe);
+    terminal_smoke.addFileArg2(b.path("test/zig/common_io_terminal_smoke.py"), .{});
+    terminal_smoke.addArtifactArg2(terminal_probe, .{});
     b.step("common-io-terminal-smoke", "Test terminal input and mode restoration").dependOn(&terminal_smoke.step);
     unit_test_step.dependOn(&terminal_smoke.step);
     const compatibility_step = b.step(
@@ -1075,6 +1083,11 @@ pub fn build(b: *std.Build) void {
         cli_module,
         standard_json_dispatch_module,
         incremental_edit_trace_module,
+        b.createModule(.{
+            .root_source_file = b.path("build_support/compiler_identity.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     };
     for (test_modules) |module| {
         const tests = b.addTest(.{ .root_module = module });
@@ -1274,18 +1287,13 @@ pub fn build(b: *std.Build) void {
         "-fno-sanitize-recover=all",
         "-Dyyjson_api=",
     });
-    compile_adapter_fuzzer.addPrefixedDirectoryArg("-I", b.path("include"));
-    compile_adapter_fuzzer.addPrefixedDirectoryArg(
-        "-I",
-        yyjson_dependency.path("src"),
-    );
-    compile_adapter_fuzzer.addFileArg(b.path("src/fuzz_json_adapter.c"));
-    compile_adapter_fuzzer.addFileArg(b.path("src/libsolc/yyjson_adapter.c"));
-    compile_adapter_fuzzer.addFileArg(yyjson_dependency.path("src/yyjson.c"));
+    compile_adapter_fuzzer.addDirectoryArg2(b.path("include"), .{ .prefix = "-I" });
+    compile_adapter_fuzzer.addDirectoryArg2(yyjson_dependency.path("src"), .{ .prefix = "-I" });
+    compile_adapter_fuzzer.addFileArg2(b.path("src/fuzz_json_adapter.c"), .{});
+    compile_adapter_fuzzer.addFileArg2(b.path("src/libsolc/yyjson_adapter.c"), .{});
+    compile_adapter_fuzzer.addFileArg2(yyjson_dependency.path("src/yyjson.c"), .{});
     compile_adapter_fuzzer.addArg("-o");
-    const adapter_fuzzer_binary = compile_adapter_fuzzer.addOutputFileArg(
-        "json-adapter-fuzzer",
-    );
+    const adapter_fuzzer_binary = compile_adapter_fuzzer.addOutputFileArg2("json-adapter-fuzzer", .{});
     const run_adapter_fuzzer = b.addSystemCommand(&.{"/usr/bin/env"});
     run_adapter_fuzzer.setEnvironmentVariable(
         "ASAN_OPTIONS",
@@ -1295,7 +1303,7 @@ pub fn build(b: *std.Build) void {
         "UBSAN_OPTIONS",
         "halt_on_error=1:print_stacktrace=1",
     );
-    run_adapter_fuzzer.addFileArg(adapter_fuzzer_binary);
+    run_adapter_fuzzer.addFileArg2(adapter_fuzzer_binary, .{});
     run_adapter_fuzzer.addArg(b.fmt("{d}", .{adapter_fuzz_runs}));
     run_adapter_fuzzer.addArg(b.fmt("{d}", .{adapter_fuzz_seed}));
     inline for (.{
@@ -1305,29 +1313,31 @@ pub fn build(b: *std.Build) void {
         "source-limit.seed",
         "source-limit-exceeded.seed",
     }) |seed_name| {
-        run_adapter_fuzzer.addFileArg(b.path(b.fmt(
+        run_adapter_fuzzer.addFileArg2(b.path(b.fmt(
             "test/fuzz/json-adapter-corpus/{s}",
             .{seed_name},
-        )));
+        )), .{});
     }
     fuzz_step.dependOn(&run_adapter_fuzzer.step);
     fuzz_adapter_step.dependOn(&run_adapter_fuzzer.step);
 
-    const fmt_check = b.addSystemCommand(&.{
-        "zig",
-        "fmt",
-        "--check",
-        "build.zig",
-        "src",
-        "test/zig",
-        "test/benchmarks",
+    const fmt_check = b.addFmt(.{
+        .paths = b.pathList(&.{
+            "build.zig",
+            "build.zig.zon",
+            "build_support",
+            "src",
+            "test/zig",
+            "test/benchmarks",
+        }),
+        .check = true,
     });
     const fmt_check_step = b.step("fmt-check", "Check Zig formatting");
     fmt_check_step.dependOn(&fmt_check.step);
 
     const lint_step = b.step("lint", "Lint Zig source");
-    lint_step.dependOn(step: {
-        var builder = zlinter.builder(b, .{ .optimize = .ReleaseFast });
+    if (lint_worker) {
+        var builder = zlinter.builder(b, .{ .optimize = .fast });
         builder.addRule(.{ .builtin = .no_deprecated }, .{ .severity = .@"error" });
         builder.addRule(.{ .builtin = .no_hidden_allocations }, .{ .severity = .@"error" });
         builder.addRule(.{ .builtin = .no_orelse_unreachable }, .{ .severity = .@"error" });
@@ -1339,16 +1349,16 @@ pub fn build(b: *std.Build) void {
         });
         builder.addRule(.{ .builtin = .no_unused }, .{ .container_declaration = .@"error" });
         builder.addRule(.{ .builtin = .require_errdefer_dealloc }, .{ .severity = .@"error" });
-        builder.addPaths(.{
-            .include = &.{
-                b.path("build.zig"),
-                b.path("src"),
-                b.path("test/zig"),
-                b.path("test/benchmarks"),
-            },
-        });
-        break :step builder.build();
-    });
+        builder.addSource(.{ .file_path = b.path("build.zig") });
+        for ([_][]const u8{ "build_support", "src", "test/zig", "test/benchmarks" }) |path|
+            builder.addSource(.{ .dir_path = b.path(path) });
+        lint_step.dependOn(builder.build());
+    } else {
+        // zlinter probes for kcov during configuration even without coverage.
+        // Keep that untracked lookup out of the normal configure cache.
+        const lint = @import("build_support/lint.zig").worker(b, yyjson_dependency);
+        lint_step.dependOn(&lint.step);
+    }
 
     addReferenceCheck(b, reference_solc);
     addBenchmarks(
@@ -1368,41 +1378,12 @@ pub fn build(b: *std.Build) void {
     );
 }
 
-const DetectedCompilerBuild = struct {
-    identity: []const u8 = "unidentified",
-    available: bool = false,
-    validation_identity: ?[]const u8 = null,
-};
-
-/// Hash actual compiler inputs, including uncommitted and source-archive
-/// contents. Product assets, documentation and Git metadata are not inputs.
-fn detectCompilerBuildIdentity(b: *std.Build) DetectedCompilerBuild {
-    const identity = @import("build_support/compiler_identity.zig").digest(b.allocator, b.graph.io, b.build_root.handle) catch return .{};
-    const owned = b.dupe(&identity);
-    return .{ .identity = owned, .available = true, .validation_identity = owned };
-}
-
 fn addCompilerBuildIdentityValidation(
     b: *std.Build,
     artifact: *std.Build.Step.Compile,
-    expected_identity: ?[]const u8,
+    identity: CompilerIdentity.BuildIdentity,
 ) ?*std.Build.Step {
-    const identity = expected_identity orelse return null;
-    const validator = b.addExecutable(.{
-        .name = "oksolc-compiler-identity",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("build_support/compiler_identity.zig"),
-            .target = b.graph.host,
-            .optimize = .ReleaseSafe,
-        }),
-    });
-    const validation = b.addRunArtifact(validator);
-    validation.has_side_effects = true;
-    validation.addArg(b.pathFromRoot("."));
-    validation.addArg(identity);
-    validation.setName(b.fmt("validate {s} compiler content identity", .{artifact.name}));
-    validation.step.dependOn(&artifact.step);
-    return &validation.step;
+    return identity.validate(b, artifact);
 }
 
 fn dependOnValidation(step: *std.Build.Step, validation: ?*std.Build.Step) void {
@@ -1410,31 +1391,40 @@ fn dependOnValidation(step: *std.Build.Step, validation: ?*std.Build.Step) void 
 }
 
 fn isolateCliSmokeEnvironment(b: *std.Build, run: *std.Build.Step.Run) void {
+    const authentication_key = std.fmt.bytesToHex(@as([32]u8, @splat(0x5a)), .lower);
     run.setEnvironmentVariable(
         "XDG_CONFIG_HOME",
-        b.pathFromRoot("test/zig/cli/config-home"),
+        b.root.joinString(b.allocator, "test/zig/cli/config-home") catch @panic("out of memory"),
     );
     run.setEnvironmentVariable(
         "OKSOLC_CACHE_AUTH_KEY",
-        "5a" ** 32,
+        &authentication_key,
     );
-    run.setEnvironmentVariable(
+    setCliSmokeDirectory(
+        b,
+        run,
         "XDG_CACHE_HOME",
-        b.pathFromRoot(b.graph.global_cache_root.join(
-            b.allocator,
-            &.{"oksolc-cli-smoke-cache-v2"},
-        ) catch @panic("out of memory")),
+        "oksolc-cli-smoke-cache-v2",
     );
 }
 
 fn enableCliSmokeCache(b: *std.Build, run: *std.Build.Step.Run) void {
-    run.setEnvironmentVariable(
+    setCliSmokeDirectory(
+        b,
+        run,
         "XDG_CONFIG_HOME",
-        b.pathFromRoot(b.graph.global_cache_root.join(
-            b.allocator,
-            &.{"oksolc-cli-smoke-config-v2"},
-        ) catch @panic("out of memory")),
+        "oksolc-cli-smoke-config-v2",
     );
+}
+
+fn setCliSmokeDirectory(b: *std.Build, run: *std.Build.Step.Run, name: []const u8, sub_path: []const u8) void {
+    const command = run.argv.toOwnedSlice(b.allocator) catch @panic("out of memory");
+    run.addArg("/usr/bin/env");
+    run.addDirectoryArg2(b.graph.path(.global_cache, sub_path), .{
+        .prefix = b.fmt("{s}=", .{name}),
+        .make_absolute = true,
+    });
+    run.argv.appendSlice(b.allocator, command) catch @panic("out of memory");
 }
 
 fn addReferenceCheck(b: *std.Build, reference_solc: []const u8) void {
@@ -1497,7 +1487,7 @@ fn addReferenceCheck(b: *std.Build, reference_solc: []const u8) void {
 fn addBenchmarks(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     benchmark_runs: u32,
     benchmark_warmups: u32,
     reference_solc: []const u8,
@@ -1507,8 +1497,16 @@ fn addBenchmarks(
     optimizer_workloads_module: *std.Build.Module,
     solidity_module: *std.Build.Module,
     incremental_edit_trace_module: *std.Build.Module,
-    compiler_build_validation_identity: ?[]const u8,
+    compiler_build_validation_identity: CompilerIdentity.BuildIdentity,
 ) void {
+    const build_benchmarks_step = b.step(
+        "build-benchmarks",
+        "Build ReleaseFast benchmark executables in parallel without running them",
+    );
+    if (benchmarkGuard(b, build_benchmarks_step, target, optimize, 1)) {
+        build_benchmarks_step.dependOn(&cli.step);
+        dependOnValidation(build_benchmarks_step, cli_identity_validation);
+    }
     const benchmark_local_step = b.step(
         "benchmark-local",
         "Compare ReleaseFast oksolc with system solc on three local fixtures",
@@ -1521,7 +1519,7 @@ fn addBenchmarks(
             reference_solc,
             "--zig-solc",
         });
-        benchmark_local.addArtifactArg(cli);
+        benchmark_local.addArtifactArg2(cli, .{});
         dependOnValidation(&benchmark_local.step, cli_identity_validation);
         benchmark_local.addArgs(&.{
             "--runs",
@@ -1585,6 +1583,8 @@ fn addBenchmarks(
             zbench_executable,
             compiler_build_validation_identity,
         );
+        build_benchmarks_step.dependOn(&zbench_executable.step);
+        dependOnValidation(build_benchmarks_step, zbench_identity_validation);
         const run_zbench = b.addRunArtifact(zbench_executable);
         dependOnValidation(&run_zbench.step, zbench_identity_validation);
         run_zbench.addArgs(&.{ "--json", "build/benchmarks/zbench.json", "--counters" });
@@ -1599,16 +1599,16 @@ fn addBenchmarks(
 
     const benchmark_external_step = b.step(
         "benchmark-external",
-        "Compare ReleaseFast oksolc output and performance with solc on 13 external projects",
+        "Compare ReleaseFast oksolc output and performance with solc on 14 external projects",
     );
     if (benchmarkGuard(b, benchmark_external_step, target, optimize, benchmark_runs)) {
         const benchmark_external = b.addSystemCommand(&.{
             "bash",
             "test/benchmarks/external-compare.sh",
         });
-        if (b.args) |args| benchmark_external.addArgs(args);
+        benchmark_external.addPassthruArgs();
         benchmark_external.addArg(reference_solc);
-        benchmark_external.addArtifactArg(cli);
+        benchmark_external.addArtifactArg2(cli, .{});
         dependOnValidation(&benchmark_external.step, cli_identity_validation);
         benchmark_external.addArg(b.fmt("{d}", .{benchmark_runs}));
         benchmark_external.setEnvironmentVariable(
@@ -1633,6 +1633,8 @@ fn addBenchmarks(
             benchmark_incremental_executable,
             compiler_build_validation_identity,
         );
+        build_benchmarks_step.dependOn(&benchmark_incremental_executable.step);
+        dependOnValidation(build_benchmarks_step, identity_validation);
         const benchmark_incremental = b.addRunArtifact(benchmark_incremental_executable);
         dependOnValidation(&benchmark_incremental.step, identity_validation);
         benchmark_incremental.addArgs(&.{
@@ -1647,10 +1649,10 @@ fn benchmarkGuard(
     b: *std.Build,
     step: *std.Build.Step,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     runs: u32,
 ) bool {
-    if (optimize != .ReleaseFast) {
+    if (optimize != .fast) {
         step.dependOn(&b.addFail("benchmark requires -Doptimize=ReleaseFast").step);
         return false;
     }

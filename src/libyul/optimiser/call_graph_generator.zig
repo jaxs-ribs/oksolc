@@ -12,8 +12,8 @@ const NameCollectorModule = @import("name_collector.zig");
 const YulName = @import("../yul_name.zig").YulName;
 
 fn lessFunctionHandle(left: AST.FunctionHandle, right: AST.FunctionHandle) bool {
-    const left_tag = @intFromEnum(left);
-    const right_tag = @intFromEnum(right);
+    const left_tag = @backingInt(left);
+    const right_tag = @backingInt(right);
     if (left_tag != right_tag) return left_tag < right_tag;
     return switch (left) {
         .user => |name| name.lessThan(right.user),
@@ -298,5 +298,7 @@ test "call graph recursion handles hash collisions and growth across allocation 
                 try std.testing.expectEqualDeep(entry.key, recursive.at(index));
         }
     };
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, Check.run, .{&names});
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{&names});
 }

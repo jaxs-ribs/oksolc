@@ -202,8 +202,7 @@ pub const ControlFlowAnalyzer = struct {
                     "The variable was declared here.",
                     variable.location,
                 );
-            const message = try std.fmt.allocPrint(
-                self.allocator,
+            const message = try self.allocator.print(
                 "This variable is of {s} pointer type and can be {s} without prior assignment, which would lead to undefined behaviour.",
                 .{
                     if (storage) "storage" else "calldata",
@@ -225,8 +224,7 @@ pub const ControlFlowAnalyzer = struct {
         const inserted = try self.return_variables_warned.getOrPut(variable);
         if (inserted.found_existing) return;
         const message = if (contract_name) |name|
-            try std.fmt.allocPrint(
-                self.allocator,
+            try self.allocator.print(
                 "Unnamed return variable can remain unassigned when the function is called when \"{s}\" is the most derived contract. Add an explicit return with value to all non-reverting code paths or name the variable.",
                 .{name},
             )

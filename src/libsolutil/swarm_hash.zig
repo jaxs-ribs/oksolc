@@ -63,7 +63,7 @@ fn bmtHash(data: []const u8) H256 {
 }
 
 fn chunkHash(data: []const u8, force_higher_level: bool) H256 {
-    var data_to_hash = [_]u8{0} ** 0x1000;
+    var data_to_hash: [0x1000]u8 = @splat(0);
     if (data.len < 0x1000 or (data.len == 0x1000 and !force_higher_level)) {
         @memcpy(data_to_hash[0..data.len], data);
     } else {

@@ -98,8 +98,8 @@ pub fn formatErrorType(error_type: ErrorType) []const u8 {
 }
 
 pub fn parseErrorType(name: []const u8) ?ErrorType {
-    inline for (std.meta.fields(ErrorType)) |field| {
-        if (std.mem.eql(u8, name, field.name)) return @enumFromInt(field.value);
+    inline for (std.enums.values(ErrorType)) |error_type| {
+        if (std.mem.eql(u8, name, @tagName(error_type))) return error_type;
     }
     return null;
 }
@@ -193,8 +193,7 @@ pub const SecondarySourceLocation = struct {
     ) std.mem.Allocator.Error!void {
         const occurrences = self.infos.items.len;
         if (occurrences <= 32) return;
-        const replacement = try std.fmt.allocPrint(
-            allocator,
+        const replacement = try allocator.print(
             "{s} Truncated from {d} to the first 32 occurrences.",
             .{ message.*, occurrences },
         );

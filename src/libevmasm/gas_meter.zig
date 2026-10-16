@@ -410,10 +410,10 @@ pub fn dataGasLength(length: u64, in_creation: bool, evm_version: EVMVersion) u2
 const TestGasState = struct {
     const capacity = 64;
 
-    constants: [capacity]u256 = [_]u256{0} ** capacity,
-    is_constant: [capacity]bool = [_]bool{false} ** capacity,
+    constants: [capacity]u256 = @splat(0),
+    is_constant: [capacity]bool = @splat(false),
     constant_count: usize = 0,
-    relative_stack: [16]ExpressionId = [_]ExpressionId{0} ** 16,
+    relative_stack: [16]ExpressionId = @splat(0),
     storage_slot: ?ExpressionId = null,
     storage_value: ?ExpressionId = null,
     feed_count: usize = 0,

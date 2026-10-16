@@ -425,7 +425,7 @@ test "opcode effects preserve ordered memory and state access descriptions" {
 
 test "control-flow, mutability, and optimizer classifications cover every opcode" {
     for (0..256) |raw_opcode| {
-        const instruction: InstructionModule.Instruction = @enumFromInt(@as(u8, @intCast(raw_opcode)));
+        const instruction: InstructionModule.Instruction = @fromBackingInt(@intCast(@as(u8, @intCast(raw_opcode))));
         _ = terminatesControlFlow(instruction);
         _ = reverts(instruction);
         _ = movable(instruction);

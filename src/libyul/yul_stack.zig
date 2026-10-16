@@ -352,8 +352,7 @@ pub const YulStack = struct {
         var yul_optimiser_steps: []const u8 = undefined;
         var yul_optimiser_cleanup_steps: []const u8 = undefined;
         if (!self.optimiser_settings.run_yul_optimiser) {
-            const sequence = try std.fmt.allocPrint(
-                self.allocator,
+            const sequence = try self.allocator.print(
                 "{s}:{s}",
                 .{
                     self.optimiser_settings.yul_optimiser_steps,
@@ -549,14 +548,14 @@ pub const YulStack = struct {
     /// Returns allocator-owned final IR. Only renderer temporaries use the
     /// stack allocator; the result remains valid after the stack is destroyed.
     pub fn printAlloc(self: *const YulStack, allocator: std.mem.Allocator) ![]u8 {
-        if (@intFromEnum(self.stack_state) < @intFromEnum(State.parsed))
+        if (@backingInt(self.stack_state) < @backingInt(State.parsed))
             return error.InvalidStackState;
         const object = self.parser_result orelse return error.MissingParserResult;
         return object.formatIRAlloc(allocator, self.debug_info_selection, self.solidity_source_provider);
     }
 
     pub fn astJson(self: *const YulStack) !@import("asm_json_converter.zig").OwnedYulJson {
-        if (@intFromEnum(self.stack_state) < @intFromEnum(State.parsed))
+        if (@backingInt(self.stack_state) < @backingInt(State.parsed))
             return error.InvalidStackState;
         const object = self.parser_result orelse return error.MissingParserResult;
         return object.toJsonAlloc(self.allocator);
@@ -1028,7 +1027,7 @@ test "Yul stack owned printing survives independent allocator failures and owner
         }
     };
     for ([_]bool{ false, true }) |ethdebug| {
-        const expected = try std.fmt.allocPrint(allocator, "{s}{s}\n", .{
+        const expected = try allocator.print("{s}{s}\n", .{
             if (ethdebug) "/// ethdebug: enabled\n" else "", body,
         });
         defer allocator.free(expected);

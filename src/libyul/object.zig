@@ -115,7 +115,7 @@ pub const ObjectDebugData = struct {
         for (source_names.entries.items, 0..) |entry, index| {
             if (index != 0) try writer.writeAll(", ");
             var buffer: [10]u8 = undefined;
-            const number = std.fmt.bufPrint(&buffer, "{d}", .{entry.index}) catch unreachable; // zlinter-disable-current-line no_swallow_error - 10 bytes fit every u32 source index
+            const number = std.mem.print(&buffer, "{d}", .{entry.index}) catch unreachable; // zlinter-disable-current-line no_swallow_error - 10 bytes fit every u32 source index
             try writer.writeAll(number);
             try writer.writeByte(':');
             try CommonData.writeEscapedQuoted(writer, entry.name);
@@ -523,14 +523,14 @@ pub const Object = struct {
                     defer child_structure.deinit();
                     for (child_structure.object_paths.values.items) |path| {
                         if (std.mem.eql(u8, child.name, path)) continue;
-                        const qualified = try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ child.name, path });
+                        const qualified = try self.allocator.print("{s}.{s}", .{ child.name, path });
                         defer self.allocator.free(qualified);
                         std.debug.assert(!structure.contains(qualified));
                         try structure.object_paths.put(self.allocator, qualified);
                     }
                     for (child_structure.data_paths.values.items) |path| {
                         if (std.mem.eql(u8, child.name, path)) continue;
-                        const qualified = try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ child.name, path });
+                        const qualified = try self.allocator.print("{s}.{s}", .{ child.name, path });
                         defer self.allocator.free(qualified);
                         std.debug.assert(!structure.contains(qualified));
                         try structure.data_paths.put(self.allocator, qualified);

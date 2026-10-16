@@ -16,35 +16,44 @@ MIT-licensed components
 The following components use the MIT License. The copyright notice listed
 for each component and the license text below apply to that component.
 
-* Zig 0.16 standard library
+* Zig 0.17 standard library
   Copyright (c) Zig contributors
 
-* zqlite.zig at b519eea9b1a2b5fcad68af6d0629e717e8746684
+* translate-c 2.0.2 at c11030012dc325d446474d17b78c242fd1d622ec (build-only dependency)
+  Copyright (c) Zig contributors
+
+* Aro C compiler at 630d99ed60fe61ccabe721f1af60881f8b2adde3 (build-only dependency)
+  Copyright (c) 2021 Veikka Tuominen
+
+* zqlite.zig at 865223b734a5113f731ab1eb1d7d81c8ac252913
   Copyright (c) 2024 Karl Seguin.
   The Zig wrapper uses this repository's pinned SQLite amalgamation.
 
-* http.zig at 9b14af98fde5e98abb9a8376fe02b42003e835bf
+* http.zig at e8272bfd5727aade0dcee3e2aba6c50f57c374b6
   Copyright (c) 2024 Karl Seguin.
 
-* metrics.zig at 6de29b83a750a06c438d268543e0e3c3c1b309da
+* metrics.zig at ac167295b6a8fd84ca7af852c1032e6b246101f0
   Copyright (c) 2024 Karl Seguin.
 
-* websocket.zig at b70e733bc0d0ba0a98ff5fe5ef64d3017c85f369
+* websocket.zig at f2b3bad6875595e8dd42c726e8e914885a8b0ba0
   Copyright (c) 2024 Karl Seguin.
 
-* clap 0.12.0
+* clap 0.12.0 at 05faf3905e8548f5cc269a8836e154065e70128d
   Copyright (c) 2018 Jimmi Holst Christensen
 
-* zig-toml 0.3.0 at 8685923e32e8b8a795eb2715684236975a70faed
+* zig-toml 0.3.0 at c661327bd9f02f774426c4fe78f60621411b7173
   Copyright (c) 2022-present Alexei Samokvalov & Contributors
 
 * yyjson 0.12.0
   Copyright (c) 2020 YaoYuan <ibireme@gmail.com>
 
-* zBench 0.11.2 (benchmark-only dependency)
+* zBench 0.14.1 (benchmark-only dependency)
   Copyright (c) 2023 hndrk
 
-* zlinter 0.16.x at 8b10b45d33c684be4f869baf95a37c282e9db750
+* zlinter 0.17.x at 06dd3de40c2b69294376fe960844203dabbbc996
+  Copyright (c) 2025 zlinter contributors
+
+* zlinter 0.16.x at 8b10b45d33c684be4f869baf95a37c282e9db750 (legacy vendored snapshot)
   Copyright (c) 2025 zlinter contributors
 
 * ZLS 0.16.0 at 494486203c3a48927f2383aa3d5ce5fca112186d

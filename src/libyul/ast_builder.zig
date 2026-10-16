@@ -68,7 +68,7 @@ pub const Builder = struct {
         std.debug.assert(start <= end);
         const names = try self.allocator().alloc(YulName, end - start);
         for (names, start..) |*entry, index| {
-            const text = try std.fmt.allocPrint(self.allocator(), "{s}{d}", .{ prefix, index });
+            const text = try self.allocator().print("{s}{d}", .{ prefix, index });
             defer self.allocator().free(text);
             entry.* = try self.name(text);
         }
@@ -121,7 +121,7 @@ pub const Builder = struct {
             .kind = .Number,
             .value = .{
                 .numeric_value = std.mem.readInt(u256, &value.storage, .big),
-                .string_value = try std.fmt.allocPrint(self.allocator(), "0x{s}", .{hex}),
+                .string_value = try self.allocator().print("0x{s}", .{hex}),
             },
         } };
     }
@@ -312,8 +312,8 @@ test "Yul AST builder literal boundaries and allocation failures are explicit" {
     try std.testing.expectError(error.InvalidIdentifier, b.identifier("x, y"));
     try std.testing.expectError(error.EmptyBinding, b.declare(&.{}, null));
     try std.testing.expectError(error.EmptyBinding, b.assign(&.{}, b.number(0)));
-    try std.testing.expectError(error.StringTooLong, b.string("a" ** 33, .word));
-    try std.testing.expect((try b.string("a" ** 33, .builtin)).literal.value.unlimited());
+    try std.testing.expectError(error.StringTooLong, b.string(&@as([33]u8, @splat('a')), .word));
+    try std.testing.expect((try b.string(&@as([33]u8, @splat('a')), .builtin)).literal.value.unlimited());
     try std.testing.expectEqual(@as(u256, 0), (try b.string("", .word)).literal.value.numeric_value.?);
     try std.testing.expectEqual(@as(u256, 255), (try b.numberToken("0x00ff")).literal.value.numeric_value.?);
     try std.testing.expectEqualStrings("0x00ff", (try b.numberToken("0x00ff")).literal.value.string_value.?);

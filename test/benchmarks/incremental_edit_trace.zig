@@ -577,7 +577,7 @@ fn jsonInteger(value: anytype) Json {
 }
 
 fn peakRssBytes() usize {
-    return switch (builtin.os.tag) {
+    return switch (builtin.target.os.tag) {
         .dragonfly, .freebsd, .netbsd, .openbsd, .illumos, .linux, .serenity => blk: {
             const usage = std.posix.getrusage(0);
             break :blk @as(usize, @intCast(usage.maxrss)) * 1024;

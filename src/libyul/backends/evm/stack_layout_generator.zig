@@ -791,7 +791,9 @@ test "stack-too-deep diagnostics release variable choices on allocation failure"
         .{ .name = try YulName.init("deep_b") },
         .{ .name = try YulName.init("deep_c") },
     };
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, exerciseStackTooDeep, .{&variables});
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), exerciseStackTooDeep, .{&variables});
 }
 
 fn exerciseStackTooDeep(allocator: std.mem.Allocator, variables: *const [3]ScopeModule.Variable) !void {
@@ -1171,7 +1173,8 @@ test "stack layouts propagate through analyzed CFG operations and joins" {
     try std.testing.expect(try analyzer.analyze(ast.root()));
     var graph = try CFGBuilder.build(allocator, &info, dialect.dialect(), ast.root());
     defer graph.deinit();
-    try std.testing.checkAllAllocationFailures(allocator, exerciseStackTooDeepReport, .{ &graph, dialect });
+    var deterministic = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), exerciseStackTooDeepReport, .{ &graph, dialect });
     var layout = try StackLayoutGenerator.run(allocator, &graph, dialect);
     defer layout.deinit();
     try std.testing.expect(layout.block_infos.contains(graph.entry.?));

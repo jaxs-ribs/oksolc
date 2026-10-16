@@ -193,9 +193,9 @@ pub fn writeSourceLocation(
 
     var buffer: [64]u8 = undefined;
     const prefix = if (source_index) |index|
-        std.fmt.bufPrint(&buffer, "@src {d}:{d}:{d}", .{ index, location.start, location.end }) catch unreachable // zlinter-disable-current-line no_swallow_error - 64 bytes fit the source index and both signed 32-bit offsets
+        std.mem.print(&buffer, "@src {d}:{d}:{d}", .{ index, location.start, location.end }) catch unreachable // zlinter-disable-current-line no_swallow_error - 64 bytes fit the source index and both signed 32-bit offsets
     else
-        std.fmt.bufPrint(&buffer, "@src -1:{d}:{d}", .{ location.start, location.end }) catch unreachable; // zlinter-disable-current-line no_swallow_error - 64 bytes fit the source index and both signed 32-bit offsets
+        std.mem.print(&buffer, "@src -1:{d}:{d}", .{ location.start, location.end }) catch unreachable; // zlinter-disable-current-line no_swallow_error - 64 bytes fit the source index and both signed 32-bit offsets
     try writer.writeAll(prefix);
     if (snippet) |view| {
         try writer.writeAll("  \"");
@@ -270,7 +270,7 @@ test "source locations preserve snippet bounds and byte escaping" {
         .{ .start = -1, .end = 4, .expected = "\"\"" },
         .{ .start = 0, .end = -1, .expected = "\"\"" },
         .{ .source = "x\\\"\t\x01\x7f\xc3\xa9 */ \nnext", .start = 0, .end = 100, .expected = "\"x\\\\\\\"\\t\\x01\\x7f\\xc3\\xa9 *\\/ ...\"" },
-        .{ .source = "a" ** 63 ++ "*/ tail", .start = 0, .end = 100, .expected = "\"" ++ "a" ** 63 ++ "*\\/ tail\"" },
+        .{ .source = @as([63]u8, @splat('a')) ++ "*/ tail", .start = 0, .end = 100, .expected = "\"" ++ @as([63]u8, @splat('a')) ++ "*\\/ tail\"" },
         .{ .source = "", .start = 0, .end = 1, .expected = "\"\"" },
     };
     for (cases) |case| {
@@ -280,7 +280,7 @@ test "source locations preserve snippet bounds and byte escaping" {
         const rendered = try formatSourceLocation(allocator, location, &.{.{ .index = 7, .name = "source.sol" }}, .{ .location = true, .snippet = true }, singleton.provider());
         defer allocator.free(rendered);
         var expected_buffer: [256]u8 = undefined;
-        const expected = try std.fmt.bufPrint(&expected_buffer, "@src 7:{d}:{d}  {s}", .{ case.start, case.end, case.expected });
+        const expected = try std.mem.print(&expected_buffer, "@src 7:{d}:{d}  {s}", .{ case.start, case.end, case.expected });
         try std.testing.expectEqualStrings(expected, rendered);
     }
 }

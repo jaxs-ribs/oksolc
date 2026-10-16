@@ -13,7 +13,6 @@ const ASTAnnotations = @import("../ast/ast_annotations.zig");
 const ASTImplementation = @import("../ast/ast.zig");
 const Features = @import("../ast/experimental_features.zig");
 const Diagnostics = @import("../../liblangutil/diagnostics.zig");
-const SourceLocation = @import("../../liblangutil/source_location.zig").SourceLocation;
 const UTF8 = @import("../../libsolutil/utf8.zig");
 const SetOnceError = @import("../../libsolutil/set_once.zig").SetOnceError;
 const YulSemantics = @import("../../libyul/optimiser/semantics.zig");
@@ -155,8 +154,7 @@ const SyntaxChecker = struct {
         if (pragma.tokens.len == 0 or pragma.tokens.len != pragma.literals.len)
             return error.InvalidAst;
         if (pragma.tokens[0] != .Identifier) {
-            const message = try std.fmt.allocPrint(
-                self.tree.backing_allocator,
+            const message = try self.tree.backing_allocator.print(
                 "Invalid pragma \"{s}\"",
                 .{pragma.literals[0]},
             );
@@ -172,8 +170,7 @@ const SyntaxChecker = struct {
         else if (std.mem.eql(u8, name, "solidity"))
             self.version_pragma_found = true
         else {
-            const message = try std.fmt.allocPrint(
-                self.tree.backing_allocator,
+            const message = try self.tree.backing_allocator.print(
                 "Unknown pragma \"{s}\"",
                 .{name},
             );
@@ -382,8 +379,7 @@ const SyntaxChecker = struct {
         if (literal.token == .UnicodeStringLiteral) {
             var invalid_position: usize = undefined;
             if (!UTF8.validateUTF8(literal.value, &invalid_position)) {
-                const message = try std.fmt.allocPrint(
-                    self.tree.backing_allocator,
+                const message = try self.tree.backing_allocator.print(
                     "Contains invalid UTF-8 sequence at position {d}.",
                     .{invalid_position},
                 );
@@ -446,8 +442,7 @@ const SyntaxChecker = struct {
                     );
                 annotation.marked_memory_safe = true;
             } else {
-                const message = try std.fmt.allocPrint(
-                    self.tree.backing_allocator,
+                const message = try self.tree.backing_allocator.print(
                     "Unknown inline assembly flag: \"{s}\"",
                     .{flag},
                 );
@@ -567,8 +562,7 @@ const SyntaxChecker = struct {
                 "external"
             else
                 "public";
-            const message = try std.fmt.allocPrint(
-                self.tree.backing_allocator,
+            const message = try self.tree.backing_allocator.print(
                 "No visibility specified. Did you intend to add \"{s}\"?",
                 .{suggested},
             );
