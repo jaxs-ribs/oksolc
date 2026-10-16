@@ -106,8 +106,9 @@ build only the CLI, use `zig build build-cli`.
 
 C bindings use the pinned official `translate-c` package. Zig 0.17 can reuse
 configuration while compiler inputs are hashed at build time. Source edits,
-additions, and removals refresh the compiler identity; a post-build check rejects
-edits during compilation, and an unchanged retry recovers automatically.
+additions, and removals refresh the compiler identity. Header translation waits
+for this identity; a post-build check rejects edits during translation or
+compilation, and an unchanged retry recovers automatically.
 `zig build test-build-cache` checks this behavior.
 
 The web browser is disabled by default, so ordinary builds require neither Bun

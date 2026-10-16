@@ -5,7 +5,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const zlinter = @import("zlinter");
-const Translator = @import("translate_c").Translator;
+const CompilerHeader = @import("build_support/compiler_header.zig");
 const CompilerIdentity = @import("build_support/compiler_identity.zig");
 const package = @import("build.zig.zon");
 
@@ -124,12 +124,12 @@ pub fn build(b: *std.Build) !void {
         .target = b.graph.host,
         .optimize = .fast,
     });
-    const translated_yyjson_adapter: Translator = .init(translate_c, .{
+    const translated_yyjson_adapter = CompilerHeader.translate(translate_c, compiler_build_validation_identity.file, .{
         .c_source_file = b.path("include/yyjson_adapter.h"),
         .target = target,
         .optimize = optimize,
     });
-    const translated_sqlite: Translator = .init(translate_c, .{
+    const translated_sqlite = CompilerHeader.translate(translate_c, compiler_build_validation_identity.file, .{
         .c_source_file = b.path("vendor/sqlite/sqlite3.h"),
         .target = target,
         .optimize = optimize,
@@ -1021,6 +1021,9 @@ pub fn build(b: *std.Build) !void {
     const compiler_cache_check = b.addSystemCommand(&.{"python3"});
     compiler_cache_check.addFileArg2(b.path("test/zig/compiler_identity_cache.py"), .{});
     compiler_cache_check.addFileArg2(.zig_exe, .{ .make_absolute = true });
+    compiler_cache_check.addDirectoryArg2(translate_c.path("."), .{ .make_absolute = true });
+    compiler_cache_check.addDirectoryArg2(yyjson_dependency.path(".."), .{ .make_absolute = true });
+    compiler_cache_check.addArg(package.dependencies.translate_c.hash);
     b.step("test-build-cache", "Test compiler identity and Zig configure cache invalidation").dependOn(&compiler_cache_check.step);
     unit_test_step.dependOn(&compiler_cache_check.step);
     const lint_worker_check = b.addSystemCommand(&.{"python3"});
