@@ -10,6 +10,39 @@ const standard_json = solidity.standard_json;
 const Profiler = solidity.libsolutil.profiler.Profiler;
 const ObjectOptimizer = solidity.libyul.object_optimizer.ObjectOptimizer;
 
+test "optimizer cache semantic edits preserve full solc output through diamonds and cycles" {
+    inline for (.{ "diamond", "cycle" }) |shape| {
+        var session = solidity.CompilerSession.init(std.testing.allocator);
+        defer session.deinit();
+        inline for (.{ "initial", "edited" }) |revision| {
+            const request = @embedFile("optimizer-cache/" ++ shape ++ "-" ++ revision ++ ".json");
+            const expected = @embedFile("optimizer-cache/" ++ shape ++ "-" ++ revision ++ ".expected.json");
+            var fresh: libsolc.Dispatcher = .{};
+            var clean = try fresh.compiler().compile(std.testing.allocator, .{ .input = request });
+            defer clean.deinit();
+            var actual = try session.compile(std.testing.allocator, .{ .input = request });
+            defer actual.deinit();
+            // Include metadata, diagnostics, ASTs, creation/runtime bytecode,
+            // and both source maps, not just a bytecode digest.
+            try standard_json.compareExact(expected, clean.bytes);
+            try standard_json.compareExact(clean.bytes, actual.bytes);
+            if (comptime std.mem.eql(u8, revision, "edited")) {
+                const base = session.frontend_state.sourceId("Base.sol").?;
+                const main = session.frontend_state.sourceId("Main.sol").?;
+                const stable = session.frontend_state.sourceId("Stable.sol").?;
+                try std.testing.expect(session.frontend_state.isDirty(base));
+                try std.testing.expect(session.frontend_state.isDirty(main));
+                try std.testing.expect(!session.frontend_state.isDirty(stable));
+                if (comptime std.mem.eql(u8, shape, "cycle")) {
+                    const bridge = session.frontend_state.sourceId("Bridge.sol").?;
+                    try std.testing.expect(session.frontend_state.isDirty(bridge));
+                }
+                try std.testing.expectEqual(@as(usize, 3), session.statistics().frontend.analyzed_semantic_sources);
+            }
+        }
+    }
+}
+
 test "calldata reads and checked division preserve solc helper order and bytecode" {
     inline for (.{
         "solidity-calldata-enum-cleanup-order",

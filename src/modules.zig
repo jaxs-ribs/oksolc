@@ -67,6 +67,7 @@ pub const libevmasm = struct {
     pub const abstract_assembly_stack = @import("libevmasm/abstract_assembly_stack.zig");
     pub const assembly = @import("libevmasm/assembly.zig");
     pub const assembly_item = @import("libevmasm/assembly_item.zig");
+    pub const cse_chunk_cache = @import("libevmasm/cse_chunk_cache.zig");
     pub const block_deduplicator = @import("libevmasm/block_deduplicator.zig");
     pub const common_subexpression_eliminator = @import("libevmasm/common_subexpression_eliminator.zig");
     pub const constant_optimiser = @import("libevmasm/constant_optimiser.zig");

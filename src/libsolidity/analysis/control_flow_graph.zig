@@ -69,7 +69,7 @@ fn appendFunction(
     };
     if (cfg.functionFlow(function, contract) != null) return;
     const flow = try Builder.createFunctionFlow(&cfg.node_container, function, contract);
-    try cfg.function_flows.append(cfg.allocator, .{ .key = key, .flow = flow });
+    try cfg.appendFunctionFlow(key, flow);
 }
 
 const Diagnostics = @import("../../liblangutil/diagnostics.zig");
@@ -169,7 +169,10 @@ pub const CFG = struct {
     allocator: std.mem.Allocator,
     reporter: *Diagnostics.ErrorReporter,
     node_container: NodeContainer,
+    /// Canonical construction/iteration order. The lookup-only index stores
+    /// positions, never pointers into this growable array.
     function_flows: std.ArrayList(FlowEntry) = .empty,
+    function_flow_indices: std.AutoHashMapUnmanaged(FunctionContractTuple, usize) = .empty,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -183,6 +186,7 @@ pub const CFG = struct {
     }
 
     pub fn deinit(self: *CFG) void {
+        self.function_flow_indices.deinit(self.allocator);
         self.function_flows.deinit(self.allocator);
         self.node_container.deinit();
         self.* = undefined;
@@ -193,10 +197,8 @@ pub const CFG = struct {
         function: *const AST.Node,
         contract: ?*const AST.Node,
     ) ?*FunctionFlow {
-        for (self.function_flows.items) |*entry|
-            if (entry.key.function == function and entry.key.contract == contract)
-                return &entry.flow;
-        return null;
+        const index = self.functionFlowIndex(function, contract) orelse return null;
+        return &self.function_flows.items[index].flow;
     }
 
     pub fn functionFlowConst(
@@ -204,7 +206,27 @@ pub const CFG = struct {
         function: *const AST.Node,
         contract: ?*const AST.Node,
     ) ?*const FunctionFlow {
-        return @constCast(self).functionFlow(function, contract);
+        const index = self.functionFlowIndex(function, contract) orelse return null;
+        return &self.function_flows.items[index].flow;
+    }
+
+    pub fn functionFlowIndex(
+        self: *const CFG,
+        function: *const AST.Node,
+        contract: ?*const AST.Node,
+    ) ?usize {
+        return self.function_flow_indices.get(.{ .function = function, .contract = contract });
+    }
+
+    fn appendFunctionFlow(self: *CFG, key: FunctionContractTuple, flow: FunctionFlow) !void {
+        std.debug.assert(!self.function_flow_indices.contains(key));
+        // Both reservations must succeed before either container publishes an
+        // entry. The node container already owns all nodes, including on OOM.
+        try self.function_flow_indices.ensureUnusedCapacity(self.allocator, 1);
+        try self.function_flows.ensureUnusedCapacity(self.allocator, 1);
+        const index = self.function_flows.items.len;
+        self.function_flows.appendAssumeCapacity(.{ .key = key, .flow = flow });
+        self.function_flow_indices.putAssumeCapacityNoClobber(key, index);
     }
 };
 
@@ -219,4 +241,45 @@ test "CFG nodes own bidirectional arcs and variable occurrences" {
     try second.entries.append(cfg.allocator, first);
     try std.testing.expect(first.exits.items[0] == second);
     try std.testing.expect(second.entries.items[0] == first);
+}
+
+test "CFG function-flow index preserves ordered positions and contract identity through growth and OOM" {
+    const Check = struct {
+        fn run(allocator: std.mem.Allocator) !void {
+            var reporter = Diagnostics.ErrorReporter.init(allocator);
+            defer reporter.deinit();
+            var cfg = CFG.init(allocator, &reporter);
+            defer cfg.deinit();
+            // These nodes supply stable identities only; no AST data is read.
+            var identities: [67]AST.Node = undefined;
+            const contracts = [_]?*const AST.Node{ null, &identities[64], &identities[65] };
+            const node = try cfg.node_container.newNode();
+            const flow: FunctionFlow = .{ .entry = node, .exit = node, .revert = node, .transaction_return = node };
+            for (identities[0..64], 0..) |*function, function_index| {
+                for (contracts, 0..) |contract, contract_index| {
+                    const key: FunctionContractTuple = .{ .function = function, .contract = contract };
+                    const index = function_index * contracts.len + contract_index;
+                    cfg.appendFunctionFlow(key, flow) catch |err| {
+                        try std.testing.expectEqual(index, cfg.function_flows.items.len);
+                        try std.testing.expectEqual(index, cfg.function_flow_indices.count());
+                        try std.testing.expect(cfg.functionFlowIndex(function, contract) == null);
+                        return err;
+                    };
+                    // Recheck all preceding entries after every possible array
+                    // or hash-table growth, against the former linear lookup.
+                    for (cfg.function_flows.items, 0..) |entry, expected| {
+                        try std.testing.expectEqual(expected, cfg.functionFlowIndex(entry.key.function, entry.key.contract).?);
+                        try std.testing.expect(cfg.functionFlow(entry.key.function, entry.key.contract).? == &cfg.function_flows.items[expected].flow);
+                        try std.testing.expect(cfg.functionFlowConst(entry.key.function, entry.key.contract).? == &cfg.function_flows.items[expected].flow);
+                    }
+                    try std.testing.expect(cfg.function_flows.items[index].key.eql(key));
+                }
+            }
+            try std.testing.expect(cfg.functionFlow(&identities[66], null) == null);
+            try std.testing.expect(cfg.functionFlow(&identities[0], &identities[66]) == null);
+        }
+    };
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{});
 }

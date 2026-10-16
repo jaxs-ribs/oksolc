@@ -17,6 +17,7 @@ const CompatibilityIdResolver = @import("../libsolidity/ast/compatibility_id_res
 const SyntaxRevisionModule = @import("syntax_revision.zig");
 const SourceGraph = @import("source_graph.zig").SourceGraph;
 const SemanticFingerprint = @import("semantic_fingerprint.zig");
+const DependencyMaskMarker = @import("dependency_mask_marker.zig").DependencyMaskMarker;
 
 pub const TypeGenerationId = enum(u64) { _ };
 
@@ -300,12 +301,14 @@ pub const SemanticRevision = struct {
 
     /// Initializes one sorted entry for every direct import. Merely importing
     /// a source consumes its exported-symbol surface; semantic references may
-    /// widen the entry to all categories after analysis.
+    /// widen the entry to all categories after analysis. The returned marker
+    /// borrows this array and the frozen graph; deinit it after collection.
     pub fn initializeDependencyMasks(
         self: *SemanticRevision,
         graph: *const SourceGraph,
-    ) std.mem.Allocator.Error!void {
+    ) std.mem.Allocator.Error!DependencyMaskMarker {
         std.debug.assert(self.dependency_masks.items.len == 0);
+        errdefer self.dependency_masks.clearRetainingCapacity();
         try self.dependency_masks.ensureTotalCapacity(
             self.semanticAllocator(),
             graph.edgeCount(),
@@ -316,50 +319,7 @@ pub const SemanticRevision = struct {
                     .importer = importer,
                     .imported = imported,
                 });
-    }
-
-    /// A resolved cross-source reference consumes every retained semantic
-    /// surface of its direct dependency. If resolution reached a transitive
-    /// source, conservatively widen all direct imports of the referencing
-    /// source because the exact re-export path is not represented here.
-    pub fn markDependencyUsed(
-        self: *SemanticRevision,
-        graph: *const SourceGraph,
-        importer: AST.SourceId,
-        referenced: AST.SourceId,
-    ) void {
-        if (importer == referenced) return;
-        if (self.markDependencyPath(graph, importer, referenced)) return;
-        if (!graph.isActive(referenced)) return;
-        for (self.dependency_masks.items) |*entry| {
-            if (entry.importer == importer) entry.categories = .all;
-        }
-    }
-
-    /// The SCC condensation graph is acyclic, so recursively choosing the
-    /// first sorted path requires no per-reference visited allocation. Edges
-    /// inside one SCC need no mask widening because invalidation is atomic.
-    fn markDependencyPath(
-        self: *SemanticRevision,
-        graph: *const SourceGraph,
-        current: AST.SourceId,
-        target: AST.SourceId,
-    ) bool {
-        const current_scc = graph.sourceScc(current) orelse return false;
-        const target_scc = graph.sourceScc(target) orelse return false;
-        if (current_scc == target_scc) return true;
-        for (graph.imports(current)) |imported| {
-            if (graph.sourceScc(imported).? == current_scc) continue;
-            if (!self.markDependencyPath(graph, imported, target)) continue;
-            for (self.dependency_masks.items) |*entry| {
-                if (entry.importer == current and entry.imported == imported) {
-                    entry.categories = .all;
-                    return true;
-                }
-            }
-            return false;
-        }
-        return false;
+        return DependencyMaskMarker.init(self.semanticAllocator(), graph, self.dependency_masks.items);
     }
 
     pub fn compatibilityIdsMatch(
@@ -529,6 +489,39 @@ test "semantic revision owns annotations and one type generation" {
     _ = (try semantic.typeProvider()).boolean();
     semantic.markAnalyzed();
     try std.testing.expectEqual(SemanticCompleteness.analyzed, semantic.completeness);
+}
+
+test "semantic revision dependency masks roll back marker OOM and retry with reserved storage" {
+    const Graph = @import("source_graph.zig");
+    const allocator = std.testing.allocator;
+    var registry = Graph.SourceRegistry.init(allocator);
+    defer registry.deinit();
+    _ = try registry.beginRevision();
+    const importer = (try registry.upsert("A.sol", "")).id;
+    const imported = (try registry.upsert("B.sol", "")).id;
+    _ = try registry.finishRevision();
+    registry.commitRevision();
+    var graph = try SourceGraph.initAlloc(allocator, &registry, &.{.{ .importer = importer, .imported = imported }});
+    defer graph.deinit();
+    var failing = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
+    const semantic = try SemanticRevision.create(failing.allocator(), @fromBackingInt(@as(u64, 11)));
+    defer semantic.destroy();
+    try semantic.dependency_masks.ensureTotalCapacity(semantic.semanticAllocator(), graph.edgeCount());
+    const storage = semantic.dependency_masks.items.ptr;
+    const capacity = semantic.dependency_masks.capacity;
+    failing.fail_index = failing.alloc_index;
+    try std.testing.expectError(error.OutOfMemory, semantic.initializeDependencyMasks(&graph));
+    try std.testing.expect(failing.has_induced_failure);
+    try std.testing.expectEqual(@as(usize, 0), semantic.dependencyMasks().len);
+    try std.testing.expectEqual(capacity, semantic.dependency_masks.capacity);
+    try std.testing.expect(storage == semantic.dependency_masks.items.ptr);
+    failing.fail_index = std.math.maxInt(usize);
+    var marker = try semantic.initializeDependencyMasks(&graph);
+    defer marker.deinit();
+    try std.testing.expectEqual(@as(usize, 1), semantic.dependencyMasks().len);
+    try std.testing.expect(storage == semantic.dependency_masks.items.ptr);
+    marker.mark(importer, imported);
+    try std.testing.expectEqual(SemanticFingerprint.CategoryMask.all, semantic.dependencyMasks()[0].categories);
 }
 
 test "semantic child revisions share types and copy dirty annotations" {

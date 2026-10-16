@@ -69,6 +69,40 @@ Contract metadata and CBOR keep the pinned reference compiler identity to
 preserve output and bytecode compatibility. Use the product version for upgrade
 comparisons; SemVer precedence ignores the build metadata after `+`.
 
+## Zig API migration for 0.2.0-dev
+
+Direct users of `solidity.incremental.SemanticRevision` must retain and destroy
+the marker returned by `initializeDependencyMasks`. The marker owns its scratch
+bitset and borrows the revision's mask storage and the source graph. Keep both
+alive and keep graph topology and mask keys fixed until `marker.deinit()`.
+Collect references through `marker.mark`, which replaces the removed
+`SemanticRevision.markDependencyUsed` method:
+
+```zig
+const solidity = @import("solidity");
+const incremental = solidity.incremental;
+
+const Reference = struct {
+    importer: incremental.SourceId,
+    referenced: incremental.SourceId,
+};
+
+fn collectDependencies(
+    revision: *incremental.SemanticRevision,
+    graph: *const incremental.SourceGraph,
+    references: []const Reference,
+) !void {
+    var marker: incremental.DependencyMaskMarker =
+        try revision.initializeDependencyMasks(graph);
+    defer marker.deinit();
+    for (references) |reference|
+        marker.mark(reference.importer, reference.referenced);
+}
+```
+
+Initialization failure leaves the mask list empty and permits retrying on the
+same revision. Standard JSON and C ABI callers need no migration.
+
 ## Requirements
 
 - Zig `0.17.0`
@@ -356,6 +390,23 @@ zig build fuzz --fuzz=10K -Dadapter-fuzz-runs=10000 -j2
 
 Run benchmarks on an otherwise idle machine with a native ReleaseFast build.
 Reports are written under `build/benchmarks`.
+
+The focused optimizer-cache checks and performance probes are available with:
+
+```sh
+zig build test-optimizer-caches -Doptimize=Debug
+zig build benchmark-optimizer-caches -Doptimize=ReleaseFast
+```
+
+The probe takes one sample per case with no warmups. It compares the cached CSE
+path with a specialization that removes the complete cache path, using identical
+inputs and checking every resulting item and change counter. Cases cover unique
+chunks, small functions, one round, repeated chunks, and both admission limits.
+Lookup clocks and counters are enabled only for tests and this probe; its timings
+include that instrumentation. Whole-compiler timings should use normal builds.
+The reported allocation bytes include retained container capacity but exclude
+allocator metadata and bucket overhead. The default 8 MiB limit covers retained
+item and verbatim payload, with a separate 2,048-entry limit.
 
 To compile the CLI and benchmark executables together before timing, use
 `zig build build-benchmarks -Doptimize=ReleaseFast`. Zig schedules independent
