@@ -2156,9 +2156,11 @@ test "assembly printing retains one owner through allocation failures" {
             try std.testing.expectEqualStrings(text, actual);
         }
     };
-    try std.testing.checkAllAllocationFailures(allocator, Check.run, .{ &assembly, expected, selection, &sources, .both });
-    try std.testing.checkAllAllocationFailures(allocator, Check.run, .{ &assembly, expected, selection, &sources, .scratch });
-    try std.testing.checkAllAllocationFailures(allocator, Check.run, .{ &assembly, expected, selection, &sources, .output });
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{ &assembly, expected, selection, &sources, .both });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{ &assembly, expected, selection, &sources, .scratch });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{ &assembly, expected, selection, &sources, .output });
     var buffer: [64]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     try std.testing.expectError(error.WriteFailed, assembly.writeAssemblyText(allocator, &writer, .{}, &.{}));

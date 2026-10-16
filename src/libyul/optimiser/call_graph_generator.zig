@@ -298,5 +298,7 @@ test "call graph recursion handles hash collisions and growth across allocation 
                 try std.testing.expectEqualDeep(entry.key, recursive.at(index));
         }
     };
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, Check.run, .{&names});
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{&names});
 }

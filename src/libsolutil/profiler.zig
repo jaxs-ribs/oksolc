@@ -541,8 +541,10 @@ test "profiler report allocation failures preserve the owner" {
     defer std.testing.allocator.free(before);
     const before_text = try profiler.reportAlloc(std.testing.allocator);
     defer std.testing.allocator.free(before_text);
+    // Keep OOM replay counts independent of SafeAllocator bucket occupancy.
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
     for ([_]bool{ false, true }) |json|
-        try std.testing.checkAllAllocationFailures(std.testing.allocator, exerciseReportAllocation, .{ &profiler, json });
+        try std.testing.checkAllAllocationFailures(deterministic.allocator(), exerciseReportAllocation, .{ &profiler, json });
     const after_text = try profiler.reportAlloc(std.testing.allocator);
     defer std.testing.allocator.free(after_text);
     try std.testing.expectEqualStrings(before_text, after_text);
