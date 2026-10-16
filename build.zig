@@ -1127,6 +1127,16 @@ pub fn build(b: *std.Build) !void {
     ));
     b.step("test-frontend-indexes", "Test frontend indexes and semantic dependency invalidation").dependOn(&run_frontend_index_tests.step);
 
+    const public_api_tests = b.addTest(.{
+        .name = "public-api",
+        .root_module = solidity_module,
+        .filters = &.{"public "},
+    });
+    public_api_tests.stack_size = 32 * 1024 * 1024;
+    const run_public_api_tests = b.addRunArtifact(public_api_tests);
+    dependOnValidation(&run_public_api_tests.step, addCompilerBuildIdentityValidation(b, public_api_tests, compiler_build_validation_identity));
+    b.step("test-public-api", "Test public Zig API ownership and compiler sessions").dependOn(&run_public_api_tests.step);
+
     const ownership_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/ownership_tests.zig"),

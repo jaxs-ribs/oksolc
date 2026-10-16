@@ -10,6 +10,11 @@ Solidity compatibility target: `0.8.36`.
   standard library and build APIs.
 - Use the pinned official `translate-c` package for C bindings and reuse Zig's
   configuration cache across unchanged builds.
+- The lower-level Zig `SemanticRevision.initializeDependencyMasks` API now
+  returns an owned `incremental.DependencyMaskMarker`. Replace
+  `revision.markDependencyUsed(graph, importer, referenced)` with
+  `marker.mark(importer, referenced)` and call `marker.deinit()` after collection.
+  See the [Zig API migration example](README.md#zig-api-migration-for-020-dev).
 
 ### Performance
 
