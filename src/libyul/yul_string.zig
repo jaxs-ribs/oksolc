@@ -322,13 +322,46 @@ test "Yul strings stay canonical when sharded across threads" {
         }
     };
     var context: Context = .{};
-    var threads: [workers]std.Thread = undefined;
-    for (&threads, 0..) |*thread, i| thread.* = try std.Thread.spawn(.{}, Context.run, .{ &context, i });
-    context.start.store(true, .release);
-    for (threads) |thread| thread.join();
+    try runTestWorkers(Context, &context, workers, null);
     try std.testing.expect(!context.failed.load(.acquire));
     for (1..workers) |worker| for (0..count) |i| {
         try std.testing.expect(context.shared[0][i].eql(context.shared[worker][i]));
         try std.testing.expect(context.generated[0][i].eql(context.generated[worker][i]));
     };
+}
+
+fn runTestWorkers(comptime Context: type, context: *Context, comptime workers: usize, fail_after: ?usize) !void {
+    var threads: [workers]std.Thread = undefined;
+    var spawned: usize = 0;
+    defer {
+        context.start.store(true, .release);
+        for (threads[0..spawned]) |thread| thread.join();
+    }
+    for (&threads, 0..) |*thread, i| {
+        if (fail_after == i) return error.InjectedSpawnFailure;
+        thread.* = try std.Thread.spawn(.{}, Context.run, .{ context, i });
+        spawned += 1;
+    }
+}
+
+test "Yul string workers are joined after partial startup failure" {
+    const Context = struct {
+        start: std.atomic.Value(bool) = .init(false),
+        finished: std.atomic.Value(usize) = .init(0),
+
+        fn run(self: *@This(), _: usize) void {
+            while (!self.start.load(.acquire)) std.atomic.spinLoopHint();
+            _ = self.finished.fetchAdd(1, .release);
+        }
+    };
+    const workers = 6;
+    for (0..workers) |fail_after| {
+        var context: Context = .{};
+        try std.testing.expectError(error.InjectedSpawnFailure, runTestWorkers(Context, &context, workers, fail_after));
+        try std.testing.expect(context.start.load(.acquire));
+        try std.testing.expectEqual(fail_after, context.finished.load(.acquire));
+    }
+    var context: Context = .{};
+    try runTestWorkers(Context, &context, workers, null);
+    try std.testing.expectEqual(@as(usize, workers), context.finished.load(.acquire));
 }
