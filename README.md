@@ -400,6 +400,14 @@ zig build fuzz --fuzz=10K -Dadapter-fuzz-runs=10000 -j2
 Run benchmarks on an otherwise idle machine with a native ReleaseFast build.
 Reports are written under `build/benchmarks`.
 
+`test/benchmarks/alternating-compare.py` compares immutable binaries with
+`--no-cache` and alternates which binary runs first across workloads and pairs.
+Use `--jobs 2` to exercise the CLI's default parallel limit, or
+`--parallel --jobs 1` to exercise the explicitly parallel single-worker path. Use
+`--runs 1 --warmups 0` for a single sample. This helper records timings and peak
+RSS; validate bytecode with `compare.py`. Bytecode checks compare creation and
+deployed objects, including metadata, rather than every Standard JSON field.
+
 The focused optimizer-cache checks and performance probes are available with:
 
 ```sh
