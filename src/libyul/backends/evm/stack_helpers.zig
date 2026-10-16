@@ -58,6 +58,7 @@ fn Operations(comptime CallbackType: type) type {
         callbacks: CallbackType,
         reachable_stack_depth: usize,
         multiplicities: ?*StackMultiplicity = null,
+        uncached_queries: usize = 0,
 
         const Self = @This();
 
@@ -87,23 +88,25 @@ fn Operations(comptime CallbackType: type) type {
             return result;
         }
 
-        fn sourceMultiplicity(self: *const Self, offset: usize) i32 {
+        fn sourceMultiplicity(self: *Self, offset: usize) i32 {
             if (self.multiplicities) |counts| {
                 const value = counts.sourceMultiplicity(offset);
                 if (comptime @import("builtin").is_test)
                     if (value != self.multiplicity(self.current_stack.items[offset])) @panic("incorrect cached source multiplicity");
                 return value;
             }
+            self.uncached_queries +|= 1;
             return self.multiplicity(self.current_stack.items[offset]);
         }
 
-        fn targetMultiplicity(self: *const Self, offset: usize) i32 {
+        fn targetMultiplicity(self: *Self, offset: usize) i32 {
             if (self.multiplicities) |counts| {
                 const value = counts.targetMultiplicity(offset);
                 if (comptime @import("builtin").is_test)
                     if (value != self.multiplicity(self.target_stack[offset])) @panic("incorrect cached target multiplicity");
                 return value;
             }
+            self.uncached_queries +|= 1;
             return self.multiplicity(self.target_stack[offset]);
         }
 
@@ -381,13 +384,7 @@ fn createStackLayoutImpl(
     }
     var scratch_buffer: [8192]u8 = undefined;
     var scratch: std.heap.BufferFirstAllocator = .init(&scratch_buffer, allocator);
-    var counts: ?StackMultiplicity = null;
-    defer if (counts) |*value| value.deinit();
-    if (cache_counts) {
-        counts = try StackMultiplicity.init(scratch.allocator(), current_stack.items, target_stack);
-        ops.multiplicities = &counts.?;
-    }
-    try shuffleWithOperations(&ops);
+    try shuffle(cache_counts, &ops, scratch.allocator());
     try finishLayout(current_stack, target_stack);
 }
 
@@ -404,12 +401,65 @@ fn finishLayout(current_stack: *CFG.Stack, target_stack: []const CFG.StackSlot) 
 /// Runs the generic shuffler against an operation object implementing the
 /// interface documented by the upstream `ShuffleOperationConcept`.
 pub fn shuffleWithOperations(ops: anytype) !void {
+    return shuffle(false, ops, undefined);
+}
+
+fn shuffle(comptime cache_counts: bool, ops: anytype, scratch_allocator: std.mem.Allocator) !void {
+    var counts: ?StackMultiplicity = null;
+    defer if (cache_counts) if (counts) |*value| {
+        ops.multiplicities = null;
+        value.deinit();
+    };
     var needs_more = true;
     var iteration_count: usize = 0;
     while (iteration_count < 1000 and needs_more) : (iteration_count += 1) {
         needs_more = try shuffleStep(ops);
+        if (cache_counts) {
+            // A few scans cost less than preparing a table. Initialize between
+            // operations, after callbacks and source mutations have completed.
+            if (needs_more and counts == null and ops.uncached_queries >= 4 and !layoutIsFinal(ops)) {
+                counts = try StackMultiplicity.init(scratch_allocator, ops.current_stack.items, ops.target_stack);
+                ops.multiplicities = &counts.?;
+            }
+        }
     }
     if (needs_more) return error.StackShuffleIterationLimit;
+}
+
+fn layoutIsFinal(ops: anytype) bool {
+    if (ops.sourceSize() != ops.targetSize()) return false;
+    for (0..ops.sourceSize()) |index| if (!ops.isCompatible(index, index)) return false;
+    return true;
+}
+
+test "stack multiplicity cheap top swaps stay allocation free at every stack size" {
+    const Callbacks = struct {
+        swaps: *usize,
+        pub fn swap(self: @This(), depth: usize) !void {
+            try std.testing.expectEqual(@as(usize, 1), depth);
+            self.swaps.* += 1;
+        }
+        pub fn pushOrDup(_: @This(), _: CFG.StackSlot) !void {
+            return error.UnexpectedPush;
+        }
+        pub fn pop(_: @This()) !void {
+            return error.UnexpectedPop;
+        }
+    };
+    var target: [1024]CFG.StackSlot = undefined;
+    for ([_]usize{ 16, 256, 1024 }) |length| {
+        for (target[0..length], 0..) |*slot, index| slot.* = .{ .literal = .{ .value = index } };
+        var current: CFG.Stack = .empty;
+        defer current.deinit(std.testing.allocator);
+        try current.appendSlice(std.testing.allocator, target[0..length]);
+        std.mem.swap(CFG.StackSlot, &target[length - 1], &target[length - 2]);
+        var rejecting = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+        var swaps: usize = 0;
+        try createStackLayout(rejecting.allocator(), &current, target[0..length], Callbacks{ .swaps = &swaps }, 16);
+        try std.testing.expectEqual(@as(usize, 1), swaps);
+        try std.testing.expect(!rejecting.has_induced_failure);
+        for (current.items, target[0..length]) |actual, expected| try expectSameSlot(actual, expected);
+    }
 }
 
 test "stack shuffler creates exact layouts with duplication, swaps, pops, and junk" {
