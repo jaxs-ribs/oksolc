@@ -77,6 +77,22 @@ pub const Repository = struct {
         return self.insertOwned(owned, string_hash);
     }
 
+    /// Consumes nonempty bytes allocated by this repository's allocator,
+    /// including on insertion failure or when an existing entry is found.
+    fn stringToHandleOwnedHashed(
+        self: *Repository,
+        owned: []u8,
+        string_hash: u64,
+    ) std.mem.Allocator.Error!Handle {
+        errdefer self.allocator.free(owned);
+        const lookup: StringKey = .{ .hash_value = string_hash, .string = owned };
+        if (self.index.get(lookup)) |entry| {
+            self.allocator.free(owned);
+            return .{ .entry = entry, .hash = string_hash };
+        }
+        return self.insertOwned(owned, string_hash);
+    }
+
     fn insertOwned(
         self: *Repository,
         owned: []u8,
@@ -210,10 +226,21 @@ pub const YulString = struct {
             .{ handleString(base.handle), counter },
         ) catch {
             const long = try std.heap.smp_allocator.print("{s}_{d}", .{ handleString(base.handle), counter });
-            defer std.heap.smp_allocator.free(long);
-            return init(long);
+            return initOwned(long);
         };
         return init(generated);
+    }
+
+    fn initOwned(owned: []u8) std.mem.Allocator.Error!YulString {
+        const string_hash = hash(owned);
+        const shard = &shards[shardIndex(string_hash, shard_mask)];
+        std.Io.Threaded.mutexLockUncancelable(&shard.mutex);
+        defer std.Io.Threaded.mutexUnlock(&shard.mutex);
+        const repository = shard.repositoryLocked() catch |err| {
+            std.heap.smp_allocator.free(owned);
+            return err;
+        };
+        return .{ .handle = try repository.stringToHandleOwnedHashed(owned, string_hash) };
     }
 
     pub fn empty(self: YulString) bool {
@@ -273,6 +300,80 @@ test "repository hash index returns stable handles" {
         try std.testing.expect(inserted.entry != null);
         const repeated = try repository.stringToHandle(name);
         try std.testing.expectEqual(inserted, repeated);
+    }
+}
+
+test "owned Yul names transfer storage without another allocation" {
+    var tracking = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const allocator = tracking.allocator();
+    var repository = try Repository.init(allocator);
+    defer repository.deinit();
+    _ = try repository.stringToHandle("reserve repository storage");
+
+    const base: [255]u8 = @splat('x');
+    const owned = try allocator.print("{s}_0", .{base});
+    const address = owned.ptr;
+    const allocations = tracking.allocations;
+    const inserted = try repository.stringToHandleOwnedHashed(owned, hash(owned));
+    try std.testing.expectEqual(address, inserted.entry.?.string.ptr);
+    try std.testing.expectEqual(allocations, tracking.allocations);
+
+    const repeated = try allocator.dupe(u8, handleString(inserted));
+    const deallocations = tracking.deallocations;
+    const found = try repository.stringToHandleOwnedHashed(repeated, hash(repeated));
+    try std.testing.expectEqual(inserted, found);
+    try std.testing.expectEqual(deallocations + 1, tracking.deallocations);
+    try std.testing.expectEqual(@as(usize, 2), repository.entries.items.len);
+}
+
+test "owned Yul name insertion rolls back every allocation failure" {
+    const Check = struct {
+        fn run(allocator: std.mem.Allocator) !void {
+            var repository = try Repository.init(allocator);
+            defer repository.deinit();
+            const base: [4096]u8 = @splat('x');
+            for (0..12) |i| {
+                const owned = try allocator.print("{s}_{d}", .{ base, i });
+                const address = owned.ptr;
+                const inserted = repository.stringToHandleOwnedHashed(owned, hash(owned)) catch |err| {
+                    try std.testing.expectEqual(i, repository.entries.items.len);
+                    try std.testing.expectEqual(i, repository.index.count());
+                    for (repository.entries.items) |entry| {
+                        try std.testing.expectEqual(entry, repository.index.get(.{ .hash_value = hash(entry.string), .string = entry.string }).?);
+                    }
+                    return err;
+                };
+                try std.testing.expectEqual(address, inserted.entry.?.string.ptr);
+                const repeated = try allocator.dupe(u8, handleString(inserted));
+                try std.testing.expectEqual(inserted, try repository.stringToHandleOwnedHashed(repeated, hash(repeated)));
+            }
+        }
+    };
+    var deterministic = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{});
+}
+
+test "generated Yul name boundaries share ordinary handles in both modes" {
+    for ([_]bool{ false, true }) |sharded| {
+        try reset();
+        setSharded(sharded);
+        defer {
+            reset() catch {};
+            setSharded(false);
+        }
+        const base_bytes: [4094]u8 = @splat('x');
+        var expected_buffer: [4096]u8 = undefined;
+        for ([_]usize{ 255, 256, 257, 4096 }) |length| {
+            const base = try YulString.init(base_bytes[0 .. length - 2]);
+            const generated = try YulString.initGenerated(base, 0);
+            const expected = try std.mem.print(&expected_buffer, "{s}_0", .{try base.str()});
+            try std.testing.expectEqual(length, expected.len);
+            try std.testing.expectEqualStrings(expected, try generated.str());
+            try std.testing.expect(generated.eql(try YulString.init(expected)));
+            try std.testing.expect(generated.eql(try YulString.initGenerated(base, 0)));
+            try std.testing.expectEqual(hash(expected), generated.hashValue());
+            try std.testing.expect(!generated.eql(try YulString.initGenerated(base, 1)));
+        }
     }
 }
 
