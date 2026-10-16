@@ -414,6 +414,25 @@ test "Yul shard configuration rejects initialized repositories until reset" {
     try std.testing.expect(reused.eql(try YulString.init("after reset")));
 }
 
+test "Yul repositories reset and reuse in both modes" {
+    try reset();
+    defer {
+        reset() catch unreachable;
+        setSharded(false) catch unreachable;
+    }
+    for ([_]bool{ false, true }) |sharded| {
+        try setSharded(sharded);
+        for (0..3) |_| {
+            const base = try YulString.init("session");
+            const generated = try YulString.initGenerated(base, 42);
+            try std.testing.expect(generated.eql(try YulString.init("session_42")));
+            try reset();
+            for (&shards) |*shard| try std.testing.expect(shard.repository == null);
+            try setSharded(sharded);
+        }
+    }
+}
+
 test "Yul strings shard routing keeps shard tables evenly filled" {
     // Routing on the raw low bits would put every string of a shard into the
     // same 1/64 of that shard's buckets: only 256 (shard, bucket) pairs here.
@@ -438,11 +457,13 @@ test "Yul strings stay canonical when sharded across threads" {
     }
     const workers = 12;
     const count = 1024;
+    const long_count = 32;
     const Context = struct {
         start: std.atomic.Value(bool) = .init(false),
         failed: std.atomic.Value(bool) = .init(false),
         shared: [workers][count]YulString = undefined,
         generated: [workers][count]YulString = undefined,
+        long_generated: [workers][long_count]YulString = undefined,
 
         fn run(self: *@This(), worker: usize) void {
             while (!self.start.load(.acquire)) std.atomic.spinLoopHint();
@@ -455,7 +476,19 @@ test "Yul strings stay canonical when sharded across threads" {
             for (0..count) |i| {
                 self.shared[worker][i] = try YulString.init(try std.mem.print(&buffer, "shared_{d}", .{i}));
                 self.generated[worker][i] = try YulString.initGenerated(base, i);
+                const ordinary = try YulString.init(try std.mem.print(&buffer, "shared_base_{d}", .{i}));
+                if (!self.generated[worker][i].eql(ordinary)) return error.NonCanonicalYulString;
                 _ = try YulString.init(try std.mem.print(&buffer, "worker_{d}_{d}", .{ worker, i }));
+            }
+            const long_bytes: [300]u8 = @splat('x');
+            const long_base = try YulString.init(&long_bytes);
+            var long_buffer: [384]u8 = undefined;
+            for (0..long_count) |i| {
+                const formatted = try std.mem.print(&long_buffer, "{s}_{d}", .{ long_bytes, i });
+                const first = if (worker % 2 == 0) try YulString.initGenerated(long_base, i) else try YulString.init(formatted);
+                const second = if (worker % 2 == 0) try YulString.init(formatted) else try YulString.initGenerated(long_base, i);
+                if (!first.eql(second)) return error.NonCanonicalYulString;
+                self.long_generated[worker][i] = second;
             }
         }
     };
@@ -466,6 +499,18 @@ test "Yul strings stay canonical when sharded across threads" {
         try std.testing.expect(context.shared[0][i].eql(context.shared[worker][i]));
         try std.testing.expect(context.generated[0][i].eql(context.generated[worker][i]));
     };
+    for (1..workers) |worker| for (0..long_count) |i| {
+        try std.testing.expect(context.long_generated[0][i].eql(context.long_generated[worker][i]));
+    };
+    for (1..count) |i| {
+        try std.testing.expect(!context.shared[0][i - 1].eql(context.shared[0][i]));
+        try std.testing.expect(!context.generated[0][i - 1].eql(context.generated[0][i]));
+    }
+    var populated_shards: usize = 0;
+    for (&shards) |*shard| if (shard.repository) |*repository| {
+        if (repository.entries.items.len != 0) populated_shards += 1;
+    };
+    try std.testing.expect(populated_shards > 1);
 }
 
 fn runTestWorkers(comptime Context: type, context: *Context, comptime workers: usize, fail_after: ?usize) !void {

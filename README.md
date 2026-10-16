@@ -404,6 +404,7 @@ The focused optimizer-cache checks and performance probes are available with:
 
 ```sh
 zig build test-optimizer-caches -Doptimize=Debug
+zig build test-yul-interner -Doptimize=Debug
 zig build benchmark-optimizer-caches -Doptimize=ReleaseFast
 ```
 

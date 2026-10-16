@@ -1137,6 +1137,16 @@ pub fn build(b: *std.Build) !void {
     dependOnValidation(&run_public_api_tests.step, addCompilerBuildIdentityValidation(b, public_api_tests, compiler_build_validation_identity));
     b.step("test-public-api", "Test public Zig API ownership and compiler sessions").dependOn(&run_public_api_tests.step);
 
+    const yul_interner_tests = b.addTest(.{
+        .name = "yul-interner",
+        .root_module = compiler_module,
+        .filters = &.{ "compiler module inventory", "libyul.yul_string", "cached dialect factories" },
+    });
+    yul_interner_tests.stack_size = 32 * 1024 * 1024;
+    const run_yul_interner_tests = b.addRunArtifact(yul_interner_tests);
+    dependOnValidation(&run_yul_interner_tests.step, addCompilerBuildIdentityValidation(b, yul_interner_tests, compiler_build_validation_identity));
+    b.step("test-yul-interner", "Test sharded Yul canonicality, ownership, startup failures and reset lifetimes").dependOn(&run_yul_interner_tests.step);
+
     const optimizer_cache_tests = b.addTest(.{
         .name = "optimizer-cache-integration",
         .root_module = standard_json_dispatch_module,
