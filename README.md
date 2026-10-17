@@ -410,8 +410,11 @@ Reference-compatible fixtures are also checked directly against `solc`, then
 given one to three cumulative mutations per revision at numeric boundaries and
 across signed, unsigned, fixed-byte, address, and data-location types,
 visibility, mutability, array shapes, operators, optimizer on/off settings, and
-EVM versions. Deterministic histories also cross mixed-error diagnostic state
-and Homestead classic-stack lowering before recovering. Textual IR spelling, the
+EVM versions. Further histories concentrate mutations on fixed-array storage
+sizes, custom storage base slots, fixed-byte casts, and invalid UTF-8 hex
+literals. Deterministic histories also cross mixed-error diagnostic state,
+storage-layout overflow boundaries, conversion failures, and Homestead
+classic-stack lowering before recovering. Textual IR spelling, the
 unsupported legacy pipeline, and intentional corrections to upstream solc bugs
 are explicit exclusions from byte-exact reference comparison; they remain in
 the clean-versus-retained transition campaign.

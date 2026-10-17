@@ -74,6 +74,8 @@ class GeneratorTests(unittest.TestCase):
             yul_ast,
             static_library,
             inner_cycle,
+            storage_boundary,
+            conversion_boundary,
         ) = differential.seed_histories()
         self.assertEqual(len(reexports), 5)
         self.assertIn("bytes32", reexports[-2]["sources"]["A.sol"]["content"])
@@ -107,6 +109,30 @@ class GeneratorTests(unittest.TestCase):
         self.assertIn("L.f(value)", static_library[1]["sources"]["Consumer.sol"]["content"])
         self.assertIn("B[0]", inner_cycle[1]["sources"]["Cycle.sol"]["content"])
         self.assertIn("B parent", inner_cycle[2]["sources"]["Cycle.sol"]["content"])
+        self.assertIn(
+            "57896044618658097711785492504343953926634992332820282019728792003956564819968",
+            storage_boundary[1]["sources"]["StorageBoundary.sol"]["content"],
+        )
+        self.assertIn(
+            'bytes1("root")',
+            conversion_boundary[1]["sources"]["ConversionBoundary.sol"]["content"],
+        )
+        self.assertIn(
+            'string(hex"ff")',
+            conversion_boundary[2]["sources"]["ConversionBoundary.sol"]["content"],
+        )
+
+    def test_targeted_histories_are_deterministic_and_stress_boundaries(self):
+        first = differential.generate_targeted_history(random.Random(11), 8)
+        second = differential.generate_targeted_history(random.Random(11), 8)
+        self.assertEqual(first, second)
+        self.assertGreaterEqual(len(first), 2)
+        self.assertLessEqual(len(first), 8)
+        source_name = next(iter(first[0]["sources"]))
+        self.assertTrue(
+            source_name in ("StorageBoundary.sol", "ConversionBoundary.sol")
+        )
+        self.assertTrue(any(revision != first[0] for revision in first[1:]))
 
     def test_semantic_oracle_derives_expected_result_from_sources(self):
         state = differential.ProjectState(first_body=9, imported_alias_swap=True)
@@ -349,8 +375,8 @@ class GeneratorTests(unittest.TestCase):
     def test_source_mutations_cover_type_location_and_operator_boundaries(self):
         source = (
             "contract C { function f(int32 x, bytes4 data, address payable target, "
-            "uint256[] memory values) public payable returns (bool) { "
-            "return true && x + 1 <= 2 != (values.length == 0); } }"
+            "uint256[2] memory values) public payable returns (bool) { "
+            'hex"ff"; return true && x + 1 <= 2 != (values.length == 0); } }'
         )
         for pattern, _ in differential.SOURCE_MUTATIONS:
             self.assertIsNotNone(pattern.search(source), pattern.pattern)

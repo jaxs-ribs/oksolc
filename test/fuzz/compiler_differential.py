@@ -101,7 +101,12 @@ EVM_VERSIONS = (
     "osaka",
 )
 SOURCE_MUTATIONS = (
+    (re.compile(r"(?<=\[)[0-9](?:_?[0-9])*(?=\])"), BOUNDARY_NUMBERS),
     (re.compile(r"(?<![A-Za-z0-9_.$])(?:0x[0-9A-Fa-f]+|[0-9](?:_?[0-9])*)(?![A-Za-z0-9_.$])"), BOUNDARY_NUMBERS),
+    (
+        re.compile(r'hex"(?:[0-9A-Fa-f]{2})*"'),
+        ('hex""', 'hex"00"', 'hex"ff"', 'hex"c080"', 'hex"0102030405"'),
+    ),
     (re.compile(r"\b(?:true|false)\b"), ("true", "false")),
     (
         re.compile(r"\buint(?:8|16|32|64|128|160|192|224|256)?\b"),
@@ -125,6 +130,9 @@ SOURCE_MUTATIONS = (
     (re.compile(r"(?<=\s)(?:\+|-|\*|/|%)(?=\s)"), ("+", "-", "*", "/", "%")),
 )
 MUTATIONS_PER_REVISION = (1, 1, 2, 3)
+STORAGE_ELEMENT_TYPES = ("uint8", "uint128", "uint256", "bytes31", "Word")
+FIXED_BYTES_TYPES = ("bytes1", "bytes2", "bytes4", "bytes20", "bytes32")
+STRING_LITERALS = ('""', '"a"', '"root"', 'hex"00"', 'hex"ff"', 'hex"c080"')
 
 
 @dataclass
@@ -430,6 +438,99 @@ def generate_history(rng: random.Random, max_revisions: int) -> list[dict[str, A
     for _ in range(rng.randint(1, max_revisions - 1)):
         state.mutate(rng)
         history.append(request_for_state(state))
+    return history
+
+
+def storage_boundary_request(
+    array_length: str,
+    base_slot: str,
+    element_type: str,
+) -> dict[str, Any]:
+    return {
+        "language": "Solidity",
+        "sources": {
+            "StorageBoundary.sol": {
+                "content": (
+                    PREAMBLE
+                    + "type Word is uint32;\n"
+                    + "contract Base { uint128 base; }\n"
+                    + f"contract Layout is Base layout at {base_slot} {{\n"
+                    + f"    struct Data {{ {element_type}[{array_length}] values; }}\n"
+                    + "    Data data;\n"
+                    + "    uint256 transient scratch;\n"
+                    + "}\n"
+                )
+            }
+        },
+        "settings": {
+            "viaIR": False,
+            "outputSelection": {
+                "*": {"Layout": ["storageLayout", "transientStorageLayout"]}
+            },
+        },
+    }
+
+
+def conversion_boundary_request(
+    fixed_type: str,
+    fixed_literal: str,
+    string_literal: str,
+) -> dict[str, Any]:
+    return {
+        "language": "Solidity",
+        "sources": {
+            "ConversionBoundary.sol": {
+                "content": (
+                    PREAMBLE
+                    + "contract ConversionBoundary {\n"
+                    + "    function f() external pure {\n"
+                    + f"        {fixed_type}({fixed_literal});\n"
+                    + f"        string({string_literal});\n"
+                    + "    }\n"
+                    + "}\n"
+                )
+            }
+        },
+        "settings": {"outputSelection": {"*": {"*": ["abi"]}}},
+    }
+
+
+def generate_targeted_history(
+    rng: random.Random,
+    max_revisions: int,
+) -> list[dict[str, Any]]:
+    revision_count = rng.randint(2, max_revisions)
+    if rng.randrange(2) == 0:
+        array_length = "2"
+        base_slot = "42"
+        element_type = "uint256"
+        history = [storage_boundary_request(array_length, base_slot, element_type)]
+        for _ in range(revision_count - 1):
+            field = rng.randrange(3)
+            if field == 0:
+                array_length = rng.choice(BOUNDARY_NUMBERS)
+            elif field == 1:
+                base_slot = rng.choice(BOUNDARY_NUMBERS)
+            else:
+                element_type = rng.choice(STORAGE_ELEMENT_TYPES)
+            history.append(storage_boundary_request(array_length, base_slot, element_type))
+        return history
+
+    fixed_type = "bytes4"
+    fixed_literal = '"root"'
+    string_literal = 'hex"726f6f74"'
+    history = [conversion_boundary_request(fixed_type, fixed_literal, string_literal)]
+    for _ in range(revision_count - 1):
+        field = rng.randrange(3)
+        if field == 0:
+            fixed_type = rng.choice(FIXED_BYTES_TYPES)
+        elif field == 1:
+            fixed_literal = rng.choice(STRING_LITERALS)
+        else:
+            string_literal = rng.choice(STRING_LITERALS)
+        history.append(
+            conversion_boundary_request(fixed_type, fixed_literal, string_literal)
+        )
     return history
 
 
@@ -829,6 +930,26 @@ def seed_histories() -> tuple[list[dict[str, Any]], ...]:
         ),
         inner_cycle_request("1", False),
     ]
+    storage_boundary_history = [
+        storage_boundary_request("2", "42", "uint256"),
+        storage_boundary_request(
+            "57896044618658097711785492504343953926634992332820282019728792003956564819968",
+            "42",
+            "uint256",
+        ),
+        storage_boundary_request(
+            "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+            "42",
+            "Word",
+        ),
+        storage_boundary_request("2", "42", "uint256"),
+    ]
+    conversion_boundary_history = [
+        conversion_boundary_request("bytes4", '"root"', 'hex"726f6f74"'),
+        conversion_boundary_request("bytes1", '"root"', 'hex"726f6f74"'),
+        conversion_boundary_request("bytes4", '"root"', 'hex"ff"'),
+        conversion_boundary_request("bytes4", '"root"', 'hex"726f6f74"'),
+    ]
     return (
         reexport_history,
         alias_history,
@@ -842,6 +963,8 @@ def seed_histories() -> tuple[list[dict[str, Any]], ...]:
         yul_ast_history,
         static_library_history,
         inner_cycle_history,
+        storage_boundary_history,
+        conversion_boundary_history,
     )
 
 
@@ -1573,20 +1696,21 @@ def main() -> int:
     failure_signatures: set[tuple[Any, ...]] = set()
     duplicate_failures = 0
     for iteration in range(options.iterations):
-        history, oracle = (
-            campaign_histories[iteration]
-            if iteration < len(campaign_histories)
-            else (
-                generate_corpus_mutation_history(
+        if iteration < len(campaign_histories):
+            history, oracle = campaign_histories[iteration]
+        else:
+            history_kind = rng.randrange(3) if corpus_entries else rng.randrange(2) + 1
+            if history_kind == 0:
+                history = generate_corpus_mutation_history(
                     corpus_entries,
                     rng,
                     options.max_revisions,
                 )
-                if corpus_entries and rng.randrange(2) == 0
-                else generate_history(rng, options.max_revisions),
-                "reference",
-            )
-        )
+            elif history_kind == 1:
+                history = generate_targeted_history(rng, options.max_revisions)
+            else:
+                history = generate_history(rng, options.max_revisions)
+            oracle = "reference"
         failure = None
         for session_mode in session_modes:
             failure = evaluate_history(
