@@ -4760,6 +4760,7 @@ pub const TypeChecker = struct {
                 if (!std.mem.eql(u8, declarationName(candidate), name)) continue;
                 const visible = switch (candidate.payload) {
                     .function_definition => |function| function.kind == .Function and
+                        (!super_lookup or function.implemented()) and
                         if (external)
                             ASTImplementation.isPublic(candidate)
                         else
