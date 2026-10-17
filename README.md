@@ -412,7 +412,8 @@ across signed, unsigned, fixed-byte, address, and data-location types,
 visibility, mutability, array shapes, operators, optimizer on/off settings, and
 EVM versions. Further histories concentrate mutations on fixed-array storage
 sizes, custom storage base slots, fixed-byte casts, and invalid UTF-8 hex
-literals. Deterministic histories also cross mixed-error diagnostic state,
+literals, plus fixed-point widths and decimal precision. Deterministic
+histories also cross mixed-error diagnostic state,
 storage-layout overflow boundaries, conversion failures, and Homestead
 classic-stack lowering before recovering. Textual IR spelling, the
 unsupported legacy pipeline, and intentional corrections to upstream solc bugs

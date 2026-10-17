@@ -133,6 +133,8 @@ MUTATIONS_PER_REVISION = (1, 1, 2, 3)
 STORAGE_ELEMENT_TYPES = ("uint8", "uint128", "uint256", "bytes31", "Word")
 FIXED_BYTES_TYPES = ("bytes1", "bytes2", "bytes4", "bytes20", "bytes32")
 STRING_LITERALS = ('""', '"a"', '"root"', 'hex"00"', 'hex"ff"', 'hex"c080"')
+FIXED_POINT_BITS = (8, 32, 64, 128, 256)
+FIXED_POINT_DECIMALS = (0, 1, 10, 18, 79, 80)
 
 
 @dataclass
@@ -495,12 +497,42 @@ def conversion_boundary_request(
     }
 
 
+def fixed_point_boundary_request(
+    source_bits: int,
+    source_decimals: int,
+    target_bits: int,
+    target_decimals: int,
+    source_unsigned: bool,
+    target_unsigned: bool,
+) -> dict[str, Any]:
+    source_prefix = "u" if source_unsigned else ""
+    target_prefix = "u" if target_unsigned else ""
+    source_type = f"{source_prefix}fixed{source_bits}x{source_decimals}"
+    target_type = f"{target_prefix}fixed{target_bits}x{target_decimals}"
+    return {
+        "language": "Solidity",
+        "sources": {
+            "FixedPointBoundary.sol": {
+                "content": (
+                    PREAMBLE
+                    + "contract FixedPointBoundary {\n"
+                    + f"    {source_type} value;\n"
+                    + f"    {target_type} converted = value;\n"
+                    + "}\n"
+                )
+            }
+        },
+        "settings": {"outputSelection": {"*": {"*": ["abi"]}}},
+    }
+
+
 def generate_targeted_history(
     rng: random.Random,
     max_revisions: int,
 ) -> list[dict[str, Any]]:
     revision_count = rng.randint(2, max_revisions)
-    if rng.randrange(2) == 0:
+    history_kind = rng.randrange(3)
+    if history_kind == 0:
         array_length = "2"
         base_slot = "42"
         element_type = "uint256"
@@ -516,20 +548,63 @@ def generate_targeted_history(
             history.append(storage_boundary_request(array_length, base_slot, element_type))
         return history
 
-    fixed_type = "bytes4"
-    fixed_literal = '"root"'
-    string_literal = 'hex"726f6f74"'
-    history = [conversion_boundary_request(fixed_type, fixed_literal, string_literal)]
+    if history_kind == 1:
+        fixed_type = "bytes4"
+        fixed_literal = '"root"'
+        string_literal = 'hex"726f6f74"'
+        history = [conversion_boundary_request(fixed_type, fixed_literal, string_literal)]
+        for _ in range(revision_count - 1):
+            field = rng.randrange(3)
+            if field == 0:
+                fixed_type = rng.choice(FIXED_BYTES_TYPES)
+            elif field == 1:
+                fixed_literal = rng.choice(STRING_LITERALS)
+            else:
+                string_literal = rng.choice(STRING_LITERALS)
+            history.append(
+                conversion_boundary_request(fixed_type, fixed_literal, string_literal)
+            )
+        return history
+
+    source_bits = 128
+    source_decimals = 18
+    target_bits = 128
+    target_decimals = 18
+    source_unsigned = False
+    target_unsigned = False
+    history = [
+        fixed_point_boundary_request(
+            source_bits,
+            source_decimals,
+            target_bits,
+            target_decimals,
+            source_unsigned,
+            target_unsigned,
+        )
+    ]
     for _ in range(revision_count - 1):
-        field = rng.randrange(3)
+        field = rng.randrange(6)
         if field == 0:
-            fixed_type = rng.choice(FIXED_BYTES_TYPES)
+            source_bits = rng.choice(FIXED_POINT_BITS)
         elif field == 1:
-            fixed_literal = rng.choice(STRING_LITERALS)
+            source_decimals = rng.choice(FIXED_POINT_DECIMALS)
+        elif field == 2:
+            target_bits = rng.choice(FIXED_POINT_BITS)
+        elif field == 3:
+            target_decimals = rng.choice(FIXED_POINT_DECIMALS)
+        elif field == 4:
+            source_unsigned = not source_unsigned
         else:
-            string_literal = rng.choice(STRING_LITERALS)
+            target_unsigned = not target_unsigned
         history.append(
-            conversion_boundary_request(fixed_type, fixed_literal, string_literal)
+            fixed_point_boundary_request(
+                source_bits,
+                source_decimals,
+                target_bits,
+                target_decimals,
+                source_unsigned,
+                target_unsigned,
+            )
         )
     return history
 
@@ -950,6 +1025,13 @@ def seed_histories() -> tuple[list[dict[str, Any]], ...]:
         conversion_boundary_request("bytes4", '"root"', 'hex"ff"'),
         conversion_boundary_request("bytes4", '"root"', 'hex"726f6f74"'),
     ]
+    fixed_point_boundary_history = [
+        fixed_point_boundary_request(128, 18, 128, 18, False, False),
+        fixed_point_boundary_request(128, 18, 128, 10, False, False),
+        fixed_point_boundary_request(128, 18, 128, 10, True, True),
+        fixed_point_boundary_request(128, 18, 128, 10, False, True),
+        fixed_point_boundary_request(128, 18, 128, 18, False, False),
+    ]
     return (
         reexport_history,
         alias_history,
@@ -965,6 +1047,7 @@ def seed_histories() -> tuple[list[dict[str, Any]], ...]:
         inner_cycle_history,
         storage_boundary_history,
         conversion_boundary_history,
+        fixed_point_boundary_history,
     )
 
 

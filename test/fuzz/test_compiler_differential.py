@@ -76,6 +76,7 @@ class GeneratorTests(unittest.TestCase):
             inner_cycle,
             storage_boundary,
             conversion_boundary,
+            fixed_point_boundary,
         ) = differential.seed_histories()
         self.assertEqual(len(reexports), 5)
         self.assertIn("bytes32", reexports[-2]["sources"]["A.sol"]["content"])
@@ -121,6 +122,14 @@ class GeneratorTests(unittest.TestCase):
             'string(hex"ff")',
             conversion_boundary[2]["sources"]["ConversionBoundary.sol"]["content"],
         )
+        self.assertIn(
+            "fixed128x10 converted",
+            fixed_point_boundary[1]["sources"]["FixedPointBoundary.sol"]["content"],
+        )
+        self.assertIn(
+            "ufixed128x10 converted",
+            fixed_point_boundary[2]["sources"]["FixedPointBoundary.sol"]["content"],
+        )
 
     def test_targeted_histories_are_deterministic_and_stress_boundaries(self):
         first = differential.generate_targeted_history(random.Random(11), 8)
@@ -130,7 +139,12 @@ class GeneratorTests(unittest.TestCase):
         self.assertLessEqual(len(first), 8)
         source_name = next(iter(first[0]["sources"]))
         self.assertTrue(
-            source_name in ("StorageBoundary.sol", "ConversionBoundary.sol")
+            source_name
+            in (
+                "StorageBoundary.sol",
+                "ConversionBoundary.sol",
+                "FixedPointBoundary.sol",
+            )
         )
         self.assertTrue(any(revision != first[0] for revision in first[1:]))
 
