@@ -104,6 +104,7 @@ test "integer literal conversion diagnostics retain reasons" {
         \\    uint8 negative = -1;
         \\    function takesUint8(uint8) internal {}
         \\    function call() internal { takesUint8(256); }
+        \\    function returnsUint8() internal pure returns (uint8) { return 256; }
         \\}
     ;
     const input = try std.json.Stringify.valueAlloc(allocator, .{
@@ -129,6 +130,11 @@ test "integer literal conversion diagnostics retain reasons" {
         u8,
         output.bytes,
         "Invalid implicit conversion from int_const 256 to uint8 requested. Literal is too large to fit in uint8.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Return argument type int_const 256 is not implicitly convertible to expected type (type of first return variable) uint8. Literal is too large to fit in uint8.",
     ) != null);
 }
 

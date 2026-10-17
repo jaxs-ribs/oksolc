@@ -1921,7 +1921,7 @@ pub const TypeChecker = struct {
         defer self.allocator.free(actual_name);
         const expected_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, expected);
         defer self.allocator.free(expected_name);
-        const message = if (first_return_variable)
+        const base_message = if (first_return_variable)
             try self.allocator.print(
                 "Return argument type {s} is not implicitly convertible to expected type (type of first return variable) {s}.",
                 .{ actual_name, expected_name },
@@ -1931,6 +1931,18 @@ pub const TypeChecker = struct {
                 "Return argument type {s} is not implicitly convertible to expected type {s}.",
                 .{ actual_name, expected_name },
             );
+        defer self.allocator.free(base_message);
+        const reason = try implicitConversionReasonAlloc(
+            self.allocator,
+            actual,
+            expected,
+            expected_name,
+        );
+        defer if (reason) |reason_text| self.allocator.free(reason_text);
+        const message = try self.allocator.print(
+            "{s}{s}{s}",
+            .{ base_message, if (reason != null) " " else "", reason orelse "" },
+        );
         defer self.allocator.free(message);
         try self.reporter.typeError(id, expression.location, message);
     }
