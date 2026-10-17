@@ -230,6 +230,8 @@ test "literal conversion diagnostics retain reasons" {
         \\    uint8 negative = -1;
         \\    bytes1 too_long = hex"030102";
         \\    bytes1 explicit_too_long = bytes1("root");
+        \\    string invalid_utf8 = hex"ff";
+        \\    string explicit_invalid_utf8 = string(hex"ff");
         \\    function takesUint8(uint8) internal {}
         \\    function call() internal { takesUint8(256); }
         \\    function returnsUint8() internal pure returns (uint8) { return 256; }
@@ -273,6 +275,16 @@ test "literal conversion diagnostics retain reasons" {
         u8,
         output.bytes,
         "Explicit type conversion not allowed from \"literal_string \\\"root\\\"\" to \"bytes1\". Literal is larger than the type.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Type literal_string hex\\\"ff\\\" is not implicitly convertible to expected type string storage ref. Contains invalid UTF-8 sequence at position 0.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Explicit type conversion not allowed from \"literal_string hex\\\"ff\\\"\" to \"string memory\". Contains invalid UTF-8 sequence at position 0.",
     ) != null);
 }
 

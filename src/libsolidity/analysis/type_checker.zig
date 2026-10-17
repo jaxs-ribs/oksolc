@@ -20,6 +20,7 @@ const Diagnostics = @import("../../liblangutil/diagnostics.zig");
 const EVMVersion = @import("../../liblangutil/evm_version.zig").EVMVersion;
 const TokenModule = @import("../../liblangutil/token.zig");
 const SetOnce = @import("../../libsolutil/set_once.zig");
+const UTF8 = @import("../../libsolutil/utf8.zig");
 const YulAST = @import("../../libyul/ast.zig");
 const YulAsmAnalysis = @import("../../libyul/asm_analysis.zig");
 
@@ -5962,10 +5963,24 @@ fn implicitConversionReasonAlloc(
             }
         }
     }
-    if (actual.category() == .StringLiteral)
+    if (actual.category() == .StringLiteral) {
         if (expected.asFixedBytes()) |fixed_bytes|
             if (actual.payload.StringLiteral.value.len > fixed_bytes.bytes)
                 return try allocator.dupe(u8, "Literal is larger than the type.");
+        if (expected.asArray()) |array| {
+            if (array.kind == .String) {
+                var invalid_position: usize = undefined;
+                if (!UTF8.validateUTF8(
+                    actual.payload.StringLiteral.value,
+                    &invalid_position,
+                ))
+                    return try allocator.print(
+                        "Contains invalid UTF-8 sequence at position {d}.",
+                        .{invalid_position},
+                    );
+            }
+        }
+    }
     const source = actual.asFunction() orelse return null;
     const target = expected.asFunction() orelse return null;
     if (source.options.has_bound_first_argument != target.options.has_bound_first_argument)
