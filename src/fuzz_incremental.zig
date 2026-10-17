@@ -45,6 +45,12 @@ const Action = enum(u8) {
     extra_source,
     optimizer_runs,
     output_projection,
+    inherited_body,
+    library_body,
+    modifier_limit,
+    wide_base_storage,
+    inherited_signature_failure,
+    error_signature_failure,
 };
 
 const ProjectState = struct {
@@ -60,6 +66,12 @@ const ProjectState = struct {
     extra_source: bool = false,
     optimizer_runs: u16 = 200,
     projection: Projection = .bytecode,
+    inherited_body: u8 = 3,
+    library_body: u8 = 4,
+    modifier_limit: u8 = 64,
+    wide_base_storage: bool = false,
+    inherited_signature_failure: bool = false,
+    error_signature_failure: bool = false,
 
     fn apply(self: *ProjectState, action: Action, value: u8, flag: bool) void {
         switch (action) {
@@ -85,6 +97,12 @@ const ProjectState = struct {
             .output_projection => self.projection = @fromBackingInt(@intCast(
                 value % @typeInfo(Projection).@"enum".field_names.len,
             )),
+            .inherited_body => self.inherited_body = 1 + value % 63,
+            .library_body => self.library_body = 1 + value % 63,
+            .modifier_limit => self.modifier_limit = 2 + value % 62,
+            .wide_base_storage => self.wide_base_storage = flag,
+            .inherited_signature_failure => self.inherited_signature_failure = flag,
+            .error_signature_failure => self.error_signature_failure = flag,
         }
     }
 };
@@ -110,6 +128,16 @@ const recursive_seed = smithHistoryCorpus(&.{
     .{ .action = .recursive_shape, .value = @backingInt(RecursiveMode.nested_direct_cycle) },
     .{ .action = .recursive_shape, .value = @backingInt(RecursiveMode.mapping) },
 });
+const dependency_seed = smithHistoryCorpus(&.{
+    .{ .action = .inherited_body, .value = 8 },
+    .{ .action = .library_body, .value = 10 },
+    .{ .action = .modifier_limit, .value = 30 },
+    .{ .action = .wide_base_storage, .flag = true },
+    .{ .action = .inherited_signature_failure, .flag = true },
+    .{ .action = .inherited_signature_failure, .flag = false },
+    .{ .action = .error_signature_failure, .flag = true },
+    .{ .action = .error_signature_failure, .flag = false },
+});
 const overlay_edits = overlaySeedEdits();
 const overlay_seed = smithHistoryCorpus(&overlay_edits);
 
@@ -118,6 +146,7 @@ test "fuzz stateful incremental Solidity compilation" {
         &reexport_seed,
         &alias_seed,
         &recursive_seed,
+        &dependency_seed,
         &overlay_seed,
     } });
 }
@@ -177,6 +206,8 @@ fn requestAlloc(allocator: std.mem.Allocator, state: ProjectState) ![]u8 {
     defer allocator.free(alias_source);
     const main_source = try mainSourceAlloc(allocator, state, reexport_name);
     defer allocator.free(main_source);
+    const dependency_source = try dependencySourceAlloc(allocator, state);
+    defer allocator.free(dependency_source);
 
     var arena_state = std.heap.ArenaAllocator.init(allocator);
     defer arena_state.deinit();
@@ -191,6 +222,8 @@ fn requestAlloc(allocator: std.mem.Allocator, state: ProjectState) ![]u8 {
         .{ "Aliases.sol", alias_source },
         .{ "Recursive.sol", recursiveSource(state.recursive_mode) },
         .{ "Main.sol", main_source },
+        .{ "Dependency.sol", dependency_source },
+        .{ "Consumer.sol", consumer_source },
     };
     if (state.reverse_source_order) {
         var index = entries.len;
@@ -218,6 +251,7 @@ fn requestAlloc(allocator: std.mem.Allocator, state: ProjectState) ![]u8 {
     var artifacts = std.json.Array.init(arena);
     switch (state.projection) {
         .bytecode => {
+            try artifacts.append(.{ .string = "storageLayout" });
             try artifacts.append(.{ .string = "evm.bytecode.object" });
             try artifacts.append(.{ .string = "evm.deployedBytecode.object" });
             try artifacts.append(.{ .string = "evm.methodIdentifiers" });
@@ -334,6 +368,45 @@ fn mainSourceAlloc(
     );
 }
 
+fn dependencySourceAlloc(allocator: std.mem.Allocator, state: ProjectState) ![]u8 {
+    const storage_members = if (state.wide_base_storage)
+        "uint256 internal left; uint256 internal right;"
+    else
+        "uint128 internal left; uint128 internal right;";
+    const inherited_type = if (state.inherited_signature_failure) "bytes32" else "uint256";
+    const inherited_value = if (state.inherited_signature_failure) "uint256(value)" else "value";
+    const error_type = if (state.error_signature_failure) "bytes32" else "uint256";
+    return allocator.print(
+        preamble ++
+            "struct Payload {{ uint256 value; uint256 salt; }}\n" ++
+            "library PayloadLib {{\n" ++
+            "    function score(Payload memory self) internal pure returns (uint256) {{\n" ++
+            "        return self.value * 3 + self.salt + {d};\n" ++
+            "    }}\n" ++
+            "}}\n" ++
+            "error SharedError({s} value);\n" ++
+            "contract Base {{\n" ++
+            "    {s}\n" ++
+            "    modifier adjusted(uint256 value) {{\n" ++
+            "        require(value < {d});\n" ++
+            "        _;\n" ++
+            "    }}\n" ++
+            "    function inherited({s} value) public pure returns (uint256) {{\n" ++
+            "        return {s} + {d};\n" ++
+            "    }}\n" ++
+            "}}\n",
+        .{
+            state.library_body,
+            error_type,
+            storage_members,
+            state.modifier_limit,
+            inherited_type,
+            inherited_value,
+            state.inherited_body,
+        },
+    );
+}
+
 fn recursiveSource(mode: RecursiveMode) []const u8 {
     return switch (mode) {
         .dynamic_array => preamble ++ "contract Recursive { struct A { B[] children; } struct B { A parent; } }\n",
@@ -379,3 +452,12 @@ const auth_source = preamble ++
     "function rejected(uint256 value) pure returns (bool) { return value != 7; }\n";
 const extra_source = preamble ++
     "contract Extra { function value() external pure returns (uint256) { return 99; } }\n";
+const consumer_source = preamble ++
+    "import {Base, Payload, PayloadLib, SharedError} from \"Dependency.sol\";\n" ++
+    "using PayloadLib for Payload;\n" ++
+    "contract Consumer is Base {\n" ++
+    "    function run(uint256 value) external pure adjusted(value) returns (uint256) {\n" ++
+    "        if (value == 0) revert SharedError(value);\n" ++
+    "        return inherited(value) + Payload(value, 5).score();\n" ++
+    "    }\n" ++
+    "}\n";

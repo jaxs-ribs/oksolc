@@ -26,7 +26,12 @@ from typing import Any, Callable, Sequence
 
 PREAMBLE = "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\n"
 ARTIFACTS = (
-    ("evm.bytecode.object", "evm.deployedBytecode.object", "evm.methodIdentifiers"),
+    (
+        "storageLayout",
+        "evm.bytecode.object",
+        "evm.deployedBytecode.object",
+        "evm.methodIdentifiers",
+    ),
     ("evm.deployedBytecode.object",),
     ("abi", "evm.bytecode.object"),
 )
@@ -51,6 +56,12 @@ ACTIONS = (
     "extra_source",
     "optimizer_runs",
     "projection",
+    "inherited_body",
+    "library_body",
+    "modifier_limit",
+    "wide_base_storage",
+    "inherited_signature_failure",
+    "error_signature_failure",
 )
 IMPORT_PATTERN = re.compile(r"\bimport\b[^;]*?[\"']([^\"']+)[\"'][^;]*;", re.DOTALL)
 REFERENCE_CORPUS_EXCLUSIONS = {
@@ -116,11 +127,19 @@ class ProjectState:
     extra_source: bool = False
     optimizer_runs: int = 200
     projection: int = 0
+    inherited_body: int = 3
+    library_body: int = 4
+    modifier_limit: int = 64
+    wide_base_storage: bool = False
+    inherited_signature_failure: bool = False
+    error_signature_failure: bool = False
 
     def mutate(self, rng: random.Random) -> None:
         action = rng.choice(ACTIONS)
-        if action in ("first_body", "second_body"):
+        if action in ("first_body", "second_body", "inherited_body", "library_body"):
             setattr(self, action, rng.randint(1, 63))
+        elif action == "modifier_limit":
+            self.modifier_limit = rng.randint(2, 63)
         elif action == "recursive_shape":
             self.recursive_shape = rng.randrange(len(RECURSIVE_SHAPES))
         elif action == "optimizer_runs":
@@ -234,6 +253,45 @@ def request_for_state(state: ProjectState) -> dict[str, Any]:
         + "    }\n"
         + "}\n"
     )
+    storage_members = (
+        "uint256 internal left; uint256 internal right;"
+        if state.wide_base_storage
+        else "uint128 internal left; uint128 internal right;"
+    )
+    inherited_type = "bytes32" if state.inherited_signature_failure else "uint256"
+    inherited_value = "uint256(value)" if state.inherited_signature_failure else "value"
+    error_type = "bytes32" if state.error_signature_failure else "uint256"
+    dependency_source = (
+        PREAMBLE
+        + "struct Payload { uint256 value; uint256 salt; }\n"
+        + "library PayloadLib {\n"
+        + "    function score(Payload memory self) internal pure returns (uint256) {\n"
+        + f"        return self.value * 3 + self.salt + {state.library_body};\n"
+        + "    }\n"
+        + "}\n"
+        + f"error SharedError({error_type} value);\n"
+        + "contract Base {\n"
+        + f"    {storage_members}\n"
+        + "    modifier adjusted(uint256 value) {\n"
+        + f"        require(value < {state.modifier_limit});\n"
+        + "        _;\n"
+        + "    }\n"
+        + f"    function inherited({inherited_type} value) public pure returns (uint256) {{\n"
+        + f"        return {inherited_value} + {state.inherited_body};\n"
+        + "    }\n"
+        + "}\n"
+    )
+    consumer_source = (
+        PREAMBLE
+        + 'import {Base, Payload, PayloadLib, SharedError} from "Dependency.sol";\n'
+        + "using PayloadLib for Payload;\n"
+        + "contract Consumer is Base {\n"
+        + "    function run(uint256 value) external pure adjusted(value) returns (uint256) {\n"
+        + "        if (value == 0) revert SharedError(value);\n"
+        + "        return inherited(value) + Payload(value, 5).score();\n"
+        + "    }\n"
+        + "}\n"
+    )
     source_entries = [
         (first_name, first_source),
         (reexport_name, reexport_source),
@@ -242,6 +300,8 @@ def request_for_state(state: ProjectState) -> dict[str, Any]:
         ("Aliases.sol", PREAMBLE + alias_import),
         ("Recursive.sol", PREAMBLE + RECURSIVE_SHAPES[state.recursive_shape] + "\n"),
         ("Main.sol", main_source),
+        ("Dependency.sol", dependency_source),
+        ("Consumer.sol", consumer_source),
     ]
     if state.reverse_source_order:
         source_entries.reverse()
@@ -484,7 +544,26 @@ def seed_histories() -> tuple[list[dict[str, Any]], ...]:
     recursive_history.append(request_for_state(recursive))
     recursive.recursive_shape = 1
     recursive_history.append(request_for_state(recursive))
-    return reexport_history, alias_history, recursive_history
+
+    dependencies = ProjectState()
+    dependency_history = [request_for_state(dependencies)]
+    dependencies.inherited_body = 9
+    dependency_history.append(request_for_state(dependencies))
+    dependencies.library_body = 11
+    dependency_history.append(request_for_state(dependencies))
+    dependencies.modifier_limit = 32
+    dependency_history.append(request_for_state(dependencies))
+    dependencies.wide_base_storage = True
+    dependency_history.append(request_for_state(dependencies))
+    dependencies.inherited_signature_failure = True
+    dependency_history.append(request_for_state(dependencies))
+    dependencies.inherited_signature_failure = False
+    dependency_history.append(request_for_state(dependencies))
+    dependencies.error_signature_failure = True
+    dependency_history.append(request_for_state(dependencies))
+    dependencies.error_signature_failure = False
+    dependency_history.append(request_for_state(dependencies))
+    return reexport_history, alias_history, recursive_history, dependency_history
 
 
 def encode_request(request: dict[str, Any]) -> bytes:

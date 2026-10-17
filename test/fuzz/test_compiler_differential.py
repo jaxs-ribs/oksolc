@@ -41,6 +41,9 @@ class GeneratorTests(unittest.TestCase):
             recursive_shape=4,
             alternate_source_names=True,
             reverse_source_order=True,
+            wide_base_storage=True,
+            inherited_signature_failure=True,
+            error_signature_failure=True,
         )
         request = differential.request_for_state(state)
         sources = request["sources"]
@@ -50,14 +53,24 @@ class GeneratorTests(unittest.TestCase):
         self.assertIn('import "RenamedB.sol"', sources["Cycle.sol"]["content"])
         self.assertIn("authorized as rejected", sources["Aliases.sol"]["content"])
         self.assertIn("struct B { B parent; }", sources["Recursive.sol"]["content"])
+        self.assertIn("uint256 internal left", sources["Dependency.sol"]["content"])
+        self.assertIn("function inherited(bytes32", sources["Dependency.sol"]["content"])
+        self.assertIn("error SharedError(bytes32", sources["Dependency.sol"]["content"])
 
     def test_seed_histories_cover_edits_rejection_and_recovery(self):
-        reexports, aliases, recursive = differential.seed_histories()
+        reexports, aliases, recursive, dependencies = differential.seed_histories()
         self.assertEqual(len(reexports), 5)
         self.assertIn("bytes32", reexports[-2]["sources"]["A.sol"]["content"])
         self.assertNotIn("bytes32", reexports[-1]["sources"]["A.sol"]["content"])
         self.assertIn("authorized as rejected", aliases[-1]["sources"]["Aliases.sol"]["content"])
         self.assertIn("struct B { B parent; }", recursive[-2]["sources"]["Recursive.sol"]["content"])
+        self.assertEqual(len(dependencies), 9)
+        self.assertIn("return value + 9", dependencies[1]["sources"]["Dependency.sol"]["content"])
+        self.assertIn("uint256 internal left", dependencies[4]["sources"]["Dependency.sol"]["content"])
+        self.assertIn("function inherited(bytes32", dependencies[5]["sources"]["Dependency.sol"]["content"])
+        self.assertNotIn("function inherited(bytes32", dependencies[6]["sources"]["Dependency.sol"]["content"])
+        self.assertIn("error SharedError(bytes32", dependencies[7]["sources"]["Dependency.sol"]["content"])
+        self.assertNotIn("error SharedError(bytes32", dependencies[8]["sources"]["Dependency.sol"]["content"])
 
     def test_semantic_oracle_derives_expected_result_from_sources(self):
         state = differential.ProjectState(first_body=9, imported_alias_swap=True)
