@@ -274,7 +274,7 @@ test "literal conversion diagnostics retain reasons" {
     try std.testing.expect(std.mem.find(
         u8,
         output.bytes,
-        "Explicit type conversion not allowed from \"literal_string \\\"root\\\"\" to \"bytes1\". Literal is larger than the type.",
+        "Explicit type conversion not allowed from \\\"literal_string \\\"root\\\"\\\" to \\\"bytes1\\\". Literal is larger than the type.",
     ) != null);
     try std.testing.expect(std.mem.find(
         u8,
@@ -284,7 +284,7 @@ test "literal conversion diagnostics retain reasons" {
     try std.testing.expect(std.mem.find(
         u8,
         output.bytes,
-        "Explicit type conversion not allowed from \"literal_string hex\\\"ff\\\"\" to \"string memory\". Contains invalid UTF-8 sequence at position 0.",
+        "Explicit type conversion not allowed from \\\"literal_string hex\\\"ff\\\"\\\" to \\\"string memory\\\". Contains invalid UTF-8 sequence at position 0.",
     ) != null);
 }
 
