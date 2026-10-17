@@ -71,11 +71,11 @@ pub const DeclarationTypeChecker = struct {
         var active = std.AutoHashMap(*const AST.Node, void).init(self.allocator);
         defer active.deinit();
         for (self.structs_to_validate.items) |structure| {
-            if (try self.hasDirectStructCycle(structure, &active, 0))
+            if (try self.directStructCycle(structure, &active, 0)) |cycle|
                 try self.reporter.fatal(
                     errorId(2046),
                     .TypeError,
-                    structure.location,
+                    cycle.location,
                     null,
                     "Recursive struct definition.",
                 );
@@ -207,12 +207,12 @@ pub const DeclarationTypeChecker = struct {
             self.recursive_struct_seen = false;
     }
 
-    fn hasDirectStructCycle(
+    fn directStructCycle(
         self: *DeclarationTypeChecker,
         structure: *const AST.Node,
         active: *std.AutoHashMap(*const AST.Node, void),
         depth: usize,
-    ) CheckError!bool {
+    ) CheckError!?*const AST.Node {
         if (depth >= 256)
             try self.reporter.fatal(
                 errorId(5651),
@@ -221,7 +221,7 @@ pub const DeclarationTypeChecker = struct {
                 null,
                 "Struct definition exhausts cyclic dependency validator.",
             );
-        if (active.contains(structure)) return true;
+        if (active.contains(structure)) return structure;
         try active.put(structure, {});
         defer _ = active.remove(structure);
 
@@ -235,14 +235,14 @@ pub const DeclarationTypeChecker = struct {
                 if (array.isDynamicallySized()) break;
                 member_type = array.base_type;
             }
-            if (member_type.category() == .Struct and
-                try self.hasDirectStructCycle(
+            if (member_type.category() == .Struct)
+                if (try self.directStructCycle(
                     member_type.payload.Struct.declaration,
                     active,
                     depth + 1,
-                )) return true;
+                )) |cycle| return cycle;
         }
-        return false;
+        return null;
     }
 
     fn endUserDefinedValueType(
