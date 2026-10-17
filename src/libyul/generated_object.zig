@@ -198,7 +198,7 @@ test "Yul AST generated object rendering retains bytes beyond input owners" {
         const expected = try allocator.print("{s}{s}\n", .{ if (selection.ethdebug) "/// ethdebug: enabled\n" else "", body });
         defer allocator.free(expected);
         for ([_]bool{ false, true }) |fail_output|
-            try std.testing.checkAllAllocationFailures(allocator, Fixture.check, .{ dialect, selection, expected, fail_output });
+            try std.testing.checkAllAllocationFailures(std.heap.page_allocator, Fixture.check, .{ dialect, selection, expected, fail_output });
         const rendered = try reference.render(allocator, selection, provider.provider());
         defer allocator.free(rendered);
         try std.testing.expectEqualStrings(expected, rendered);
