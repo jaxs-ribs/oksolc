@@ -208,11 +208,11 @@ pub const DeclarationTypeChecker = struct {
         if (annotation.recursive.?) {
             var active = std.AutoHashMap(*const AST.Node, void).init(self.allocator);
             defer active.deinit();
-            if (try self.directStructCycle(node, &active, 0, true)) |cycle|
+            if ((try self.directStructCycle(node, &active, 0, true)) != null)
                 try self.reporter.fatal(
                     errorId(2046),
                     .TypeError,
-                    cycle.location,
+                    node.location,
                     null,
                     "Recursive struct definition.",
                 );
