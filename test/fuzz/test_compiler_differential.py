@@ -300,11 +300,11 @@ class GeneratorTests(unittest.TestCase):
         }
         clean = {"sources": {"C.sol": {"id": 0}}}
 
-        def run_compiler(executable, _request, _timeout, candidate=False):
+        def run_compiler_response(executable, _request, _timeout, candidate=False):
             if executable == reference:
-                return internal_error
+                return json.dumps(internal_error).encode(), internal_error
             self.assertTrue(candidate)
-            return clean
+            return json.dumps(clean).encode(), clean
 
         class CandidateService:
             def __init__(self, *_args):
@@ -318,7 +318,11 @@ class GeneratorTests(unittest.TestCase):
 
         self.assertTrue(differential.has_internal_compiler_error(internal_error))
         with (
-            mock.patch.object(differential, "run_compiler", run_compiler),
+            mock.patch.object(
+                differential,
+                "run_compiler_response",
+                run_compiler_response,
+            ),
             mock.patch.object(differential, "CandidateService", CandidateService),
         ):
             self.assertIsNone(
@@ -329,6 +333,98 @@ class GeneratorTests(unittest.TestCase):
                     1,
                 )
             )
+
+    def test_serialized_response_differences_are_failures(self):
+        output = {"sources": {"C.sol": {"id": 0}}}
+        expected_raw = b'{"sources":{"C.sol":{"id":0}}}'
+        candidate_raw = b'{ "sources": {"C.sol": {"id": 0}} }'
+
+        class CandidateService:
+            def __init__(self, *_args):
+                pass
+
+            def compile(self, _request):
+                return candidate_raw
+
+            def close(self):
+                pass
+
+        with (
+            mock.patch.object(
+                differential,
+                "run_compiler_response",
+                return_value=(expected_raw, output),
+            ),
+            mock.patch.object(differential, "CandidateService", CandidateService),
+        ):
+            failure = differential.evaluate_history(
+                Path("/candidate"),
+                Path("/reference"),
+                [{"language": "Solidity"}],
+                1,
+            )
+        self.assertIsNotNone(failure)
+        self.assertEqual(failure.kind, "output-mismatch")
+        self.assertEqual(failure.path, ("<serialization>",))
+
+    def test_reference_ir_text_remains_excluded_from_raw_comparison(self):
+        expected = {"contracts": {"C.sol": {"C": {"abi": [], "ir": "reference"}}}}
+        candidate = {"contracts": {"C.sol": {"C": {"abi": [], "ir": "candidate"}}}}
+        expected_raw = json.dumps(expected).encode()
+        candidate_raw = json.dumps(candidate).encode()
+        request = {
+            "language": "Solidity",
+            "settings": {"outputSelection": {"*": {"*": ["abi", "ir"]}}},
+        }
+
+        class CandidateService:
+            def __init__(self, *_args):
+                pass
+
+            def compile(self, _request):
+                return candidate_raw
+
+            def close(self):
+                pass
+
+        with (
+            mock.patch.object(
+                differential,
+                "run_compiler_response",
+                return_value=(expected_raw, expected),
+            ),
+            mock.patch.object(differential, "CandidateService", CandidateService),
+        ):
+            self.assertIsNone(
+                differential.evaluate_history(
+                    Path("/candidate"),
+                    Path("/reference"),
+                    [request],
+                    1,
+                )
+            )
+        self.assertEqual(
+            differential.response_mismatch_path(
+                request,
+                "clean",
+                expected_raw,
+                expected,
+                candidate_raw,
+                candidate,
+            ),
+            ("contracts", "C.sol", "C", "ir"),
+        )
+        self.assertEqual(
+            differential.response_mismatch_path(
+                request,
+                "reference",
+                expected_raw,
+                expected,
+                json.dumps(candidate, separators=(",", ":")).encode(),
+                candidate,
+            ),
+            ("<serialization>",),
+        )
 
     def test_campaign_signatures_bucket_the_divergent_diagnostic(self):
         def diagnostic(code):

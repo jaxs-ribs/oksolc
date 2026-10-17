@@ -672,6 +672,15 @@ def without_ir_text(value: Any) -> Any:
     return value
 
 
+IR_TEXT_VALUE = re.compile(
+    rb'("(?:ir|irOptimized)"[ \t\r\n]*:[ \t\r\n]*)"(?:[^"\\]|\\.)*"'
+)
+
+
+def without_raw_ir_text(value: bytes) -> bytes:
+    return IR_TEXT_VALUE.sub(lambda match: match.group(1) + b'""', value)
+
+
 def audit_reference_corpus(
     candidate: Path,
     reference: Path,
@@ -684,20 +693,31 @@ def audit_reference_corpus(
         if name in REFERENCE_CORPUS_EXCLUSIONS:
             skipped += 1
             continue
-        reference_output = run_compiler(reference, request, timeout)
-        candidate_output = run_compiler(candidate, request, timeout, candidate=True)
+        reference_raw, reference_output = run_compiler_response(
+            reference,
+            request,
+            timeout,
+        )
+        candidate_raw, candidate_output = run_compiler_response(
+            candidate,
+            request,
+            timeout,
+            candidate=True,
+        )
         checked += 1
         if has_internal_compiler_error(reference_output):
             skipped += 1
             continue
-        comparable_reference = reference_output
-        comparable_candidate = candidate_output
-        if requests_ir_text(request):
-            comparable_reference = without_ir_text(reference_output)
-            comparable_candidate = without_ir_text(candidate_output)
-        if comparable_candidate == comparable_reference:
+        path = response_mismatch_path(
+            request,
+            "reference",
+            reference_raw,
+            reference_output,
+            candidate_raw,
+            candidate_output,
+        )
+        if path is None:
             continue
-        path = first_difference(comparable_reference, comparable_candidate)
         return checked, skipped, (
             name,
             request,
@@ -1249,12 +1269,12 @@ def has_internal_compiler_error(output: dict[str, Any]) -> bool:
     )
 
 
-def run_compiler(
+def run_compiler_response(
     executable: Path,
     request: dict[str, Any],
     timeout: float,
     candidate: bool = False,
-) -> dict[str, Any]:
+) -> tuple[bytes, dict[str, Any]]:
     command = [str(executable), "--standard-json"]
     if candidate:
         command.append("--no-cache")
@@ -1270,7 +1290,7 @@ def run_compiler(
             f"{' '.join(command)} exited {result.returncode}: "
             + result.stderr.decode(errors="replace")
         )
-    return parse_output(str(executable), result.stdout)
+    return result.stdout, parse_output(str(executable), result.stdout)
 
 
 def first_difference(left: Any, right: Any, path: tuple[str, ...] = ()) -> tuple[str, ...]:
@@ -1293,6 +1313,26 @@ def first_difference(left: Any, right: Any, path: tuple[str, ...] = ()) -> tuple
                 return difference
         return ()
     return () if left == right else path
+
+
+def response_mismatch_path(
+    request: dict[str, Any],
+    oracle: str,
+    expected_raw: bytes,
+    expected_output: dict[str, Any],
+    candidate_raw: bytes,
+    candidate_output: dict[str, Any],
+) -> tuple[str, ...] | None:
+    if candidate_raw == expected_raw:
+        return None
+    comparable_expected = expected_output
+    comparable_candidate = candidate_output
+    if oracle == "reference" and requests_ir_text(request):
+        if without_raw_ir_text(candidate_raw) == without_raw_ir_text(expected_raw):
+            return None
+        comparable_expected = without_ir_text(expected_output)
+        comparable_candidate = without_ir_text(candidate_output)
+    return first_difference(comparable_expected, comparable_candidate) or ("<serialization>",)
 
 
 def semantic_case(
@@ -1428,7 +1468,7 @@ def evaluate_history(
         try:
             for revision, request in enumerate(history):
                 revision_oracle = oracle
-                expected_output = run_compiler(
+                expected_raw, expected_output = run_compiler_response(
                     reference if oracle == "reference" else candidate,
                     request,
                     timeout,
@@ -1438,7 +1478,7 @@ def evaluate_history(
                     oracle == "reference"
                     and has_internal_compiler_error(expected_output)
                 ):
-                    expected_output = run_compiler(
+                    expected_raw, expected_output = run_compiler_response(
                         candidate,
                         request,
                         timeout,
@@ -1468,8 +1508,15 @@ def evaluate_history(
                         session_mode=session_mode,
                         oracle=revision_oracle,
                     )
-                if candidate_output != expected_output:
-                    path = first_difference(expected_output, candidate_output)
+                path = response_mismatch_path(
+                    request,
+                    revision_oracle,
+                    expected_raw,
+                    expected_output,
+                    candidate_raw,
+                    candidate_output,
+                )
+                if path is not None:
                     failure = Failure(
                         "output-mismatch",
                         revision,
@@ -1489,7 +1536,7 @@ def evaluate_history(
                         failure.candidate_fresh = expected_output
                     elif classify:
                         try:
-                            failure.candidate_fresh = run_compiler(
+                            fresh_raw, failure.candidate_fresh = run_compiler_response(
                                 candidate,
                                 request,
                                 timeout,
@@ -1497,7 +1544,14 @@ def evaluate_history(
                             )
                             failure.detail = (
                                 "incremental output differs; clean oksolc matches solc"
-                                if failure.candidate_fresh == expected_output
+                                if response_mismatch_path(
+                                    request,
+                                    "reference",
+                                    expected_raw,
+                                    expected_output,
+                                    fresh_raw,
+                                    failure.candidate_fresh,
+                                ) is None
                                 else "clean and incremental oksolc differ from solc"
                             )
                         except (RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
