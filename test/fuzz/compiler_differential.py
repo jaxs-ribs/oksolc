@@ -714,6 +714,71 @@ def seed_histories() -> tuple[list[dict[str, Any]], ...]:
         diagnostic_request("new uint256[](2)", 2),
         diagnostic_request("[uint256(9)]", 0),
     ]
+
+    def resolution_request(first_missing: bool, second_missing: bool) -> dict[str, Any]:
+        first_body = "missingFirst();" if first_missing else ""
+        second_body = "missingSecond();" if second_missing else ""
+        return {
+            "language": "Solidity",
+            "sources": {
+                "Resolution.sol": {
+                    "content": PREAMBLE
+                    + f"contract First {{ function f() external {{ {first_body} }} }}\n"
+                    + f"contract Second {{ function f() external {{ {second_body} }} }}\n"
+                }
+            },
+            "settings": {"outputSelection": {"*": {"*": ["abi"]}}},
+        }
+
+    resolution_history = [
+        resolution_request(False, False),
+        resolution_request(True, True),
+        resolution_request(False, True),
+        resolution_request(False, False),
+    ]
+
+    def push_request(base_type: str, value: int) -> dict[str, Any]:
+        return {
+            "language": "Solidity",
+            "sources": {
+                "Push.sol": {
+                    "content": PREAMBLE
+                    + f"contract Push {{ {base_type}[] values; "
+                    + f"function f() external {{ values.push({value}); }} }}\n"
+                }
+            },
+            "settings": {"outputSelection": {"*": {"*": ["abi"]}}},
+        }
+
+    push_history = [
+        push_request("uint8", 1),
+        push_request("uint8", 256),
+        push_request("uint256", 256),
+    ]
+
+    def yul_ast_request(literal: str) -> dict[str, Any]:
+        return {
+            "language": "Solidity",
+            "sources": {
+                "Assembly.sol": {
+                    "content": "contract C { function f() public { assembly { "
+                    + f"mstore({literal}, 1)"
+                    + " } } }"
+                }
+            },
+            "settings": {
+                "stopAfter": "parsing",
+                "outputSelection": {"Assembly.sol": {"": ["ast"]}},
+            },
+        }
+
+    yul_ast_history = [
+        yul_ast_request("32"),
+        yul_ast_request(
+            "115792089237316195423570985008687907853269984665640564039457584007913129639936"
+        ),
+        yul_ast_request("64"),
+    ]
     return (
         reexport_history,
         alias_history,
@@ -722,6 +787,9 @@ def seed_histories() -> tuple[list[dict[str, Any]], ...]:
         hierarchy_history,
         backend_history,
         diagnostic_history,
+        resolution_history,
+        push_history,
+        yul_ast_history,
     )
 
 

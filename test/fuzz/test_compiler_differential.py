@@ -69,6 +69,9 @@ class GeneratorTests(unittest.TestCase):
             hierarchy,
             backend,
             diagnostics,
+            resolution,
+            push,
+            yul_ast,
         ) = differential.seed_histories()
         self.assertEqual(len(reexports), 5)
         self.assertIn("bytes32", reexports[-2]["sources"]["A.sol"]["content"])
@@ -89,6 +92,15 @@ class GeneratorTests(unittest.TestCase):
         self.assertFalse(backend[1]["settings"]["optimizer"]["enabled"])
         self.assertIn("new uint256[](2)", diagnostics[1]["sources"]["Diagnostics.sol"]["content"])
         self.assertIn("values[2]", diagnostics[1]["sources"]["Diagnostics.sol"]["content"])
+        self.assertIn("missingFirst();", resolution[1]["sources"]["Resolution.sol"]["content"])
+        self.assertNotIn("missingFirst();", resolution[2]["sources"]["Resolution.sol"]["content"])
+        self.assertIn("missingSecond();", resolution[2]["sources"]["Resolution.sol"]["content"])
+        self.assertIn("uint8[]", push[1]["sources"]["Push.sol"]["content"])
+        self.assertIn("push(256)", push[1]["sources"]["Push.sol"]["content"])
+        self.assertIn(
+            "115792089237316195423570985008687907853269984665640564039457584007913129639936",
+            yul_ast[1]["sources"]["Assembly.sol"]["content"],
+        )
 
     def test_semantic_oracle_derives_expected_result_from_sources(self):
         state = differential.ProjectState(first_body=9, imported_alias_swap=True)
