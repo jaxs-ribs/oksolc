@@ -323,8 +323,8 @@ pub const CodeTransform = struct {
             return error.InvalidStackState;
         _ = try self.unused_stack_slots.insert(self.allocator, @intCast(height));
         if (!self.context.variable_stack_heights.remove(variable)) return error.InvalidStackState;
-        if (!self.context.variable_references.remove(variable)) return error.InvalidReferenceState;
-        if (!self.variables_scheduled_for_deletion.remove(variable)) return error.InvalidReferenceState;
+        _ = self.context.variable_references.remove(variable);
+        _ = self.variables_scheduled_for_deletion.remove(variable);
     }
 
     fn visitVariableDeclaration(self: *CodeTransform, declaration: *const AST.VariableDeclaration) !void {
@@ -1089,6 +1089,62 @@ test "classic transform emits the expected stack program for a local value" {
         &.{ 0x60, 0x02, 0x60, 0x01, 0x01, 0x80, 0x50, 0x50 },
         object.bytecode.items,
     );
+}
+
+test "classic transform removes unused parameter" {
+    const Parser = @import("../../asm_parser.zig").Parser;
+    const AsmAnalysis = @import("../../asm_analysis.zig");
+    const Diagnostics = @import("../../../liblangutil/diagnostics.zig");
+    const Assembly = @import("../../../libevmasm/assembly.zig").Assembly;
+    const Adapter = @import("eth_assembly_adapter.zig").EthAssemblyAdapter;
+    const EVMVersion = @import("../../../liblangutil/evm_version.zig").EVMVersion;
+    const allocator = std.testing.allocator;
+    var dialect = try EVMDialect.init(allocator, EVMVersion.init(.Homestead), false);
+    defer dialect.deinit();
+    var reporter = Diagnostics.ErrorReporter.init(allocator);
+    defer reporter.deinit();
+    var ast = (try Parser.parseSource(
+        allocator,
+        "{ let selector := f(1) switch selector case 0 {} function f(value) -> newValue {} }",
+        "unused-parameter.yul",
+        &reporter,
+        dialect.dialect(),
+        .{},
+    )).?;
+    defer ast.deinit();
+    var info = AsmAnalysisInfo.init(allocator);
+    defer info.deinit();
+    var analyzer = AsmAnalysis.AsmAnalyzer.init(
+        allocator,
+        &info,
+        &reporter,
+        dialect.dialect(),
+        .{},
+        .{},
+        AsmAnalysis.instructionValidatorForEVMDialect(&dialect),
+    );
+    defer analyzer.deinit();
+    try std.testing.expect(try analyzer.analyze(ast.root()));
+    var assembly = try Assembly.init(allocator, EVMVersion.init(.Homestead), false, "codegen");
+    defer assembly.deinit();
+    var adapter = Adapter.init(allocator, &assembly);
+    defer adapter.deinit();
+    var builtin_context = BuiltinContext.init(allocator);
+    defer builtin_context.deinit();
+    var transform = try CodeTransform.init(
+        allocator,
+        adapter.abstractAssembly(),
+        &info,
+        ast.root(),
+        &dialect,
+        &builtin_context,
+        true,
+        .{},
+        .never,
+    );
+    defer transform.deinit();
+    try transform.apply(ast.root());
+    try std.testing.expectEqual(@as(usize, 0), transform.stackErrors().len);
 }
 
 test "stack diagnostic classic recovery owns messages across assembly failures" {
