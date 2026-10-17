@@ -5332,37 +5332,8 @@ pub const TypeChecker = struct {
         self: *TypeChecker,
         declaration: *AST.Node,
     ) CheckError!*const Types.Type {
-        const function = declaration.payload.function_definition;
-        const parameters = try self.parameterTypesAndNames(function.callable.parameters);
-        defer self.allocator.free(parameters.types);
-        defer self.allocator.free(parameters.names);
-        if (parameters.types.len == 0) return error.InvalidAst;
-        const returns = if (function.callable.return_parameters) |return_parameters|
-            try self.parameterTypesAndNames(return_parameters)
-        else
-            ParameterTypesAndNames{ .types = &.{}, .names = &.{} };
-        defer if (function.callable.return_parameters != null) {
-            self.allocator.free(returns.types);
-            self.allocator.free(returns.names);
-        };
-        const scope = ASTImplementation.scope(declaration);
-        const library_function = scope != null and
-            scope.?.nodeKind() == .contract_definition and
-            scope.?.payload.contract_definition.contract_kind == .Library;
-        const visibility = ASTImplementation.effectiveVisibility(declaration) orelse
-            return error.InvalidAst;
-        return self.type_provider.function(
-            parameters.types,
-            returns.types,
-            parameters.names,
-            returns.names,
-            if (library_function and (visibility == .Public or visibility == .External))
-                .DelegateCall
-            else
-                .Internal,
-            function.state_mutability,
-            declaration,
-            .{ .has_bound_first_argument = true },
+        return self.type_provider.withBoundFirstArgument(
+            try TypeBehavior.functionTypeWhenAttached(self.type_provider, declaration),
         );
     }
 

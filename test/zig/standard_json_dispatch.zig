@@ -96,6 +96,43 @@ test "storage-only attached members retain their diagnostic" {
     try std.testing.expectEqualStrings("4994", diagnostics[0].object.get("errorCode").?.string);
 }
 
+test "externally callable library calldata receivers attach to memory values" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\library L {
+        \\    function publicCall(bytes calldata self) public pure returns (uint256) { return self.length; }
+        \\    function externalCall(bytes calldata self) external pure returns (uint256) { return self.length; }
+        \\}
+        \\contract C {
+        \\    using L for bytes;
+        \\    function f(bytes memory value) external pure returns (uint256, uint256) {
+        \\        return (value.publicCall(), value.externalCall());
+        \\    }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    try std.testing.expect(parsed.value.object.get("contracts") != null);
+    if (parsed.value.object.get("errors")) |errors|
+        for (errors.array.items) |diagnostic|
+            try std.testing.expect(!std.mem.eql(
+                u8,
+                diagnostic.object.get("severity").?.string,
+                "error",
+            ));
+}
+
 test "super lookup ignores unimplemented base declarations" {
     const allocator = std.testing.allocator;
     const source =
