@@ -288,6 +288,40 @@ test "literal conversion diagnostics retain reasons" {
     ) != null);
 }
 
+test "fixed-point conversion diagnostics retain reasons" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\contract C {
+        \\    fixed128x18 value;
+        \\    fixed128x10 converted = value;
+        \\    function f(fixed128x18 input) internal pure returns (fixed128x10) {
+        \\        return input;
+        \\    }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Type fixed128x18 is not implicitly convertible to expected type fixed128x10. Too many fractional digits.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Return argument type fixed128x18 is not implicitly convertible to expected type (type of first return variable) fixed128x10. Too many fractional digits.",
+    ) != null);
+}
+
 test "fixed-array bounds diagnostics stop after earlier errors" {
     const allocator = std.testing.allocator;
     const source =

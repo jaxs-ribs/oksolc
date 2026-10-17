@@ -5981,6 +5981,10 @@ fn implicitConversionReasonAlloc(
             }
         }
     }
+    if (actual.asFixedPoint()) |source|
+        if (expected.asFixedPoint()) |target|
+            if (target.fractional_digits < source.fractional_digits)
+                return try allocator.dupe(u8, "Too many fractional digits.");
     const source = actual.asFunction() orelse return null;
     const target = expected.asFunction() orelse return null;
     if (source.options.has_bound_first_argument != target.options.has_bound_first_argument)
