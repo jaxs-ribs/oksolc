@@ -4208,6 +4208,7 @@ pub const TypeChecker = struct {
         const owner_type = owner_annotation.type_ref orelse return error.InvalidAst;
         const annotation = try memberAccessAnnotation(self.tree, node);
         var resolved: ?ResolvedMember = null;
+        var unmatched_contract_member: ?ResolvedMember = null;
 
         switch (owner_type.payload) {
             .Struct => |structure| {
@@ -4253,12 +4254,26 @@ pub const TypeChecker = struct {
                 value.expression,
                 value.member_name,
             ),
-            .Contract => |contract_type| resolved = try self.resolveContractMember(
-                node,
-                @constCast(contract_type.declaration),
-                false,
-                true,
-            ),
+            .Contract => |contract_type| {
+                resolved = try self.resolveContractMember(
+                    node,
+                    @constCast(contract_type.declaration),
+                    false,
+                    true,
+                );
+                if (resolved) |member|
+                    if (annotation.expression.arguments) |*arguments|
+                        if (member.type_ref.asFunction() != null and
+                            !functionTypeCanTakeArguments(
+                                member.type_ref,
+                                arguments,
+                                null,
+                            ))
+                        {
+                            unmatched_contract_member = member;
+                            resolved = null;
+                        };
+            },
             .TypeType => |type_type| resolved = try self.resolveTypeMember(
                 node,
                 type_type.actual_type,
@@ -4282,6 +4297,7 @@ pub const TypeChecker = struct {
                 annotation.expression.arguments,
                 (try owner_annotation.is_pure.get()).*,
             );
+        if (resolved == null) resolved = unmatched_contract_member;
         if (resolved == null) {
             if (owner_type.category() == .Contract and
                 (std.mem.eql(u8, value.member_name, "balance") or

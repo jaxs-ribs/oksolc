@@ -91,6 +91,47 @@ test "single members retain argument diagnostics" {
     try std.testing.expect(found_arity);
 }
 
+test "matching attached members override unmatched contract members" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\interface Target {
+        \\    function invoke(uint256 left, uint256 right) external returns (uint256);
+        \\}
+        \\library L {
+        \\    function invoke(Target self, uint256 value) internal pure returns (uint256) {
+        \\        return uint160(address(self)) + value;
+        \\    }
+        \\}
+        \\contract C {
+        \\    using L for Target;
+        \\    function f(Target target, uint256 value) external pure returns (uint256) {
+        \\        return target.invoke(value);
+        \\    }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    try std.testing.expect(parsed.value.object.get("contracts") != null);
+    if (parsed.value.object.get("errors")) |errors|
+        for (errors.array.items) |diagnostic|
+            try std.testing.expect(!std.mem.eql(
+                u8,
+                diagnostic.object.get("severity").?.string,
+                "error",
+            ));
+}
+
 test "single library type members retain argument diagnostics" {
     const allocator = std.testing.allocator;
     const source =
