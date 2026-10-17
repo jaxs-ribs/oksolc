@@ -4406,8 +4406,23 @@ pub const TypeChecker = struct {
                     self.current_contract orelse self.current_source_unit,
                 );
                 defer storage_members.deinit();
+                var available_members = try TypeBehavior.membersAlloc(
+                    self.type_provider,
+                    self.allocator,
+                    owner_type,
+                    self.current_contract orelse self.current_source_unit,
+                );
+                defer available_members.deinit();
                 for (storage_members.items) |storage_member|
                     if (std.mem.eql(u8, storage_member.name, value.member_name)) {
+                        const available_at_original_location = for (available_members.items) |available_member| {
+                            if (std.mem.eql(
+                                u8,
+                                available_member.name,
+                                value.member_name,
+                            )) break true;
+                        } else false;
+                        if (available_at_original_location) continue;
                         const owner_name = try TypeBehavior.humanReadableNameAlloc(
                             self.allocator,
                             owner_type,
