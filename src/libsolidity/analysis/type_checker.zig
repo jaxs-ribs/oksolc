@@ -4760,6 +4760,7 @@ pub const TypeChecker = struct {
             }
         }
         if (member_annotation.expression.arguments) |*arguments| {
+            const unfiltered_count = candidates.items.len;
             var write_index: usize = 0;
             for (candidates.items) |candidate| {
                 const type_ref = try self.contractMemberType(candidate, external);
@@ -4768,7 +4769,11 @@ pub const TypeChecker = struct {
                     write_index += 1;
                 }
             }
-            candidates.shrinkRetainingCapacity(write_index);
+            // Preserve one declaration for call validation to diagnose its
+            // argument count or conversion. An unmatched overload set still
+            // follows the missing-member path.
+            if (write_index != 0 or unfiltered_count != 1)
+                candidates.shrinkRetainingCapacity(write_index);
         }
         if (candidates.items.len == 0) return null;
         if (candidates.items.len != 1) {

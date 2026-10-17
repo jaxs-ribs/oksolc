@@ -10,6 +10,51 @@ const standard_json = solidity.standard_json;
 const Profiler = solidity.libsolutil.profiler.Profiler;
 const ObjectOptimizer = solidity.libyul.object_optimizer.ObjectOptimizer;
 
+test "single contract members retain argument diagnostics" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\interface Target {
+        \\    function array(uint256[] calldata values) external;
+        \\    function scalar(uint256 value) external;
+        \\}
+        \\contract C {
+        \\    function conversion(Target target, uint256[3] memory values) external {
+        \\        target.array(values);
+        \\    }
+        \\    function arity(Target target) external {
+        \\        target.scalar();
+        \\    }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{
+            .viaIR = true,
+            .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } },
+        },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    var found_conversion = false;
+    var found_arity = false;
+    for (diagnostics) |diagnostic| {
+        const code = diagnostic.object.get("errorCode") orelse continue;
+        if (code != .string) continue;
+        found_conversion = found_conversion or std.mem.eql(u8, code.string, "9553");
+        found_arity = found_arity or std.mem.eql(u8, code.string, "6160");
+    }
+    try std.testing.expect(found_conversion);
+    try std.testing.expect(found_arity);
+}
+
 test "optimizer cache semantic edits preserve full solc output through diamonds and cycles" {
     inline for (.{ "diamond", "cycle" }) |shape| {
         var session = solidity.CompilerSession.init(std.testing.allocator);
