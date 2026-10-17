@@ -4357,11 +4357,11 @@ pub const TypeChecker = struct {
                     owner_type,
                     true,
                 );
-                var storage_members = try TypeBehavior.nativeMembersAlloc(
+                var storage_members = try TypeBehavior.membersAlloc(
                     self.type_provider,
                     self.allocator,
                     storage_type,
-                    self.current_contract,
+                    self.current_contract orelse self.current_source_unit,
                 );
                 defer storage_members.deinit();
                 for (storage_members.items) |storage_member|
