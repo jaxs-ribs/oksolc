@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import posixpath
 import queue
 import random
 import re
@@ -50,6 +51,54 @@ ACTIONS = (
     "extra_source",
     "optimizer_runs",
     "projection",
+)
+IMPORT_PATTERN = re.compile(r"\bimport\b[^;]*?[\"']([^\"']+)[\"'][^;]*;", re.DOTALL)
+REFERENCE_CORPUS_EXCLUSIONS = {
+    "legacy-smoke.json": "legacy code generation is outside the via-IR compatibility target",
+    "solidity-named-events-errors-bytecode.json": "intentional HACK-28 named-argument correction",
+    "solidity-require-named-errors-bytecode.json": "intentional HACK-28 named-argument correction",
+}
+BOUNDARY_NUMBERS = (
+    "0",
+    "1",
+    "2",
+    "7",
+    "31",
+    "32",
+    "255",
+    "256",
+    "2147483647",
+    "2147483648",
+    "4294967295",
+    "18446744073709551616",
+    "57896044618658097711785492504343953926634992332820282019728792003956564819968",
+    "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+    "115792089237316195423570985008687907853269984665640564039457584007913129639936",
+)
+EVM_VERSIONS = (
+    "homestead",
+    "byzantium",
+    "constantinople",
+    "istanbul",
+    "berlin",
+    "london",
+    "paris",
+    "shanghai",
+    "cancun",
+    "prague",
+    "osaka",
+)
+SOURCE_MUTATIONS = (
+    (re.compile(r"(?<![A-Za-z0-9_.$])(?:0x[0-9A-Fa-f]+|[0-9](?:_?[0-9])*)(?![A-Za-z0-9_.$])"), BOUNDARY_NUMBERS),
+    (re.compile(r"\b(?:true|false)\b"), ("true", "false")),
+    (
+        re.compile(r"\buint(?:8|16|32|64|128|160|192|224|256)?\b"),
+        ("uint8", "uint32", "uint64", "uint128", "uint160", "uint256"),
+    ),
+    (re.compile(r"\b(?:external|public|internal|private)\b"), ("external", "public", "internal", "private")),
+    (re.compile(r"\b(?:pure|view)\b"), ("pure", "view")),
+    (re.compile(r"\[\]|\[[123]\]"), ("[]", "[1]", "[2]", "[3]")),
+    (re.compile(r"==|!="), ("==", "!=")),
 )
 
 
@@ -92,12 +141,33 @@ class Failure:
     candidate: Any = None
     candidate_fresh: Any = None
     session_mode: str = "memory"
+    oracle: str = "reference"
+
+    def diagnostic_signature(self) -> tuple[str | None, str | None]:
+        def first_error_code(output: Any) -> str | None:
+            if not isinstance(output, dict) or not isinstance(output.get("errors"), list):
+                return None
+            for diagnostic in output["errors"]:
+                if (
+                    isinstance(diagnostic, dict)
+                    and diagnostic.get("severity") == "error"
+                ):
+                    code = diagnostic.get("errorCode")
+                    return str(code) if code is not None else "<uncoded>"
+            return None
+
+        return first_error_code(self.reference), first_error_code(self.candidate)
 
     def compatible(self, other: Failure) -> bool:
         return (
             self.kind == other.kind
             and self.path[:2] == other.path[:2]
             and self.session_mode == other.session_mode
+            and self.oracle == other.oracle
+            and (
+                self.path[:1] != ("errors",)
+                or self.diagnostic_signature() == other.diagnostic_signature()
+            )
         )
 
 
@@ -203,6 +273,187 @@ def generate_history(rng: random.Random, max_revisions: int) -> list[dict[str, A
     for _ in range(rng.randint(1, max_revisions - 1)):
         state.mutate(rng)
         history.append(request_for_state(state))
+    return history
+
+
+def load_corpus_requests(directory: Path) -> list[tuple[str, dict[str, Any]]]:
+    requests: list[tuple[str, dict[str, Any]]] = []
+    for path in sorted(directory.glob("*.json")):
+        try:
+            request = json.loads(path.read_text())
+        except json.JSONDecodeError as error:
+            raise RuntimeError(f"invalid transition corpus JSON {path}: {error}") from error
+        if not isinstance(request, dict):
+            continue
+        sources = request.get("sources")
+        if request.get("language") not in ("Solidity", "Yul") or not isinstance(sources, dict):
+            continue
+        if not all(
+            isinstance(source, dict) and isinstance(source.get("content"), str)
+            for source in sources.values()
+        ):
+            continue
+        normalized_names = {posixpath.normpath(name) for name in sources}
+        self_contained = True
+        for source_name, source in sources.items():
+            for match in IMPORT_PATTERN.finditer(source["content"]):
+                imported = match.group(1)
+                resolved = posixpath.normpath(
+                    posixpath.join(posixpath.dirname(source_name), imported)
+                )
+                if posixpath.normpath(imported) not in normalized_names and resolved not in normalized_names:
+                    self_contained = False
+                    break
+            if not self_contained:
+                break
+        if not self_contained:
+            continue
+        requests.append((path.name, request))
+    if not requests:
+        raise RuntimeError(f"transition corpus contains no inline compiler requests: {directory}")
+    return requests
+
+
+def requests_ir_text(request: dict[str, Any]) -> bool:
+    output_selection = request.get("settings", {}).get("outputSelection", {})
+
+    def contains_ir(value: Any) -> bool:
+        if isinstance(value, list):
+            return "ir" in value or "irOptimized" in value
+        if isinstance(value, dict):
+            return any(contains_ir(child) for child in value.values())
+        return False
+
+    return contains_ir(output_selection)
+
+
+def without_ir_text(value: Any) -> Any:
+    if isinstance(value, list):
+        return [without_ir_text(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: without_ir_text(child)
+            for key, child in value.items()
+            if key not in ("ir", "irOptimized")
+        }
+    return value
+
+
+def audit_reference_corpus(
+    candidate: Path,
+    reference: Path,
+    entries: Sequence[tuple[str, dict[str, Any]]],
+    timeout: float,
+) -> tuple[int, int, tuple[str, dict[str, Any], Failure] | None]:
+    checked = 0
+    skipped = 0
+    for name, request in entries:
+        if name in REFERENCE_CORPUS_EXCLUSIONS:
+            skipped += 1
+            continue
+        reference_output = run_compiler(reference, request, timeout)
+        candidate_output = run_compiler(candidate, request, timeout, candidate=True)
+        checked += 1
+        comparable_reference = reference_output
+        comparable_candidate = candidate_output
+        if requests_ir_text(request):
+            comparable_reference = without_ir_text(reference_output)
+            comparable_candidate = without_ir_text(candidate_output)
+        if comparable_candidate == comparable_reference:
+            continue
+        path = first_difference(comparable_reference, comparable_candidate)
+        return checked, skipped, (
+            name,
+            request,
+            Failure(
+                "output-mismatch",
+                0,
+                path,
+                f"clean oksolc differs from solc 0.8.36 for corpus case {name}",
+                reference_output,
+                candidate_output,
+                candidate_output,
+                oracle="reference",
+            ),
+        )
+    return checked, skipped, None
+
+
+def corpus_transition_histories(
+    directory: Path,
+    rng: random.Random,
+    max_revisions: int,
+) -> list[list[dict[str, Any]]]:
+    requests = [request for _, request in load_corpus_requests(directory)]
+
+    rng.shuffle(requests)
+    histories: list[list[dict[str, Any]]] = []
+    batch_size = max_revisions - 1
+    for start in range(0, len(requests), batch_size):
+        batch = requests[start : start + batch_size]
+        history = deepcopy(batch)
+        restored = deepcopy(batch[0])
+        restored = {key: restored[key] for key in reversed(restored)}
+        history.append(restored)
+        histories.append(history)
+    return histories
+
+
+def mutate_corpus_request(
+    request: dict[str, Any],
+    rng: random.Random,
+) -> dict[str, Any]:
+    result = deepcopy(request)
+    sources = result["sources"]
+    first_action = rng.randrange(len(SOURCE_MUTATIONS) + 2)
+    if first_action >= len(SOURCE_MUTATIONS):
+        settings = result.setdefault("settings", {})
+        if first_action == len(SOURCE_MUTATIONS):
+            optimizer = settings.setdefault("optimizer", {})
+            optimizer["enabled"] = True
+            optimizer["runs"] = rng.choice(OPTIMIZER_RUNS)
+        else:
+            settings["evmVersion"] = rng.choice(EVM_VERSIONS)
+        return result
+
+    for offset in range(len(SOURCE_MUTATIONS)):
+        action = (first_action + offset) % len(SOURCE_MUTATIONS)
+        pattern, replacements = SOURCE_MUTATIONS[action]
+        matches = [
+            (source, match)
+            for source in sources.values()
+            for match in pattern.finditer(source["content"])
+        ]
+        if not matches:
+            continue
+        source, match = rng.choice(matches)
+        choices = [value for value in replacements if value != match.group(0)]
+        if not choices:
+            continue
+        replacement = rng.choice(choices)
+        content = source["content"]
+        source["content"] = content[: match.start()] + replacement + content[match.end() :]
+        return result
+    return result
+
+
+def generate_corpus_mutation_history(
+    entries: Sequence[tuple[str, dict[str, Any]]],
+    rng: random.Random,
+    max_revisions: int,
+) -> list[dict[str, Any]]:
+    eligible = [
+        request
+        for name, request in entries
+        if name not in REFERENCE_CORPUS_EXCLUSIONS and not requests_ir_text(request)
+    ]
+    if not eligible:
+        raise RuntimeError("transition corpus contains no reference-compatible requests")
+    current = deepcopy(rng.choice(eligible))
+    history = [current]
+    for _ in range(rng.randint(1, max_revisions - 1)):
+        current = mutate_corpus_request(current, rng)
+        history.append(current)
     return history
 
 
@@ -589,14 +840,22 @@ def evaluate_history(
     classify: bool = False,
     evm: Path | None = None,
     session_mode: str = "memory",
+    oracle: str = "reference",
 ) -> Failure | None:
+    if oracle not in ("reference", "clean"):
+        raise ValueError(f"unknown comparison oracle: {oracle}")
     with tempfile.TemporaryDirectory(prefix="oksolc-differential-") as temporary:
         directory = Path(temporary).resolve()
         (directory / ".git").mkdir()
         service = CandidateService(candidate, timeout, directory, session_mode)
         try:
             for revision, request in enumerate(history):
-                reference_output = run_compiler(reference, request, timeout)
+                expected_output = run_compiler(
+                    reference if oracle == "reference" else candidate,
+                    request,
+                    timeout,
+                    candidate=oracle == "clean",
+                )
                 try:
                     candidate_raw = service.compile(request)
                     candidate_output = parse_output("stateful oksolc", candidate_raw)
@@ -606,8 +865,9 @@ def evaluate_history(
                         revision,
                         (),
                         str(error),
-                        reference_output,
+                        expected_output,
                         session_mode=session_mode,
+                        oracle=oracle,
                     )
                 except (RuntimeError, ValueError) as error:
                     return Failure(
@@ -615,21 +875,26 @@ def evaluate_history(
                         revision,
                         (),
                         str(error),
-                        reference_output,
+                        expected_output,
                         session_mode=session_mode,
+                        oracle=oracle,
                     )
-                if candidate_output != reference_output:
-                    path = first_difference(reference_output, candidate_output)
+                if candidate_output != expected_output:
+                    path = first_difference(expected_output, candidate_output)
                     failure = Failure(
                         "output-mismatch",
                         revision,
                         path,
-                        "stateful output differs from solc 0.8.36",
-                        reference_output,
+                        "stateful output differs from "
+                        + ("solc 0.8.36" if oracle == "reference" else "clean oksolc"),
+                        expected_output,
                         candidate_output,
                         session_mode=session_mode,
+                        oracle=oracle,
                     )
-                    if classify:
+                    if oracle == "clean":
+                        failure.candidate_fresh = expected_output
+                    elif classify:
                         try:
                             failure.candidate_fresh = run_compiler(
                                 candidate,
@@ -639,7 +904,7 @@ def evaluate_history(
                             )
                             failure.detail = (
                                 "incremental output differs; clean oksolc matches solc"
-                                if failure.candidate_fresh == reference_output
+                                if failure.candidate_fresh == expected_output
                                 else "clean and incremental oksolc differ from solc"
                             )
                         except (RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
@@ -660,9 +925,10 @@ def evaluate_history(
                             revision,
                             ("execution", signature),
                             detail,
-                            reference_output,
+                            expected_output,
                             candidate_output,
                             session_mode=session_mode,
+                            oracle=oracle,
                         )
                 if session_mode == "restart" and revision + 1 != len(history):
                     service.close()
@@ -734,6 +1000,7 @@ def reduce_history(
     timeout: float,
     evm: Path | None = None,
     session_mode: str = "memory",
+    oracle: str = "reference",
 ) -> tuple[list[dict[str, Any]], int]:
     evaluations = 0
 
@@ -747,6 +1014,7 @@ def reduce_history(
             timeout,
             evm=evm,
             session_mode=session_mode,
+            oracle=oracle,
         )
         return failure is not None and original.compatible(failure)
 
@@ -838,6 +1106,11 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--seed", type=parse_seed, default=0x6A09E667F3BCC909)
     parser.add_argument("--timeout", type=float, default=40.0)
     parser.add_argument("--artifacts", type=Path, default=Path("build/fuzz-differential"))
+    parser.add_argument(
+        "--corpus",
+        type=Path,
+        help="directory of Standard JSON requests used for cross-project transitions",
+    )
     parser.add_argument("--replay", type=Path)
     parser.add_argument("--no-reduce", action="store_true")
     return parser.parse_args()
@@ -863,7 +1136,9 @@ def main() -> int:
     if options.replay is not None:
         bundle = json.loads(options.replay.read_text())
         history = bundle["history"]
-        replay_mode = bundle.get("failure", {}).get("session_mode", options.session_mode)
+        bundled_failure = bundle.get("failure") or {}
+        replay_mode = bundled_failure.get("session_mode", options.session_mode)
+        replay_oracle = bundled_failure.get("oracle", "reference")
         if replay_mode == "all":
             replay_mode = "memory"
         failure = evaluate_history(
@@ -874,6 +1149,7 @@ def main() -> int:
             classify=True,
             evm=evm,
             session_mode=replay_mode,
+            oracle=replay_oracle,
         )
         if failure is None:
             print(f"reproducer no longer fails: {options.replay}")
@@ -885,17 +1161,63 @@ def main() -> int:
         return 1
 
     rng = random.Random(options.seed)
-    seeds = seed_histories()
+    campaign_histories = [(history, "reference") for history in seed_histories()]
+    corpus_history_count = 0
+    corpus_audit_checked = 0
+    corpus_audit_skipped = 0
+    corpus_entries: list[tuple[str, dict[str, Any]]] = []
+    if options.corpus is not None:
+        corpus_entries = load_corpus_requests(options.corpus)
+        corpus_audit_checked, corpus_audit_skipped, audit_failure = audit_reference_corpus(
+            candidate,
+            reference,
+            corpus_entries,
+            options.timeout,
+        )
+        if audit_failure is not None:
+            name, request, failure = audit_failure
+            path = options.artifacts / f"corpus-audit-{Path(name).stem}.json"
+            write_bundle(
+                path,
+                [request],
+                failure,
+                candidate_version,
+                reference_version,
+                options.seed,
+                -1,
+                execution_oracle_version=execution_oracle_version,
+            )
+            print(
+                f"found {failure.kind} in corpus case {name}; saved {path}",
+                file=sys.stderr,
+            )
+            return 1
+        corpus_histories = corpus_transition_histories(
+            options.corpus,
+            rng,
+            options.max_revisions,
+        )
+        corpus_history_count = len(corpus_histories)
+        campaign_histories.extend((history, "clean") for history in corpus_histories)
     session_modes = (
         ("memory", "persistent", "restart")
         if options.session_mode == "all"
         else (options.session_mode,)
     )
     for iteration in range(options.iterations):
-        history = (
-            seeds[iteration]
-            if iteration < len(seeds)
-            else generate_history(rng, options.max_revisions)
+        history, oracle = (
+            campaign_histories[iteration]
+            if iteration < len(campaign_histories)
+            else (
+                generate_corpus_mutation_history(
+                    corpus_entries,
+                    rng,
+                    options.max_revisions,
+                )
+                if corpus_entries and rng.randrange(2) == 0
+                else generate_history(rng, options.max_revisions),
+                "reference",
+            )
         )
         failure = None
         for session_mode in session_modes:
@@ -907,6 +1229,7 @@ def main() -> int:
                 classify=True,
                 evm=evm,
                 session_mode=session_mode,
+                oracle=oracle,
             )
             if failure is not None:
                 break
@@ -935,6 +1258,7 @@ def main() -> int:
                 options.timeout,
                 evm,
                 failure.session_mode,
+                failure.oracle,
             )
         minimized_failure = evaluate_history(
             candidate,
@@ -944,6 +1268,7 @@ def main() -> int:
             classify=True,
             evm=evm,
             session_mode=failure.session_mode,
+            oracle=failure.oracle,
         )
         if minimized_failure is None:
             raise RuntimeError("reducer lost the original failure")
@@ -967,7 +1292,10 @@ def main() -> int:
         return 1
     print(
         f"stateful differential fuzzing passed: {options.iterations} histories, "
-        f"seed {options.seed:#x}, up to {options.max_revisions} revisions"
+        f"seed {options.seed:#x}, up to {options.max_revisions} revisions, "
+        f"{corpus_history_count} transition-corpus histories, "
+        f"{corpus_audit_checked} corpus reference checks, "
+        f"{corpus_audit_skipped} reviewed exclusions"
     )
     return 0
 

@@ -1555,6 +1555,8 @@ fn addDifferentialFuzz(
     command.addArgs(&.{ "--max-revisions", b.fmt("{d}", .{max_revisions}) });
     command.addArgs(&.{ "--artifacts", artifacts });
     command.addArgs(&.{ "--session-mode", session_mode });
+    command.addArg("--corpus");
+    command.addDirectoryArg2(b.path("test/zig/standard-json"), .{});
     if (evm) |executable|
         command.addArgs(&.{ "--evm", executable });
     command.has_side_effects = true;

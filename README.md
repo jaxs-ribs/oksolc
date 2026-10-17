@@ -397,7 +397,17 @@ zig build fuzz-incremental -Doptimize=ReleaseSafe --fuzz=250 -j2
 
 The slower external campaign additionally compares each revision with a pinned
 `solc 0.8.36`. It starts with histories covering reexports, imported `using`
-aliases, and recursive structs, then generates further feature combinations.
+aliases, and recursive structs. It then sequences the reviewed Standard JSON
+fixture corpus through retained sessions before generating further feature
+combinations. The corpus transitions cover unrelated projects, languages,
+settings, valid outputs, and diagnostic-only responses, returning to an earlier
+project with a differently encoded request to bypass the exact-response cache.
+Reference-compatible fixtures are also checked directly against `solc`, then
+mutated at numeric boundaries and across types, visibility, mutability, array
+shapes, optimizer settings, and EVM versions. Textual IR spelling, the
+unsupported legacy pipeline, and intentional corrections to upstream solc bugs
+are explicit exclusions from byte-exact reference comparison; they remain in
+the clean-versus-retained transition campaign.
 On failure it saves both the original history and a reduced reproducer under
 `build/fuzz-differential`:
 

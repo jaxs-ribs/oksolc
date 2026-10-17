@@ -3,9 +3,11 @@
 # Copyright (C) 2026 OKcontract Pte. Ltd.
 
 import importlib.util
+import json
 from pathlib import Path
 import random
 import sys
+import tempfile
 import unittest
 
 
@@ -68,6 +70,105 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(authorized[2], int(authorized[1] != 7))
         rejected = by_signature["isRejected(uint256)"]
         self.assertEqual(rejected[2], int(rejected[1] == 7))
+
+    def test_transition_corpus_is_shuffled_batched_and_restored(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            requests = []
+            for index in range(5):
+                request = {
+                    "language": "Solidity",
+                    "sources": {f"{index}.sol": {"content": f"contract C{index} {{}}"}},
+                }
+                requests.append(request)
+                (root / f"{index}.json").write_text(json.dumps(request))
+            (root / "corpus.json").write_text(json.dumps({"schema": 1}))
+            (root / "external.json").write_text(
+                json.dumps(
+                    {
+                        "language": "Solidity",
+                        "sources": {
+                            "External.sol": {
+                                "content": 'import "Missing.sol"; contract External {}'
+                            }
+                        },
+                    }
+                )
+            )
+
+            histories = differential.corpus_transition_histories(
+                root,
+                random.Random(7),
+                3,
+            )
+            self.assertEqual([len(history) for history in histories], [3, 3, 2])
+            flattened = [request for history in histories for request in history[:-1]]
+            self.assertCountEqual(flattened, requests)
+            for history in histories:
+                self.assertEqual(history[0], history[-1])
+                self.assertNotEqual(
+                    differential.encode_request(history[0]),
+                    differential.encode_request(history[-1]),
+                )
+
+    def test_reference_audit_normalizes_ir_and_tracks_oracle_identity(self):
+        request = {
+            "settings": {"outputSelection": {"*": {"*": ["abi", "ir"]}}}
+        }
+        self.assertTrue(differential.requests_ir_text(request))
+        self.assertFalse(differential.requests_ir_text({"settings": {}}))
+        self.assertEqual(
+            differential.without_ir_text(
+                {
+                    "contracts": {
+                        "C": {"ir": "pretty", "irOptimized": "compact", "abi": []}
+                    }
+                }
+            ),
+            {"contracts": {"C": {"abi": []}}},
+        )
+        reference = differential.Failure("output-mismatch", 0, (), "", oracle="reference")
+        clean = differential.Failure("output-mismatch", 0, (), "", oracle="clean")
+        self.assertFalse(reference.compatible(clean))
+
+        def diagnostic(code):
+            return {"errors": [{"severity": "error", "errorCode": code}]}
+
+        conversion = differential.Failure(
+            "output-mismatch",
+            0,
+            ("errors", "<length>"),
+            "",
+            diagnostic("9553"),
+            diagnostic("9582"),
+        )
+        unrelated = differential.Failure(
+            "output-mismatch",
+            0,
+            ("errors", "<length>"),
+            "",
+            diagnostic("6160"),
+            diagnostic("9582"),
+        )
+        self.assertFalse(conversion.compatible(unrelated))
+
+    def test_corpus_mutations_are_deterministic_and_leave_seed_immutable(self):
+        request = {
+            "language": "Solidity",
+            "sources": {
+                "C.sol": {
+                    "content": "contract C { function f(uint256 x) external pure returns (bool) { return x == 7; } }"
+                }
+            },
+            "settings": {"optimizer": {"enabled": True, "runs": 200}},
+        }
+        entries = [("case.json", request)]
+        first = differential.generate_corpus_mutation_history(entries, random.Random(17), 6)
+        second = differential.generate_corpus_mutation_history(entries, random.Random(17), 6)
+        self.assertEqual(first, second)
+        self.assertGreaterEqual(len(first), 2)
+        self.assertEqual(request["sources"]["C.sol"]["content"].count("uint256"), 1)
+        self.assertTrue(any(revision != first[0] for revision in first[1:]))
 
 
 class ReducerTests(unittest.TestCase):
