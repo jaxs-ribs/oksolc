@@ -405,6 +405,7 @@ test "function specializer moves literals and preserves dynamic storage across a
             try std.testing.expect(std.mem.find(u8, rendered, "0x01") != null);
         }
     };
-    try std.testing.checkAllAllocationFailures(allocator, Check.run, .{ &source, false });
-    try std.testing.checkAllAllocationFailures(allocator, Check.run, .{ &source, true });
+    var deterministic = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{ &source, false });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{ &source, true });
 }
