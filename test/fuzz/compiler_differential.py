@@ -195,14 +195,62 @@ class Failure:
 
         return error_codes(self.reference), error_codes(self.candidate)
 
+    def campaign_diagnostic_signature(self) -> tuple[Any, ...]:
+        def diagnostics(output: Any) -> list[Any]:
+            if not isinstance(output, dict) or not isinstance(output.get("errors"), list):
+                return []
+            return output["errors"]
+
+        def identity(diagnostic: Any) -> str:
+            if not isinstance(diagnostic, dict):
+                return f"<invalid>:{diagnostic!r}"
+            code = diagnostic.get("errorCode")
+            if code is not None:
+                return str(code)
+            return f"{diagnostic.get('type', '<uncoded>')}:{diagnostic.get('message', '')}"
+
+        reference = diagnostics(self.reference)
+        candidate = diagnostics(self.candidate)
+        if len(self.path) > 1 and self.path[1].isdigit():
+            index = int(self.path[1])
+            reference_item = identity(reference[index]) if index < len(reference) else "<missing>"
+            candidate_item = identity(candidate[index]) if index < len(candidate) else "<missing>"
+            return self.path[-1], reference_item, candidate_item
+
+        def error_identities(values: list[Any]) -> list[str]:
+            return [
+                identity(value)
+                for value in values
+                if isinstance(value, dict) and value.get("severity") == "error"
+            ]
+
+        reference_errors = error_identities(reference)
+        candidate_errors = error_identities(candidate)
+        for index in range(max(len(reference_errors), len(candidate_errors))):
+            reference_item = (
+                reference_errors[index] if index < len(reference_errors) else "<missing>"
+            )
+            candidate_item = (
+                candidate_errors[index] if index < len(candidate_errors) else "<missing>"
+            )
+            if reference_item != candidate_item:
+                return reference_item, candidate_item
+        return ()
+
     def campaign_signature(self) -> tuple[Any, ...]:
-        path = self.path[:2] if self.path[:1] == ("errors",) else self.path[:5]
+        path = (
+            ("errors", self.path[-1])
+            if self.path[:1] == ("errors",)
+            else self.path[:5]
+        )
         return (
             self.kind,
             path,
             self.session_mode,
             self.oracle,
-            self.diagnostic_signature(),
+            self.campaign_diagnostic_signature()
+            if self.path[:1] == ("errors",)
+            else self.diagnostic_signature(),
         )
 
     def compatible(self, other: Failure) -> bool:

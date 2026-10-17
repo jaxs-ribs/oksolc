@@ -227,6 +227,70 @@ class GeneratorTests(unittest.TestCase):
             second_uncoded.campaign_signature(),
         )
 
+    def test_campaign_signatures_bucket_the_divergent_diagnostic(self):
+        def diagnostic(code):
+            return {"severity": "error", "errorCode": code}
+
+        first = differential.Failure(
+            "output-mismatch",
+            0,
+            ("errors", "0", "formattedMessage"),
+            "",
+            {"errors": [diagnostic("6359")]},
+            {"errors": [diagnostic("6359")]},
+        )
+        later = differential.Failure(
+            "output-mismatch",
+            0,
+            ("errors", "2", "formattedMessage"),
+            "",
+            {"errors": [diagnostic("9098"), diagnostic("4822"), diagnostic("6359")]},
+            {"errors": [diagnostic("9098"), diagnostic("4822"), diagnostic("6359")]},
+        )
+        other = differential.Failure(
+            "output-mismatch",
+            0,
+            ("errors", "0", "formattedMessage"),
+            "",
+            {"errors": [diagnostic("5992")]},
+            {"errors": [diagnostic("5992")]},
+        )
+        self.assertEqual(first.campaign_signature(), later.campaign_signature())
+        self.assertNotEqual(first.campaign_signature(), other.campaign_signature())
+
+        missing_7576 = differential.Failure(
+            "output-mismatch",
+            0,
+            ("errors", "<length>"),
+            "",
+            {"errors": [diagnostic("7576")]},
+            {"errors": [diagnostic("7576"), diagnostic("7576")]},
+        )
+        missing_9582 = differential.Failure(
+            "output-mismatch",
+            0,
+            ("errors", "<length>"),
+            "",
+            {"errors": [diagnostic("9582")]},
+            {"errors": [diagnostic("9553")]},
+        )
+        missing_9582_with_cascade = differential.Failure(
+            "output-mismatch",
+            0,
+            ("errors", "<length>"),
+            "",
+            {"errors": [diagnostic("9582")]},
+            {"errors": [diagnostic("9553"), diagnostic("7407")]},
+        )
+        self.assertEqual(
+            missing_9582.campaign_signature(),
+            missing_9582_with_cascade.campaign_signature(),
+        )
+        self.assertNotEqual(
+            missing_7576.campaign_signature(),
+            missing_9582.campaign_signature(),
+        )
+
     def test_corpus_mutations_are_deterministic_and_leave_seed_immutable(self):
         request = {
             "language": "Solidity",
