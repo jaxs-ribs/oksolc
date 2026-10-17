@@ -3084,10 +3084,26 @@ pub const TypeChecker = struct {
                 defer self.allocator.free(message);
                 try self.reporter.typeError(errorId(5030), node.location, message);
             } else {
-                const message = try self.allocator.print(
-                    "Explicit type conversion not allowed from \"{s}\" to \"{s}\".",
-                    .{ argument_name, result_name },
-                );
+                const reason = if (argument_type.category() == .StringLiteral)
+                    try implicitConversionReasonAlloc(
+                        self.allocator,
+                        argument_type,
+                        result_type,
+                        result_name,
+                    )
+                else
+                    null;
+                defer if (reason) |detail| self.allocator.free(detail);
+                const message = if (reason) |detail|
+                    try self.allocator.print(
+                        "Explicit type conversion not allowed from \"{s}\" to \"{s}\". {s}",
+                        .{ argument_name, result_name, detail },
+                    )
+                else
+                    try self.allocator.print(
+                        "Explicit type conversion not allowed from \"{s}\" to \"{s}\".",
+                        .{ argument_name, result_name },
+                    );
                 defer self.allocator.free(message);
                 try self.reporter.typeError(errorId(9640), node.location, message);
             }
