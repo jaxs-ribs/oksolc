@@ -2216,6 +2216,17 @@ test "Solidity inline assembly embeds the exact parsed Yul AST" {
     try std.testing.expectEqual(solidity.execution.Backend.zig, output.execution.backend);
 }
 
+test "oversized parsed Yul literals return the upstream internal diagnostic" {
+    const input =
+        \\{"language":"Solidity","settings":{"outputSelection":{"C.sol":{"":["ast"]}},"stopAfter":"parsing"},"sources":{"C.sol":{"content":"contract C { function f() public { assembly { pop(115792089237316195423570985008687907853269984665640564039457584007913129639936) } } }"}}}
+    ;
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(std.testing.allocator, .{ .input = input });
+    defer output.deinit();
+
+    try standard_json.compareExact(libsolc.responses.yul_ast_assertion, output.bytes);
+}
+
 test "Solidity inline assembly parser diagnostics match solc exactly" {
     var dispatcher: libsolc.Dispatcher = .{};
     var output = try dispatcher.compiler().compile(std.testing.allocator, .{
