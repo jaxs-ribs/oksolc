@@ -132,6 +132,36 @@ test "matching attached members override unmatched contract members" {
             ));
 }
 
+test "native and attached mismatches do not retain either candidate" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\interface Target { function f(address value) external; }
+        \\library L {
+        \\    function f(Target self, uint32 value) internal pure { self; value; }
+        \\}
+        \\contract C {
+        \\    using L for Target;
+        \\    function g(Target target) external pure { target.f(); }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+    try std.testing.expectEqualStrings("9582", diagnostics[0].object.get("errorCode").?.string);
+}
+
 test "single library type members retain argument diagnostics" {
     const allocator = std.testing.allocator;
     const source =

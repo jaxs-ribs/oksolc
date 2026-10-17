@@ -4209,6 +4209,8 @@ pub const TypeChecker = struct {
         const annotation = try memberAccessAnnotation(self.tree, node);
         var resolved: ?ResolvedMember = null;
         var unmatched_contract_member: ?ResolvedMember = null;
+        var native_member_count: usize = 0;
+        var attached_member_count: usize = 0;
 
         switch (owner_type.payload) {
             .Struct => |structure| {
@@ -4260,6 +4262,7 @@ pub const TypeChecker = struct {
                     @constCast(contract_type.declaration),
                     false,
                     true,
+                    &native_member_count,
                 );
                 if (resolved) |member|
                     if (annotation.expression.arguments) |*arguments|
@@ -4296,8 +4299,11 @@ pub const TypeChecker = struct {
                 value.member_name,
                 annotation.expression.arguments,
                 (try owner_annotation.is_pure.get()).*,
+                native_member_count,
+                &attached_member_count,
             );
-        if (resolved == null) resolved = unmatched_contract_member;
+        if (resolved == null and native_member_count + attached_member_count == 1)
+            resolved = unmatched_contract_member;
         if (resolved == null) {
             if (owner_type.category() == .Contract and
                 (std.mem.eql(u8, value.member_name, "balance") or
@@ -4796,6 +4802,7 @@ pub const TypeChecker = struct {
         contract: *AST.Node,
         super_lookup: bool,
         external: bool,
+        candidate_count_out: ?*usize,
     ) CheckError!?ResolvedMember {
         const name = member_access.payload.member_access.member_name;
         const member_annotation = try memberAccessAnnotation(self.tree, member_access);
@@ -4843,6 +4850,7 @@ pub const TypeChecker = struct {
                 if (!duplicate) try candidates.append(self.allocator, candidate);
             }
         }
+        if (candidate_count_out) |count| count.* = candidates.items.len;
         if (member_annotation.expression.arguments) |*arguments| {
             const unfiltered_count = candidates.items.len;
             var write_index: usize = 0;
@@ -4931,6 +4939,7 @@ pub const TypeChecker = struct {
                         @constCast(contract_type.declaration),
                         true,
                         false,
+                        null,
                     );
                 const meta_type = try self.type_provider.typeType(actual_type);
                 var members = try TypeBehavior.nativeMembersAlloc(
@@ -5229,6 +5238,8 @@ pub const TypeChecker = struct {
         name: []const u8,
         arguments: ?@import("../ast/ast_enums.zig").FuncCallArguments,
         owner_pure: bool,
+        other_candidate_count: usize,
+        candidate_count_out: *usize,
     ) CheckError!?ResolvedMember {
         var directives: std.ArrayList(*AST.Node) = .empty;
         defer directives.deinit(self.allocator);
@@ -5311,8 +5322,9 @@ pub const TypeChecker = struct {
                 .type_ref = type_ref,
             });
         }
+        candidate_count_out.* = matches.items.len;
         if (arguments) |*call_arguments| {
-            const unfiltered_count = matches.items.len;
+            const total_candidate_count = other_candidate_count + matches.items.len;
             var write_index: usize = 0;
             for (matches.items) |match| {
                 if (functionTypeCanTakeArguments(
@@ -5324,7 +5336,7 @@ pub const TypeChecker = struct {
                     write_index += 1;
                 }
             }
-            if (write_index != 0 or unfiltered_count != 1)
+            if (write_index != 0 or total_candidate_count != 1)
                 matches.shrinkRetainingCapacity(write_index);
         }
         if (matches.items.len == 0) return null;
