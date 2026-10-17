@@ -355,6 +355,29 @@ test "recursive struct diagnostics prefer a complete inner cycle" {
     );
 }
 
+test "complete inner struct cycles stop enclosing array diagnostics" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\contract C { struct A { B[0] children; } struct B { B parent; } }
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+    try std.testing.expectEqualStrings("2046", diagnostics[0].object.get("errorCode").?.string);
+}
+
 test "optimizer cache semantic edits preserve full solc output through diamonds and cycles" {
     inline for (.{ "diamond", "cycle" }) |shape| {
         var session = solidity.CompilerSession.init(std.testing.allocator);

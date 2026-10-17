@@ -71,7 +71,7 @@ pub const DeclarationTypeChecker = struct {
         var active = std.AutoHashMap(*const AST.Node, void).init(self.allocator);
         defer active.deinit();
         for (self.structs_to_validate.items) |structure| {
-            if (try self.directStructCycle(structure, &active, 0)) |cycle|
+            if (try self.directStructCycle(structure, &active, 0, false)) |cycle|
                 try self.reporter.fatal(
                     errorId(2046),
                     .TypeError,
@@ -203,6 +203,21 @@ pub const DeclarationTypeChecker = struct {
         if (annotation.recursive == null) annotation.recursive = has_recursive_child;
         self.recursive_struct_seen = previous_recursive_seen or annotation.recursive.?;
 
+        // Preserve upstream's fatal point when the reachable member graph is complete.
+        // Incomplete forward references remain queued for validation in check().
+        if (annotation.recursive.?) {
+            var active = std.AutoHashMap(*const AST.Node, void).init(self.allocator);
+            defer active.deinit();
+            if (try self.directStructCycle(node, &active, 0, true)) |cycle|
+                try self.reporter.fatal(
+                    errorId(2046),
+                    .TypeError,
+                    cycle.location,
+                    null,
+                    "Recursive struct definition.",
+                );
+        }
+
         if (self.current_structs_seen.count() == 1)
             self.recursive_struct_seen = false;
     }
@@ -212,6 +227,7 @@ pub const DeclarationTypeChecker = struct {
         structure: *const AST.Node,
         active: *std.AutoHashMap(*const AST.Node, void),
         depth: usize,
+        allow_incomplete: bool,
     ) CheckError!?*const AST.Node {
         if (depth >= 256)
             try self.reporter.fatal(
@@ -229,7 +245,10 @@ pub const DeclarationTypeChecker = struct {
             var member_type = (try variableAnnotation(
                 self.tree,
                 member,
-            )).type_ref orelse return error.InvalidAst;
+            )).type_ref orelse {
+                if (allow_incomplete) continue;
+                return error.InvalidAst;
+            };
             while (member_type.category() == .Array) {
                 const array = member_type.payload.Array;
                 if (array.isDynamicallySized()) break;
@@ -240,6 +259,7 @@ pub const DeclarationTypeChecker = struct {
                     member_type.payload.Struct.declaration,
                     active,
                     depth + 1,
+                    allow_incomplete,
                 )) |cycle| return cycle;
         }
         return null;
