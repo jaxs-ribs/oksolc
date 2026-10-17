@@ -414,7 +414,8 @@ unsupported legacy pipeline, and intentional corrections to upstream solc bugs
 are explicit exclusions from byte-exact reference comparison; they remain in
 the clean-versus-retained transition campaign.
 On failure it saves both the original history and a reduced reproducer under
-`build/fuzz-differential`:
+`build/fuzz-differential`. Direct long runs can use `--max-failures` to keep
+collecting distinct failures while skipping duplicate diagnostic signatures:
 
 ```sh
 zig build fuzz-reference -Doptimize=ReleaseSafe \
@@ -422,6 +423,12 @@ zig build fuzz-reference -Doptimize=ReleaseSafe \
   -Dreference-fuzz-evm=/path/to/evmone \
   -Dreference-fuzz-session-mode=all \
   -Dreference-fuzz-runs=1000 -Dreference-fuzz-seed=1
+
+python3 test/fuzz/compiler_differential.py \
+  --candidate zig-out/bin/oksolc \
+  --reference /path/to/solc-0.8.36 \
+  --iterations 1000 --max-failures 20 --session-mode all \
+  --corpus test/zig/standard-json
 
 python3 test/fuzz/compiler_differential.py \
   --candidate zig-out/bin/oksolc \

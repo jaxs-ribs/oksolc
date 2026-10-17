@@ -180,16 +180,29 @@ class Failure:
         def error_codes(output: Any) -> tuple[str, ...]:
             if not isinstance(output, dict) or not isinstance(output.get("errors"), list):
                 return ()
-            return tuple(
-                str(diagnostic.get("errorCode", "<uncoded>"))
-                for diagnostic in output["errors"]
-                if (
-                    isinstance(diagnostic, dict)
-                    and diagnostic.get("severity") == "error"
+            signature = []
+            for diagnostic in output["errors"]:
+                if not isinstance(diagnostic, dict) or diagnostic.get("severity") != "error":
+                    continue
+                code = diagnostic.get("errorCode")
+                signature.append(
+                    str(code)
+                    if code is not None
+                    else f"{diagnostic.get('type', '<uncoded>')}:{diagnostic.get('message', '')}"
                 )
-            )
+            return tuple(signature)
 
         return error_codes(self.reference), error_codes(self.candidate)
+
+    def campaign_signature(self) -> tuple[Any, ...]:
+        path = self.path[:2] if self.path[:1] == ("errors",) else self.path[:5]
+        return (
+            self.kind,
+            path,
+            self.session_mode,
+            self.oracle,
+            self.diagnostic_signature(),
+        )
 
     def compatible(self, other: Failure) -> bool:
         return (
@@ -1229,6 +1242,12 @@ def parse_arguments() -> argparse.Namespace:
         help="candidate cache/restart mode",
     )
     parser.add_argument("--iterations", type=int, default=100)
+    parser.add_argument(
+        "--max-failures",
+        type=int,
+        default=1,
+        help="reduce this many distinct failures before stopping",
+    )
     parser.add_argument("--max-revisions", type=int, default=6)
     parser.add_argument("--seed", type=parse_seed, default=0x6A09E667F3BCC909)
     parser.add_argument("--timeout", type=float, default=40.0)
@@ -1247,6 +1266,8 @@ def main() -> int:
     options = parse_arguments()
     if options.iterations <= 0:
         raise RuntimeError("--iterations must be positive")
+    if options.max_failures <= 0:
+        raise RuntimeError("--max-failures must be positive")
     if options.max_revisions < 2:
         raise RuntimeError("--max-revisions must be at least two")
     if options.timeout <= 0:
@@ -1331,6 +1352,8 @@ def main() -> int:
         if options.session_mode == "all"
         else (options.session_mode,)
     )
+    failure_signatures: set[tuple[Any, ...]] = set()
+    duplicate_failures = 0
     for iteration in range(options.iterations):
         history, oracle = (
             campaign_histories[iteration]
@@ -1362,6 +1385,11 @@ def main() -> int:
                 break
         if failure is None:
             continue
+        signature = failure.campaign_signature()
+        if signature in failure_signatures:
+            duplicate_failures += 1
+            continue
+        failure_signatures.add(signature)
         stem = f"failure-{options.seed:016x}-{iteration:06d}"
         original_path = options.artifacts / f"{stem}-original.json"
         write_bundle(
@@ -1414,6 +1442,20 @@ def main() -> int:
         print(
             f"found {failure.kind} at iteration {iteration}, revision {failure.revision}; "
             f"saved {original_path} and {minimized_path}",
+            file=sys.stderr,
+        )
+        if len(failure_signatures) >= options.max_failures:
+            return 1
+        print(
+            f"continuing after {len(failure_signatures)} distinct failure(s); "
+            f"limit {options.max_failures}",
+            file=sys.stderr,
+        )
+    if failure_signatures:
+        print(
+            f"stateful differential fuzzing completed with "
+            f"{len(failure_signatures)} distinct failure(s) and "
+            f"{duplicate_failures} duplicate reproduction(s)",
             file=sys.stderr,
         )
         return 1

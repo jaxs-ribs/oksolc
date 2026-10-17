@@ -193,6 +193,27 @@ class GeneratorTests(unittest.TestCase):
         )
         self.assertFalse(later_member.compatible(different_later_error))
 
+        first_uncoded = differential.Failure(
+            "output-mismatch",
+            0,
+            ("contracts",),
+            "",
+            {},
+            {"errors": [{"severity": "error", "type": "YulException", "message": "first"}]},
+        )
+        second_uncoded = differential.Failure(
+            "output-mismatch",
+            0,
+            ("contracts",),
+            "",
+            {},
+            {"errors": [{"severity": "error", "type": "YulException", "message": "second"}]},
+        )
+        self.assertNotEqual(
+            first_uncoded.campaign_signature(),
+            second_uncoded.campaign_signature(),
+        )
+
     def test_corpus_mutations_are_deterministic_and_leave_seed_immutable(self):
         request = {
             "language": "Solidity",
