@@ -61,6 +61,7 @@ ACTIONS = (
     "modifier_limit",
     "wide_base_storage",
     "inherited_signature_failure",
+    "super_signature_failure",
     "error_signature_failure",
 )
 IMPORT_PATTERN = re.compile(r"\bimport\b[^;]*?[\"']([^\"']+)[\"'][^;]*;", re.DOTALL)
@@ -132,6 +133,7 @@ class ProjectState:
     modifier_limit: int = 64
     wide_base_storage: bool = False
     inherited_signature_failure: bool = False
+    super_signature_failure: bool = False
     error_signature_failure: bool = False
 
     def mutate(self, rng: random.Random) -> None:
@@ -162,20 +164,20 @@ class Failure:
     session_mode: str = "memory"
     oracle: str = "reference"
 
-    def diagnostic_signature(self) -> tuple[str | None, str | None]:
-        def first_error_code(output: Any) -> str | None:
+    def diagnostic_signature(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        def error_codes(output: Any) -> tuple[str, ...]:
             if not isinstance(output, dict) or not isinstance(output.get("errors"), list):
-                return None
-            for diagnostic in output["errors"]:
+                return ()
+            return tuple(
+                str(diagnostic.get("errorCode", "<uncoded>"))
+                for diagnostic in output["errors"]
                 if (
                     isinstance(diagnostic, dict)
                     and diagnostic.get("severity") == "error"
-                ):
-                    code = diagnostic.get("errorCode")
-                    return str(code) if code is not None else "<uncoded>"
-            return None
+                )
+            )
 
-        return first_error_code(self.reference), first_error_code(self.candidate)
+        return error_codes(self.reference), error_codes(self.candidate)
 
     def compatible(self, other: Failure) -> bool:
         return (
@@ -260,6 +262,7 @@ def request_for_state(state: ProjectState) -> dict[str, Any]:
     )
     inherited_type = "bytes32" if state.inherited_signature_failure else "uint256"
     inherited_value = "uint256(value)" if state.inherited_signature_failure else "value"
+    super_type = "uint64" if state.super_signature_failure else "uint256"
     error_type = "bytes32" if state.error_signature_failure else "uint256"
     dependency_source = (
         PREAMBLE
@@ -292,6 +295,25 @@ def request_for_state(state: ProjectState) -> dict[str, Any]:
         + "    }\n"
         + "}\n"
     )
+    hierarchy_source = (
+        PREAMBLE
+        + "contract ConcreteBase {\n"
+        + "    function dispatch(bool value) public pure virtual returns (uint256) {\n"
+        + "        return value ? 1 : 2147483648;\n"
+        + "    }\n"
+        + f"    function dispatch({super_type} value) public pure virtual returns (uint256) {{\n"
+        + "        return value + 17;\n"
+        + "    }\n"
+        + "}\n"
+        + "abstract contract AbstractBase {\n"
+        + "    function dispatch(uint256 value) public pure virtual returns (uint256);\n"
+        + "}\n"
+        + "contract SuperConsumer is ConcreteBase, AbstractBase {\n"
+        + "    function dispatch(uint256 value) public pure override(ConcreteBase, AbstractBase) returns (uint256) {\n"
+        + "        return super.dispatch(value);\n"
+        + "    }\n"
+        + "}\n"
+    )
     source_entries = [
         (first_name, first_source),
         (reexport_name, reexport_source),
@@ -302,6 +324,7 @@ def request_for_state(state: ProjectState) -> dict[str, Any]:
         ("Main.sol", main_source),
         ("Dependency.sol", dependency_source),
         ("Consumer.sol", consumer_source),
+        ("Hierarchy.sol", hierarchy_source),
     ]
     if state.reverse_source_order:
         source_entries.reverse()
@@ -563,7 +586,20 @@ def seed_histories() -> tuple[list[dict[str, Any]], ...]:
     dependency_history.append(request_for_state(dependencies))
     dependencies.error_signature_failure = False
     dependency_history.append(request_for_state(dependencies))
-    return reexport_history, alias_history, recursive_history, dependency_history
+
+    hierarchy = ProjectState()
+    hierarchy_history = [request_for_state(hierarchy)]
+    hierarchy.super_signature_failure = True
+    hierarchy_history.append(request_for_state(hierarchy))
+    hierarchy.super_signature_failure = False
+    hierarchy_history.append(request_for_state(hierarchy))
+    return (
+        reexport_history,
+        alias_history,
+        recursive_history,
+        dependency_history,
+        hierarchy_history,
+    )
 
 
 def encode_request(request: dict[str, Any]) -> bytes:

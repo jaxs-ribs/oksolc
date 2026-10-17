@@ -398,8 +398,9 @@ zig build fuzz-incremental -Doptimize=ReleaseSafe --fuzz=250 -j2
 The slower external campaign additionally compares each revision with a pinned
 `solc 0.8.36`. It starts with histories covering reexports, imported `using`
 aliases, recursive structs, inherited and library bodies, base storage packing,
-modifiers, and imported custom errors. Signature failures in those histories
-are followed by valid revisions to verify recovery. It then sequences the
+modifiers, imported custom errors, and abstract/concrete `super` dispatch.
+Signature failures in those histories are followed by valid revisions to
+verify recovery. It then sequences the
 reviewed Standard JSON fixture corpus through retained sessions before
 generating further feature combinations. The corpus transitions cover
 unrelated projects, languages, settings, valid outputs, and diagnostic-only

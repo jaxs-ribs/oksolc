@@ -43,6 +43,7 @@ class GeneratorTests(unittest.TestCase):
             reverse_source_order=True,
             wide_base_storage=True,
             inherited_signature_failure=True,
+            super_signature_failure=True,
             error_signature_failure=True,
         )
         request = differential.request_for_state(state)
@@ -56,9 +57,10 @@ class GeneratorTests(unittest.TestCase):
         self.assertIn("uint256 internal left", sources["Dependency.sol"]["content"])
         self.assertIn("function inherited(bytes32", sources["Dependency.sol"]["content"])
         self.assertIn("error SharedError(bytes32", sources["Dependency.sol"]["content"])
+        self.assertIn("function dispatch(uint64", sources["Hierarchy.sol"]["content"])
 
     def test_seed_histories_cover_edits_rejection_and_recovery(self):
-        reexports, aliases, recursive, dependencies = differential.seed_histories()
+        reexports, aliases, recursive, dependencies, hierarchy = differential.seed_histories()
         self.assertEqual(len(reexports), 5)
         self.assertIn("bytes32", reexports[-2]["sources"]["A.sol"]["content"])
         self.assertNotIn("bytes32", reexports[-1]["sources"]["A.sol"]["content"])
@@ -71,6 +73,9 @@ class GeneratorTests(unittest.TestCase):
         self.assertNotIn("function inherited(bytes32", dependencies[6]["sources"]["Dependency.sol"]["content"])
         self.assertIn("error SharedError(bytes32", dependencies[7]["sources"]["Dependency.sol"]["content"])
         self.assertNotIn("error SharedError(bytes32", dependencies[8]["sources"]["Dependency.sol"]["content"])
+        self.assertEqual(len(hierarchy), 3)
+        self.assertIn("function dispatch(uint64", hierarchy[1]["sources"]["Hierarchy.sol"]["content"])
+        self.assertIn("function dispatch(uint256", hierarchy[2]["sources"]["Hierarchy.sol"]["content"])
 
     def test_semantic_oracle_derives_expected_result_from_sources(self):
         state = differential.ProjectState(first_body=9, imported_alias_swap=True)
@@ -164,6 +169,29 @@ class GeneratorTests(unittest.TestCase):
             diagnostic("9582"),
         )
         self.assertFalse(conversion.compatible(unrelated))
+        later_member = differential.Failure(
+            "output-mismatch",
+            0,
+            ("errors", "<length>"),
+            "",
+            {"errors": [
+                {"severity": "error", "errorCode": "2353"},
+                {"severity": "error", "errorCode": "9582"},
+            ]},
+            diagnostic("2353"),
+        )
+        different_later_error = differential.Failure(
+            "output-mismatch",
+            0,
+            ("errors", "<length>"),
+            "",
+            {"errors": [
+                {"severity": "error", "errorCode": "2353"},
+                {"severity": "error", "errorCode": "6160"},
+            ]},
+            diagnostic("2353"),
+        )
+        self.assertFalse(later_member.compatible(different_later_error))
 
     def test_corpus_mutations_are_deterministic_and_leave_seed_immutable(self):
         request = {

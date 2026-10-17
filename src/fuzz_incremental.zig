@@ -50,6 +50,7 @@ const Action = enum(u8) {
     modifier_limit,
     wide_base_storage,
     inherited_signature_failure,
+    super_signature_failure,
     error_signature_failure,
 };
 
@@ -71,6 +72,7 @@ const ProjectState = struct {
     modifier_limit: u8 = 64,
     wide_base_storage: bool = false,
     inherited_signature_failure: bool = false,
+    super_signature_failure: bool = false,
     error_signature_failure: bool = false,
 
     fn apply(self: *ProjectState, action: Action, value: u8, flag: bool) void {
@@ -102,6 +104,7 @@ const ProjectState = struct {
             .modifier_limit => self.modifier_limit = 2 + value % 62,
             .wide_base_storage => self.wide_base_storage = flag,
             .inherited_signature_failure => self.inherited_signature_failure = flag,
+            .super_signature_failure => self.super_signature_failure = flag,
             .error_signature_failure => self.error_signature_failure = flag,
         }
     }
@@ -138,6 +141,10 @@ const dependency_seed = smithHistoryCorpus(&.{
     .{ .action = .error_signature_failure, .flag = true },
     .{ .action = .error_signature_failure, .flag = false },
 });
+const hierarchy_seed = smithHistoryCorpus(&.{
+    .{ .action = .super_signature_failure, .flag = true },
+    .{ .action = .super_signature_failure, .flag = false },
+});
 const overlay_edits = overlaySeedEdits();
 const overlay_seed = smithHistoryCorpus(&overlay_edits);
 
@@ -147,6 +154,7 @@ test "fuzz stateful incremental Solidity compilation" {
         &alias_seed,
         &recursive_seed,
         &dependency_seed,
+        &hierarchy_seed,
         &overlay_seed,
     } });
 }
@@ -208,6 +216,8 @@ fn requestAlloc(allocator: std.mem.Allocator, state: ProjectState) ![]u8 {
     defer allocator.free(main_source);
     const dependency_source = try dependencySourceAlloc(allocator, state);
     defer allocator.free(dependency_source);
+    const hierarchy_source = try hierarchySourceAlloc(allocator, state);
+    defer allocator.free(hierarchy_source);
 
     var arena_state = std.heap.ArenaAllocator.init(allocator);
     defer arena_state.deinit();
@@ -224,6 +234,7 @@ fn requestAlloc(allocator: std.mem.Allocator, state: ProjectState) ![]u8 {
         .{ "Main.sol", main_source },
         .{ "Dependency.sol", dependency_source },
         .{ "Consumer.sol", consumer_source },
+        .{ "Hierarchy.sol", hierarchy_source },
     };
     if (state.reverse_source_order) {
         var index = entries.len;
@@ -404,6 +415,29 @@ fn dependencySourceAlloc(allocator: std.mem.Allocator, state: ProjectState) ![]u
             inherited_value,
             state.inherited_body,
         },
+    );
+}
+
+fn hierarchySourceAlloc(allocator: std.mem.Allocator, state: ProjectState) ![]u8 {
+    return allocator.print(
+        preamble ++
+            "contract ConcreteBase {{\n" ++
+            "    function dispatch(bool value) public pure virtual returns (uint256) {{\n" ++
+            "        return value ? 1 : 2147483648;\n" ++
+            "    }}\n" ++
+            "    function dispatch({s} value) public pure virtual returns (uint256) {{\n" ++
+            "        return value + 17;\n" ++
+            "    }}\n" ++
+            "}}\n" ++
+            "abstract contract AbstractBase {{\n" ++
+            "    function dispatch(uint256 value) public pure virtual returns (uint256);\n" ++
+            "}}\n" ++
+            "contract SuperConsumer is ConcreteBase, AbstractBase {{\n" ++
+            "    function dispatch(uint256 value) public pure override(ConcreteBase, AbstractBase) returns (uint256) {{\n" ++
+            "        return super.dispatch(value);\n" ++
+            "    }}\n" ++
+            "}}\n",
+        .{if (state.super_signature_failure) "uint64" else "uint256"},
     );
 }
 
