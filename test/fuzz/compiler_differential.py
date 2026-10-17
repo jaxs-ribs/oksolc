@@ -107,10 +107,22 @@ SOURCE_MUTATIONS = (
         re.compile(r"\buint(?:8|16|32|64|128|160|192|224|256)?\b"),
         ("uint8", "uint32", "uint64", "uint128", "uint160", "uint256"),
     ),
+    (
+        re.compile(r"\bint(?:8|16|32|64|128|160|192|224|256)?\b"),
+        ("int8", "int32", "int64", "int128", "int160", "int256"),
+    ),
+    (
+        re.compile(r"\bbytes(?:1|2|4|8|16|20|24|32)?\b"),
+        ("bytes", "bytes1", "bytes4", "bytes20", "bytes32"),
+    ),
+    (re.compile(r"\baddress(?:\s+payable)?\b"), ("address", "address payable")),
     (re.compile(r"\b(?:external|public|internal|private)\b"), ("external", "public", "internal", "private")),
-    (re.compile(r"\b(?:pure|view)\b"), ("pure", "view")),
+    (re.compile(r"\b(?:pure|view|payable)\b"), ("pure", "view", "payable")),
+    (re.compile(r"\b(?:memory|calldata|storage)\b"), ("memory", "calldata", "storage")),
     (re.compile(r"\[\]|\[[123]\]"), ("[]", "[1]", "[2]", "[3]")),
-    (re.compile(r"==|!="), ("==", "!=")),
+    (re.compile(r"(?<=\s)(?:<=|>=|==|!=|<|>)(?=\s)"), ("<", "<=", ">", ">=", "==", "!=")),
+    (re.compile(r"(?<=\s)(?:&&|\|\|)(?=\s)"), ("&&", "||")),
+    (re.compile(r"(?<=\s)(?:\+|-|\*|/|%)(?=\s)"), ("+", "-", "*", "/", "%")),
 )
 
 

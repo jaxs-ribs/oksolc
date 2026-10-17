@@ -211,6 +211,15 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(request["sources"]["C.sol"]["content"].count("uint256"), 1)
         self.assertTrue(any(revision != first[0] for revision in first[1:]))
 
+    def test_source_mutations_cover_type_location_and_operator_boundaries(self):
+        source = (
+            "contract C { function f(int32 x, bytes4 data, address payable target, "
+            "uint256[] memory values) public payable returns (bool) { "
+            "return true && x + 1 <= 2 != (values.length == 0); } }"
+        )
+        for pattern, _ in differential.SOURCE_MUTATIONS:
+            self.assertIsNotNone(pattern.search(source), pattern.pattern)
+
 
 class ReducerTests(unittest.TestCase):
     def test_history_reducer_preserves_required_ordered_revisions(self):
