@@ -1,0 +1,44 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "Forward.sol": {
+      "content": "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\ncontract Forward { struct A { B[] children; } struct B { A parent; } }\n"
+    },
+    "Reverse.sol": {
+      "content": "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\ncontract Reverse { struct B { A parent; } struct A { B[] children; } }\n"
+    },
+    "Chain.sol": {
+      "content": "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\ncontract Chain { struct A { B[][2] children; } struct B { C parent; } struct C { A parent; } }\n"
+    },
+    "Mapping.sol": {
+      "content": "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\ncontract Mapping { struct A { mapping(uint256 => B) children; } struct B { A parent; } }\n"
+    },
+    "Self.sol": {
+      "content": "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\ncontract Self { struct A { A[] children; } }\n"
+    },
+    "ImportsA.sol": {
+      "content": "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\nimport {B} from \"ImportsB.sol\"; struct A { B[] children; } contract Imported { A value; }\n"
+    },
+    "ImportsB.sol": {
+      "content": "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\nimport {A} from \"ImportsA.sol\"; struct B { A parent; }\n"
+    }
+  },
+  "settings": {
+    "viaIR": true,
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "metadata": {
+      "appendCBOR": false
+    },
+    "outputSelection": {
+      "*": {
+        "*": [
+          "evm.bytecode.object",
+          "evm.deployedBytecode.object"
+        ]
+      }
+    }
+  }
+}

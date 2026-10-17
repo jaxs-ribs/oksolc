@@ -867,20 +867,34 @@ pub fn build(b: *std.Build) !void {
         "Content-Length: {d}\r\n\r\n{s}",
         .{ serve_response.len, serve_response },
     );
+    const recursive_request = @embedFile("test/zig/standard-json/solidity-recursive-structs.json");
+    const recursive_response = @embedFile("test/zig/standard-json/expected/solidity-recursive-structs.json");
+    const recursive_error_request = @embedFile("test/zig/standard-json/solidity-recursive-struct-error.json");
+    const recursive_error_response = @embedFile("test/zig/standard-json/expected/solidity-recursive-struct-error.json");
     const cli_serve_command = b.addRunArtifact(cli);
     isolateCliSmokeEnvironment(b, cli_serve_command);
     dependOnValidation(&cli_serve_command.step, cli_identity_validation);
     cli_serve_command.addArgs(&.{ "serve", "--stdio" });
+    // Legal recursion and a rejected fixed-size cycle must both leave the
+    // persistent service available for the valid requests queued after them.
     cli_serve_command.setStdIn(.{
-        .bytes = b.fmt("{s}{s}", .{ serve_request_frame, serve_request_frame }),
+        .bytes = b.fmt("Content-Length: {d}\r\n\r\n{s}Content-Length: {d}\r\n\r\n{s}{s}{s}", .{
+            recursive_request.len,       recursive_request,
+            recursive_error_request.len, recursive_error_request,
+            serve_request_frame,         serve_request_frame,
+        }),
     });
     const cli_serve_output = cli_serve_command.captureStdOut(.{
         .basename = "oksolc-serve.json",
     });
     const cli_serve_check = b.addCheckFile(cli_serve_output, .{
         .expected_exact = b.fmt(
-            "{s}{s}",
-            .{ serve_response_frame, serve_response_frame },
+            "Content-Length: {d}\r\n\r\n{s}Content-Length: {d}\r\n\r\n{s}{s}{s}",
+            .{
+                recursive_response.len,       recursive_response,
+                recursive_error_response.len, recursive_error_response,
+                serve_response_frame,         serve_response_frame,
+            },
         ),
     });
     cli_smoke_step.dependOn(&cli_serve_check.step);

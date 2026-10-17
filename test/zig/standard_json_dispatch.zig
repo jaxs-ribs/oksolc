@@ -109,6 +109,27 @@ test "incremental reexports refresh overloads and bodies through import cycles" 
     }
 }
 
+test "recursive structs validate after member annotation and preserve session recovery" {
+    var session = solidity.CompilerSession.init(std.testing.allocator);
+    defer session.deinit();
+    inline for (.{
+        "solidity-recursive-structs",
+        "solidity-recursive-struct-error",
+        "solidity-recursive-struct-nested-error",
+        "solidity-scalar-builtins-bytecode",
+    }) |name| {
+        const input = @embedFile("standard-json/" ++ name ++ ".json");
+        const expected = @embedFile("standard-json/expected/" ++ name ++ ".json");
+        var dispatcher: libsolc.Dispatcher = .{};
+        var clean = try dispatcher.compiler().compile(std.testing.allocator, .{ .input = input });
+        defer clean.deinit();
+        try standard_json.compareExact(expected, clean.bytes);
+        var actual = try session.compile(std.testing.allocator, .{ .input = input });
+        defer actual.deinit();
+        try standard_json.compareExact(expected, actual.bytes);
+    }
+}
+
 test "calldata reads and checked division preserve solc helper order and bytecode" {
     inline for (.{
         "solidity-calldata-enum-cleanup-order",
