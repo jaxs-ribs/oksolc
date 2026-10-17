@@ -687,6 +687,9 @@ def audit_reference_corpus(
         reference_output = run_compiler(reference, request, timeout)
         candidate_output = run_compiler(candidate, request, timeout, candidate=True)
         checked += 1
+        if has_internal_compiler_error(reference_output):
+            skipped += 1
+            continue
         comparable_reference = reference_output
         comparable_candidate = candidate_output
         if requests_ir_text(request):
@@ -1236,6 +1239,16 @@ def parse_output(label: str, raw: bytes) -> dict[str, Any]:
     return value
 
 
+def has_internal_compiler_error(output: dict[str, Any]) -> bool:
+    errors = output.get("errors")
+    return isinstance(errors, list) and any(
+        isinstance(diagnostic, dict)
+        and diagnostic.get("severity") == "error"
+        and diagnostic.get("type") == "InternalCompilerError"
+        for diagnostic in errors
+    )
+
+
 def run_compiler(
     executable: Path,
     request: dict[str, Any],
@@ -1414,12 +1427,24 @@ def evaluate_history(
         service = CandidateService(candidate, timeout, directory, session_mode)
         try:
             for revision, request in enumerate(history):
+                revision_oracle = oracle
                 expected_output = run_compiler(
                     reference if oracle == "reference" else candidate,
                     request,
                     timeout,
                     candidate=oracle == "clean",
                 )
+                if (
+                    oracle == "reference"
+                    and has_internal_compiler_error(expected_output)
+                ):
+                    expected_output = run_compiler(
+                        candidate,
+                        request,
+                        timeout,
+                        candidate=True,
+                    )
+                    revision_oracle = "clean"
                 try:
                     candidate_raw = service.compile(request)
                     candidate_output = parse_output("stateful oksolc", candidate_raw)
@@ -1431,7 +1456,7 @@ def evaluate_history(
                         str(error),
                         expected_output,
                         session_mode=session_mode,
-                        oracle=oracle,
+                        oracle=revision_oracle,
                     )
                 except (RuntimeError, ValueError) as error:
                     return Failure(
@@ -1441,7 +1466,7 @@ def evaluate_history(
                         str(error),
                         expected_output,
                         session_mode=session_mode,
-                        oracle=oracle,
+                        oracle=revision_oracle,
                     )
                 if candidate_output != expected_output:
                     path = first_difference(expected_output, candidate_output)
@@ -1450,13 +1475,17 @@ def evaluate_history(
                         revision,
                         path,
                         "stateful output differs from "
-                        + ("solc 0.8.36" if oracle == "reference" else "clean oksolc"),
+                        + (
+                            "solc 0.8.36"
+                            if revision_oracle == "reference"
+                            else "clean oksolc"
+                        ),
                         expected_output,
                         candidate_output,
                         session_mode=session_mode,
-                        oracle=oracle,
+                        oracle=revision_oracle,
                     )
-                    if oracle == "clean":
+                    if revision_oracle == "clean":
                         failure.candidate_fresh = expected_output
                     elif classify:
                         try:
@@ -1492,7 +1521,7 @@ def evaluate_history(
                             expected_output,
                             candidate_output,
                             session_mode=session_mode,
-                            oracle=oracle,
+                            oracle=revision_oracle,
                         )
                 if session_mode == "restart" and revision + 1 != len(history):
                     service.close()

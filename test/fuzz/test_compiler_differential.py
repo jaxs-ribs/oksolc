@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("compiler_differential.py")
@@ -284,6 +285,50 @@ class GeneratorTests(unittest.TestCase):
             first_uncoded.campaign_signature(),
             second_uncoded.campaign_signature(),
         )
+
+    def test_reference_internal_errors_fall_back_to_clean_candidate(self):
+        reference = Path("/reference")
+        candidate = Path("/candidate")
+        internal_error = {
+            "errors": [
+                {
+                    "severity": "error",
+                    "type": "InternalCompilerError",
+                    "message": "upstream failed",
+                }
+            ]
+        }
+        clean = {"sources": {"C.sol": {"id": 0}}}
+
+        def run_compiler(executable, _request, _timeout, candidate=False):
+            if executable == reference:
+                return internal_error
+            self.assertTrue(candidate)
+            return clean
+
+        class CandidateService:
+            def __init__(self, *_args):
+                pass
+
+            def compile(self, _request):
+                return json.dumps(clean).encode()
+
+            def close(self):
+                pass
+
+        self.assertTrue(differential.has_internal_compiler_error(internal_error))
+        with (
+            mock.patch.object(differential, "run_compiler", run_compiler),
+            mock.patch.object(differential, "CandidateService", CandidateService),
+        ):
+            self.assertIsNone(
+                differential.evaluate_history(
+                    candidate,
+                    reference,
+                    [{"language": "Solidity"}],
+                    1,
+                )
+            )
 
     def test_campaign_signatures_bucket_the_divergent_diagnostic(self):
         def diagnostic(code):

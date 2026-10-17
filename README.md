@@ -418,7 +418,10 @@ storage-layout overflow boundaries, conversion failures, and Homestead
 classic-stack lowering before recovering. Textual IR spelling, the
 unsupported legacy pipeline, and intentional corrections to upstream solc bugs
 are explicit exclusions from byte-exact reference comparison; they remain in
-the clean-versus-retained transition campaign.
+the clean-versus-retained transition campaign. If the reference compiler
+returns an `InternalCompilerError` for a generated revision, the campaign uses
+a clean oksolc process as that revision's oracle and continues checking retained
+state instead of treating the upstream crash as expected output.
 On failure it saves both the original history and a reduced reproducer under
 `build/fuzz-differential`. Direct long runs can use `--max-failures` to keep
 collecting distinct failures while skipping duplicate diagnostic signatures:
