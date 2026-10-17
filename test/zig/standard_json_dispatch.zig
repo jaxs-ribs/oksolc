@@ -43,6 +43,72 @@ test "optimizer cache semantic edits preserve full solc output through diamonds 
     }
 }
 
+test "incremental reexports refresh overloads and bodies through import cycles" {
+    const allocator = std.testing.allocator;
+    for ([_]bool{ false, true }) |selective| {
+        for ([_]bool{ false, true }) |signature_edit| {
+            var session = solidity.CompilerSession.init(allocator);
+            defer session.deinit();
+            for (0..3) |revision| {
+                const source_a = switch (revision) {
+                    0 => "function f(uint256) pure returns (uint256) { return 1; } function f(address) pure returns (uint256) { return 2; }",
+                    1 => if (signature_edit)
+                        "function f(bytes32) pure returns (uint256) { return 20; } function f(address) pure returns (uint256) { return 10; }"
+                    else
+                        "function f(uint256) pure returns (uint256) { return 20; } function f(address) pure returns (uint256) { return 10; }",
+                    else => "function f(uint256) pure returns (uint256) { return 3; } function f(address) pure returns (uint256) { return 4; }",
+                };
+                const consumer = try allocator.print(
+                    "import * as M from './B.sol'; import * as N from './E.sol'; contract D {{ function g() external pure returns (uint256) {{ return {s}(uint256(1)); }} }}",
+                    .{if (revision == 0) "N.f" else if (selective) "M.exportF" else "M.f"},
+                );
+                defer allocator.free(consumer);
+                const input = try std.json.Stringify.valueAlloc(allocator, .{
+                    .language = "Solidity",
+                    .sources = .{
+                        .@"A.sol" = .{ .content = source_a },
+                        .@"B.sol" = .{ .content = if (selective)
+                            "import {f as exportF} from './A.sol'; import './C.sol';"
+                        else
+                            "import './A.sol'; import './C.sol';" },
+                        .@"C.sol" = .{ .content = "import './B.sol';" },
+                        .@"D.sol" = .{ .content = consumer },
+                        .@"E.sol" = .{ .content = "function f(uint256) pure returns (uint256) { return 30; } function f(address) pure returns (uint256) { return 40; }" },
+                    },
+                    .settings = .{
+                        .viaIR = true,
+                        .optimizer = .{ .enabled = true, .runs = 200 },
+                        .metadata = .{ .appendCBOR = false },
+                        .outputSelection = .{ .@"*" = .{
+                            .@"*" = &.{ "abi", "evm.bytecode.object", "evm.deployedBytecode.object" },
+                        } },
+                    },
+                }, .{});
+                defer allocator.free(input);
+                var dispatcher: libsolc.Dispatcher = .{};
+                var clean = try dispatcher.compiler().compile(allocator, .{ .input = input });
+                defer clean.deinit();
+                var actual = try session.compile(allocator, .{ .input = input });
+                defer actual.deinit();
+                try standard_json.compareExact(clean.bytes, actual.bytes);
+                const parsed = try std.json.parseFromSlice(std.json.Value, allocator, actual.bytes, .{});
+                defer parsed.deinit();
+                const rejected = signature_edit and revision == 1;
+                try std.testing.expectEqual(rejected, parsed.value.object.get("contracts") == null);
+                var found_error = false;
+                if (parsed.value.object.get("errors")) |diagnostics| {
+                    for (diagnostics.array.items) |diagnostic| {
+                        if (!std.mem.eql(u8, diagnostic.object.get("severity").?.string, "error")) continue;
+                        found_error = true;
+                        try std.testing.expectEqualStrings("9582", diagnostic.object.get("errorCode").?.string);
+                    }
+                }
+                try std.testing.expectEqual(rejected, found_error);
+            }
+        }
+    }
+}
+
 test "calldata reads and checked division preserve solc helper order and bytecode" {
     inline for (.{
         "solidity-calldata-enum-cleanup-order",
