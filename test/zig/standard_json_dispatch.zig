@@ -841,6 +841,39 @@ test "storage and transient-storage layouts match solc 0.8.36 exactly" {
     try std.testing.expectEqual(solidity.execution.Backend.zig, output.execution.backend);
 }
 
+test "storage layout byte counts wrap at 256 bits" {
+    const allocator = std.testing.allocator;
+    const length = "57896044618658097711785492504343953926634992332820282019728792003956564819968";
+    const source = try std.fmt.allocPrint(
+        allocator,
+        "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\n" ++
+            "contract C {{ struct Data {{ uint256[{s}] values; }} Data data; }}\n",
+        .{length},
+    );
+    defer allocator.free(source);
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"storageLayout"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const types = parsed.value.object.get("contracts").?.object
+        .get("C.sol").?.object.get("C").?.object
+        .get("storageLayout").?.object.get("types").?.object;
+    const key = try std.fmt.allocPrint(allocator, "t_array(t_uint256){s}_storage", .{length});
+    defer allocator.free(key);
+    const array_info = types.get(key).?.object;
+    try std.testing.expectEqualStrings(
+        "0",
+        array_info.get("numberOfBytes").?.string,
+    );
+}
+
 test "viaIR false analyzed AST output matches solc 0.8.36 exactly" {
     var dispatcher: libsolc.Dispatcher = .{};
     var output = try dispatcher.compiler().compile(std.testing.allocator, .{
