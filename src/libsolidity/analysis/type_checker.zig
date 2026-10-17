@@ -4351,7 +4351,10 @@ pub const TypeChecker = struct {
                     try self.reporter.fatal(errorId(6005), .TypeError, node.location, null, message);
                 }
             }
-            if (owner_type.asReference() != null and owner_type.category() != .ArraySlice) {
+            if (owner_type.asReference() != null and
+                owner_type.asReference().?.location != .Storage and
+                owner_type.category() != .ArraySlice)
+            {
                 const storage_type = try self.type_provider.withLocationIfReference(
                     .Storage,
                     owner_type,
@@ -4545,7 +4548,7 @@ pub const TypeChecker = struct {
             };
         }
         if (!std.mem.eql(u8, name, "push")) return null;
-        const argument_count = if (arguments) |value| value.types.items.len else {
+        const call_arguments = arguments orelse {
             const message = try self.allocator.print(
                 "Member \"push\" not unique after argument-dependent lookup in {s}.",
                 .{try self.typeNameTemporary(owner_type)},
@@ -4554,6 +4557,7 @@ pub const TypeChecker = struct {
             try self.reporter.fatal(errorId(6675), .TypeError, node.location, null, message);
             unreachable;
         };
+        const argument_count = call_arguments.types.items.len;
         if (argument_count == 0) {
             const returns = [_]*const Types.Type{array.base_type};
             const return_names = [_][]const u8{""};
@@ -4584,8 +4588,10 @@ pub const TypeChecker = struct {
             null,
             .{},
         );
+        const bound = try self.type_provider.withBoundFirstArgument(unbound);
+        if (!functionTypeCanTakeArguments(bound, &call_arguments, owner_type)) return null;
         return .{
-            .type_ref = try self.type_provider.withBoundFirstArgument(unbound),
+            .type_ref = bound,
             .is_pure = false,
         };
     }
