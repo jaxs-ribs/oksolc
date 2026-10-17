@@ -5964,6 +5964,10 @@ fn implicitConversionReasonAlloc(
             }
         }
     }
+    if (actual.category() == .StringLiteral)
+        if (expected.asFixedBytes()) |fixed_bytes|
+            if (actual.payload.StringLiteral.value.len > fixed_bytes.bytes)
+                return try allocator.dupe(u8, "Literal is larger than the type.");
     const source = actual.asFunction() orelse return null;
     const target = expected.asFunction() orelse return null;
     if (source.options.has_bound_first_argument != target.options.has_bound_first_argument)

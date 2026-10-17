@@ -127,7 +127,7 @@ test "super lookup ignores unimplemented base declarations" {
     try std.testing.expectEqualStrings("9582", diagnostics[1].object.get("errorCode").?.string);
 }
 
-test "integer literal conversion diagnostics retain reasons" {
+test "literal conversion diagnostics retain reasons" {
     const allocator = std.testing.allocator;
     const source =
         \\// SPDX-License-Identifier: UNLICENSED
@@ -135,6 +135,7 @@ test "integer literal conversion diagnostics retain reasons" {
         \\contract C {
         \\    uint8 too_large = 256;
         \\    uint8 negative = -1;
+        \\    bytes1 too_long = hex"030102";
         \\    function takesUint8(uint8) internal {}
         \\    function call() internal { takesUint8(256); }
         \\    function returnsUint8() internal pure returns (uint8) { return 256; }
@@ -168,6 +169,11 @@ test "integer literal conversion diagnostics retain reasons" {
         u8,
         output.bytes,
         "Return argument type int_const 256 is not implicitly convertible to expected type (type of first return variable) uint8. Literal is too large to fit in uint8.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Type literal_string hex\\\"030102\\\" is not implicitly convertible to expected type bytes1. Literal is larger than the type.",
     ) != null);
 }
 
