@@ -60,7 +60,15 @@ class GeneratorTests(unittest.TestCase):
         self.assertIn("function dispatch(uint64", sources["Hierarchy.sol"]["content"])
 
     def test_seed_histories_cover_edits_rejection_and_recovery(self):
-        reexports, aliases, recursive, dependencies, hierarchy = differential.seed_histories()
+        (
+            reexports,
+            aliases,
+            recursive,
+            dependencies,
+            hierarchy,
+            backend,
+            diagnostics,
+        ) = differential.seed_histories()
         self.assertEqual(len(reexports), 5)
         self.assertIn("bytes32", reexports[-2]["sources"]["A.sol"]["content"])
         self.assertNotIn("bytes32", reexports[-1]["sources"]["A.sol"]["content"])
@@ -76,6 +84,10 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(len(hierarchy), 3)
         self.assertIn("function dispatch(uint64", hierarchy[1]["sources"]["Hierarchy.sol"]["content"])
         self.assertIn("function dispatch(uint256", hierarchy[2]["sources"]["Hierarchy.sol"]["content"])
+        self.assertEqual(backend[1]["settings"]["evmVersion"], "homestead")
+        self.assertFalse(backend[1]["settings"]["optimizer"]["enabled"])
+        self.assertIn("new uint256[](2)", diagnostics[1]["sources"]["Diagnostics.sol"]["content"])
+        self.assertIn("values[2]", diagnostics[1]["sources"]["Diagnostics.sol"]["content"])
 
     def test_semantic_oracle_derives_expected_result_from_sources(self):
         state = differential.ProjectState(first_body=9, imported_alias_swap=True)
@@ -231,6 +243,25 @@ class GeneratorTests(unittest.TestCase):
         self.assertGreaterEqual(len(first), 2)
         self.assertEqual(request["sources"]["C.sol"]["content"].count("uint256"), 1)
         self.assertTrue(any(revision != first[0] for revision in first[1:]))
+
+    def test_optimizer_mutation_toggles_classic_stack_lowering(self):
+        class OptimizerMutation:
+            @staticmethod
+            def randrange(_stop):
+                return len(differential.SOURCE_MUTATIONS)
+
+            @staticmethod
+            def choice(values):
+                return values[0]
+
+        request = {
+            "language": "Solidity",
+            "sources": {"C.sol": {"content": "contract C {}"}},
+            "settings": {"optimizer": {"enabled": True, "runs": 200}},
+        }
+        mutated = differential.mutate_corpus_request(request, OptimizerMutation())
+        self.assertTrue(request["settings"]["optimizer"]["enabled"])
+        self.assertFalse(mutated["settings"]["optimizer"]["enabled"])
 
     def test_source_mutations_cover_type_location_and_operator_boundaries(self):
         source = (

@@ -124,6 +124,7 @@ SOURCE_MUTATIONS = (
     (re.compile(r"(?<=\s)(?:&&|\|\|)(?=\s)"), ("&&", "||")),
     (re.compile(r"(?<=\s)(?:\+|-|\*|/|%)(?=\s)"), ("+", "-", "*", "/", "%")),
 )
+MUTATIONS_PER_REVISION = (1, 1, 2, 3)
 
 
 @dataclass
@@ -518,7 +519,7 @@ def mutate_corpus_request(
         settings = result.setdefault("settings", {})
         if first_action == len(SOURCE_MUTATIONS):
             optimizer = settings.setdefault("optimizer", {})
-            optimizer["enabled"] = True
+            optimizer["enabled"] = not bool(optimizer.get("enabled", False))
             optimizer["runs"] = rng.choice(OPTIMIZER_RUNS)
         else:
             settings["evmVersion"] = rng.choice(EVM_VERSIONS)
@@ -560,7 +561,8 @@ def generate_corpus_mutation_history(
     current = deepcopy(rng.choice(eligible))
     history = [current]
     for _ in range(rng.randint(1, max_revisions - 1)):
-        current = mutate_corpus_request(current, rng)
+        for _ in range(rng.choice(MUTATIONS_PER_REVISION)):
+            current = mutate_corpus_request(current, rng)
         history.append(current)
     return history
 
@@ -618,12 +620,60 @@ def seed_histories() -> tuple[list[dict[str, Any]], ...]:
     hierarchy_history.append(request_for_state(hierarchy))
     hierarchy.super_signature_failure = False
     hierarchy_history.append(request_for_state(hierarchy))
+
+    def backend_request(evm_version: str, optimizer: bool, offset: int) -> dict[str, Any]:
+        return {
+            "language": "Solidity",
+            "sources": {
+                "Backend.sol": {
+                    "content": PREAMBLE
+                    + "contract Backend { function f(uint256 value) external pure returns "
+                    + f"(uint256) {{ return value + {offset}; }} }}\n"
+                }
+            },
+            "settings": {
+                "evmVersion": evm_version,
+                "viaIR": True,
+                "optimizer": {"enabled": optimizer, "runs": 200},
+                "outputSelection": {"*": {"*": ["evm.bytecode.object"]}},
+            },
+        }
+
+    backend_history = [
+        backend_request("osaka", True, 0),
+        backend_request("homestead", False, 0),
+        backend_request("osaka", True, 1),
+    ]
+
+    def diagnostic_request(initializer: str, index: int) -> dict[str, Any]:
+        return {
+            "language": "Solidity",
+            "sources": {
+                "Diagnostics.sol": {
+                    "content": PREAMBLE
+                    + "contract Diagnostics { function f() external pure returns (uint256) { "
+                    + f"uint256[1] memory values = {initializer}; return values[{index}]; }} }}\n"
+                }
+            },
+            "settings": {
+                "viaIR": True,
+                "outputSelection": {"*": {"*": ["evm.bytecode.object"]}},
+            },
+        }
+
+    diagnostic_history = [
+        diagnostic_request("[uint256(1)]", 0),
+        diagnostic_request("new uint256[](2)", 2),
+        diagnostic_request("[uint256(9)]", 0),
+    ]
     return (
         reexport_history,
         alias_history,
         recursive_history,
         dependency_history,
         hierarchy_history,
+        backend_history,
+        diagnostic_history,
     )
 
 

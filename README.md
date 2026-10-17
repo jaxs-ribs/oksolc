@@ -407,9 +407,11 @@ unrelated projects, languages, settings, valid outputs, and diagnostic-only
 responses, returning to an earlier
 project with a differently encoded request to bypass the exact-response cache.
 Reference-compatible fixtures are also checked directly against `solc`, then
-mutated at numeric boundaries and across signed, unsigned, fixed-byte, address,
-and data-location types, visibility, mutability, array shapes, operators,
-optimizer settings, and EVM versions. Textual IR spelling, the
+given one to three cumulative mutations per revision at numeric boundaries and
+across signed, unsigned, fixed-byte, address, and data-location types,
+visibility, mutability, array shapes, operators, optimizer on/off settings, and
+EVM versions. Deterministic histories also cross mixed-error diagnostic state
+and Homestead classic-stack lowering before recovering. Textual IR spelling, the
 unsupported legacy pipeline, and intentional corrections to upstream solc bugs
 are explicit exclusions from byte-exact reference comparison; they remain in
 the clean-versus-retained transition campaign.
