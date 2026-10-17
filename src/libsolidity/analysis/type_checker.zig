@@ -647,13 +647,20 @@ pub const TypeChecker = struct {
             defer self.allocator.free(actual_name);
             const expected_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, expected);
             defer self.allocator.free(expected_name);
+            const reason = try implicitConversionReasonAlloc(
+                self.allocator,
+                actual,
+                expected,
+                expected_name,
+            );
+            defer if (reason) |reason_text| self.allocator.free(reason_text);
             const message = try self.allocator.print(
                 "Invalid type for argument in modifier invocation. Invalid implicit conversion from {s} to {s} requested.{s}{s}",
                 .{
                     actual_name,
                     expected_name,
-                    if (implicitConversionReason(actual, expected) != null) " " else "",
-                    implicitConversionReason(actual, expected) orelse "",
+                    if (reason != null) " " else "",
+                    reason orelse "",
                 },
             );
             defer self.allocator.free(message);
@@ -880,7 +887,13 @@ pub const TypeChecker = struct {
                     self_type,
                 );
                 defer self.allocator.free(first_name);
-                const reason = implicitConversionReason(normalized_attached, normalized_self);
+                const reason = try implicitConversionReasonAlloc(
+                    self.allocator,
+                    normalized_attached,
+                    normalized_self,
+                    first_name,
+                );
+                defer if (reason) |reason_text| self.allocator.free(reason_text);
                 const message = try self.allocator.print(
                     "The function \"{s}\" cannot be attached to the type \"{s}\" because the type cannot be implicitly converted to the first argument of the function (\"{s}\"){s}{s}",
                     .{
@@ -1845,7 +1858,13 @@ pub const TypeChecker = struct {
                     continue;
                 }
             }
-            const reason = implicitConversionReason(actual, expected);
+            const reason = try implicitConversionReasonAlloc(
+                self.allocator,
+                actual,
+                expected,
+                expected_name,
+            );
+            defer if (reason) |reason_text| self.allocator.free(reason_text);
             const message = try self.allocator.print(
                 "{s}.{s}{s}",
                 .{
@@ -3284,13 +3303,20 @@ pub const TypeChecker = struct {
             defer self.allocator.free(actual_name);
             const expected_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, expected);
             defer self.allocator.free(expected_name);
+            const reason = try implicitConversionReasonAlloc(
+                self.allocator,
+                actual,
+                expected,
+                expected_name,
+            );
+            defer if (reason) |reason_text| self.allocator.free(reason_text);
             const message = try self.allocator.print(
                 "Invalid type for argument in function call. Invalid implicit conversion from {s} to {s} requested.{s}{s}",
                 .{
                     actual_name,
                     expected_name,
-                    if (implicitConversionReason(actual, expected) != null) " " else "",
-                    implicitConversionReason(actual, expected) orelse "",
+                    if (reason != null) " " else "",
+                    reason orelse "",
                 },
             );
             defer self.allocator.free(message);
@@ -3663,7 +3689,13 @@ pub const TypeChecker = struct {
                 expected,
             );
             defer self.allocator.free(expected_name);
-            const reason = implicitConversionReason(actual, expected);
+            const reason = try implicitConversionReasonAlloc(
+                self.allocator,
+                actual,
+                expected,
+                expected_name,
+            );
+            defer if (reason) |reason_text| self.allocator.free(reason_text);
             const message = try self.allocator.print(
                 "Cannot implicitly convert component at position {d} from \"{s}\" to \"{s}\"{s}{s}",
                 .{
@@ -5676,7 +5708,13 @@ pub const TypeChecker = struct {
                         mobile.?,
                     );
                     defer self.allocator.free(mobile_name);
-                    const reason = implicitConversionReason(actual, expected);
+                    const reason = try implicitConversionReasonAlloc(
+                        self.allocator,
+                        actual,
+                        expected,
+                        expected_name,
+                    );
+                    defer if (reason) |reason_text| self.allocator.free(reason_text);
                     const message = try self.allocator.print(
                         "{s}. Try converting to type {s} or use an explicit conversion.{s}{s}",
                         .{
@@ -5692,7 +5730,13 @@ pub const TypeChecker = struct {
                 return false;
             }
         }
-        const reason = implicitConversionReason(actual, expected);
+        const reason = try implicitConversionReasonAlloc(
+            self.allocator,
+            actual,
+            expected,
+            expected_name,
+        );
+        defer if (reason) |reason_text| self.allocator.free(reason_text);
         const message = try self.allocator.print(
             "{s}.{s}{s}",
             .{
@@ -5877,18 +5921,33 @@ fn isHashFunctionKind(kind: Types.FunctionKind) bool {
     };
 }
 
-fn implicitConversionReason(
+fn implicitConversionReasonAlloc(
+    allocator: std.mem.Allocator,
     actual: *const Types.Type,
     expected: *const Types.Type,
-) ?[]const u8 {
+    expected_name: []const u8,
+) std.mem.Allocator.Error!?[]u8 {
+    if (actual.category() == .RationalNumber) {
+        const rational = actual.payload.RationalNumber;
+        if (rational.denominator.compareUnsigned(1) == .eq) {
+            if (expected.asInteger()) |integer| {
+                if (rational.numerator.isNegative() and !integer.isSigned())
+                    return try allocator.dupe(u8, "Cannot implicitly convert signed literal to unsigned type.");
+                return try allocator.print(
+                    "Literal is too large to fit in {s}.",
+                    .{expected_name},
+                );
+            }
+        }
+    }
     const source = actual.asFunction() orelse return null;
     const target = expected.asFunction() orelse return null;
     if (source.options.has_bound_first_argument != target.options.has_bound_first_argument)
-        return "Attached functions cannot be converted into unattached functions.";
+        return try allocator.dupe(u8, "Attached functions cannot be converted into unattached functions.");
     if (source.kind != target.kind)
-        return "Special functions cannot be converted to function types.";
+        return try allocator.dupe(u8, "Special functions cannot be converted to function types.");
     if (source.kind == .Declaration and source.declaration != target.declaration)
-        return "Function declaration types referring to different functions cannot be converted to each other.";
+        return try allocator.dupe(u8, "Function declaration types referring to different functions cannot be converted to each other.");
     return null;
 }
 

@@ -55,6 +55,44 @@ test "single contract members retain argument diagnostics" {
     try std.testing.expect(found_arity);
 }
 
+test "integer literal conversion diagnostics retain reasons" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\contract C {
+        \\    uint8 too_large = 256;
+        \\    uint8 negative = -1;
+        \\    function takesUint8(uint8) internal {}
+        \\    function call() internal { takesUint8(256); }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Type int_const 256 is not implicitly convertible to expected type uint8. Literal is too large to fit in uint8.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Type int_const -1 is not implicitly convertible to expected type uint8. Cannot implicitly convert signed literal to unsigned type.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Invalid implicit conversion from int_const 256 to uint8 requested. Literal is too large to fit in uint8.",
+    ) != null);
+}
+
 test "optimizer cache semantic edits preserve full solc output through diamonds and cycles" {
     inline for (.{ "diamond", "cycle" }) |shape| {
         var session = solidity.CompilerSession.init(std.testing.allocator);
