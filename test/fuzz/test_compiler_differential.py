@@ -72,6 +72,8 @@ class GeneratorTests(unittest.TestCase):
             resolution,
             push,
             yul_ast,
+            static_library,
+            inner_cycle,
         ) = differential.seed_histories()
         self.assertEqual(len(reexports), 5)
         self.assertIn("bytes32", reexports[-2]["sources"]["A.sol"]["content"])
@@ -101,6 +103,10 @@ class GeneratorTests(unittest.TestCase):
             "115792089237316195423570985008687907853269984665640564039457584007913129639936",
             yul_ast[1]["sources"]["Assembly.sol"]["content"],
         )
+        self.assertIn("uint32 value", static_library[1]["sources"]["Library.sol"]["content"])
+        self.assertIn("L.f(value)", static_library[1]["sources"]["Consumer.sol"]["content"])
+        self.assertIn("B[0]", inner_cycle[1]["sources"]["Cycle.sol"]["content"])
+        self.assertIn("B parent", inner_cycle[2]["sources"]["Cycle.sol"]["content"])
 
     def test_semantic_oracle_derives_expected_result_from_sources(self):
         state = differential.ProjectState(first_body=9, imported_alias_swap=True)

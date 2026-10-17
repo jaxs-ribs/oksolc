@@ -779,6 +779,56 @@ def seed_histories() -> tuple[list[dict[str, Any]], ...]:
         ),
         yul_ast_request("64"),
     ]
+
+    def static_library_request(parameter_type: str) -> dict[str, Any]:
+        return {
+            "language": "Solidity",
+            "sources": {
+                "Library.sol": {
+                    "content": PREAMBLE
+                    + f"library L {{ function f({parameter_type} value) external pure "
+                    + f"returns ({parameter_type}) {{ return value; }} }}\n"
+                },
+                "Consumer.sol": {
+                    "content": PREAMBLE
+                    + 'import {L} from "Library.sol";\n'
+                    + "contract C { function f(uint256 value) external returns (uint256) { "
+                    + "return L.f(value); } }\n"
+                },
+            },
+            "settings": {"outputSelection": {"*": {"*": ["abi"]}}},
+        }
+
+    static_library_history = [
+        static_library_request("uint256"),
+        static_library_request("uint32"),
+        static_library_request("uint8"),
+        static_library_request("uint256"),
+    ]
+
+    def inner_cycle_request(array_length: str, self_cycle: bool) -> dict[str, Any]:
+        parent_type = "B" if self_cycle else "uint256"
+        return {
+            "language": "Solidity",
+            "sources": {
+                "Cycle.sol": {
+                    "content": PREAMBLE
+                    + f"contract C {{ struct A {{ B[{array_length}] children; }} "
+                    + f"struct B {{ {parent_type} parent; }} }}\n"
+                }
+            },
+            "settings": {"outputSelection": {"*": {"*": ["abi"]}}},
+        }
+
+    inner_cycle_history = [
+        inner_cycle_request("1", False),
+        inner_cycle_request("0", True),
+        inner_cycle_request(
+            "115792089237316195423570985008687907853269984665640564039457584007913129639936",
+            True,
+        ),
+        inner_cycle_request("1", False),
+    ]
     return (
         reexport_history,
         alias_history,
@@ -790,6 +840,8 @@ def seed_histories() -> tuple[list[dict[str, Any]], ...]:
         resolution_history,
         push_history,
         yul_ast_history,
+        static_library_history,
+        inner_cycle_history,
     )
 
 
