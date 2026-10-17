@@ -5406,17 +5406,18 @@ pub const TypeChecker = struct {
                 } else {
                     try self.checkExpression(value.index.?, depth + 1);
                     _ = try self.expectTypeAlready(value.index.?, self.type_provider.uint256());
-                    if (array.length) |length|
-                        if (try rationalValueU256(self.allocator, (try expressionAnnotation(
-                            self.tree,
-                            value.index.?,
-                        )).type_ref)) |index_value|
-                            if (index_value >= length)
-                                try self.reporter.typeError(
-                                    errorId(3383),
-                                    node.location,
-                                    "Out of bounds array access.",
-                                );
+                    if (!self.reporter.hasErrors())
+                        if (array.length) |length|
+                            if (try rationalValueU256(self.allocator, (try expressionAnnotation(
+                                self.tree,
+                                value.index.?,
+                            )).type_ref)) |index_value|
+                                if (index_value >= length)
+                                    try self.reporter.typeError(
+                                        errorId(3383),
+                                        node.location,
+                                        "Out of bounds array access.",
+                                    );
                 }
                 result_type = array.base_type;
                 is_lvalue = array.reference.location != .CallData;
