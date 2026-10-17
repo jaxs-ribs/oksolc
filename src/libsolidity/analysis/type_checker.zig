@@ -5249,16 +5249,26 @@ pub const TypeChecker = struct {
             // Directive applicability ignores location, but binding and call
             // compatibility must use the actual receiver (not a storage copy).
             if (!TypeBehavior.isImplicitlyConvertibleTo(owner_type, self_type)) continue;
-            if (arguments) |*call_arguments|
-                if (!functionTypeCanTakeArguments(
-                    type_ref,
-                    call_arguments,
-                    owner_type,
-                )) continue;
             try matches.append(self.allocator, .{
                 .declaration = declaration,
                 .type_ref = type_ref,
             });
+        }
+        if (arguments) |*call_arguments| {
+            const unfiltered_count = matches.items.len;
+            var write_index: usize = 0;
+            for (matches.items) |match| {
+                if (functionTypeCanTakeArguments(
+                    match.type_ref,
+                    call_arguments,
+                    owner_type,
+                )) {
+                    matches.items[write_index] = match;
+                    write_index += 1;
+                }
+            }
+            if (write_index != 0 or unfiltered_count != 1)
+                matches.shrinkRetainingCapacity(write_index);
         }
         if (matches.items.len == 0) return null;
         if (matches.items.len != 1) {

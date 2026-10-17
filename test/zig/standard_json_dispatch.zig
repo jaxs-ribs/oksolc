@@ -10,7 +10,7 @@ const standard_json = solidity.standard_json;
 const Profiler = solidity.libsolutil.profiler.Profiler;
 const ObjectOptimizer = solidity.libyul.object_optimizer.ObjectOptimizer;
 
-test "single contract members retain argument diagnostics" {
+test "single members retain argument diagnostics" {
     const allocator = std.testing.allocator;
     const source =
         \\// SPDX-License-Identifier: UNLICENSED
@@ -19,12 +19,20 @@ test "single contract members retain argument diagnostics" {
         \\    function array(uint256[] calldata values) external;
         \\    function scalar(uint256 value) external;
         \\}
+        \\library L {
+        \\    struct Data { uint256 value; }
+        \\    function p(Data memory, uint32) internal pure {}
+        \\}
         \\contract C {
+        \\    using L for L.Data;
         \\    function conversion(Target target, uint256[3] memory values) external {
         \\        target.array(values);
         \\    }
         \\    function arity(Target target) external {
         \\        target.scalar();
+        \\    }
+        \\    function attached(L.Data memory data, uint256 value) external pure {
+        \\        data.p(value);
         \\    }
         \\}
     ;
@@ -43,15 +51,15 @@ test "single contract members retain argument diagnostics" {
     const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
     defer parsed.deinit();
     const diagnostics = parsed.value.object.get("errors").?.array.items;
-    var found_conversion = false;
+    var conversion_count: usize = 0;
     var found_arity = false;
     for (diagnostics) |diagnostic| {
         const code = diagnostic.object.get("errorCode") orelse continue;
         if (code != .string) continue;
-        found_conversion = found_conversion or std.mem.eql(u8, code.string, "9553");
+        conversion_count += @intFromBool(std.mem.eql(u8, code.string, "9553"));
         found_arity = found_arity or std.mem.eql(u8, code.string, "6160");
     }
-    try std.testing.expect(found_conversion);
+    try std.testing.expectEqual(@as(usize, 2), conversion_count);
     try std.testing.expect(found_arity);
 }
 
