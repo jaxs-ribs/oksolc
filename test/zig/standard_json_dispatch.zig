@@ -91,6 +91,34 @@ test "single members retain argument diagnostics" {
     try std.testing.expect(found_arity);
 }
 
+test "single library type members retain argument diagnostics" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\library L {
+        \\    function f(uint32 value) external pure returns (uint32) { return value; }
+        \\}
+        \\contract C {
+        \\    function f(uint256 value) external returns (uint32) { return L.f(value); }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+    try std.testing.expectEqualStrings("9553", diagnostics[0].object.get("errorCode").?.string);
+}
+
 test "storage-only attached members retain their diagnostic" {
     const allocator = std.testing.allocator;
     const source =

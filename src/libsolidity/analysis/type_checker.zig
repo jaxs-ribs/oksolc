@@ -4909,8 +4909,12 @@ pub const TypeChecker = struct {
                 defer members.deinit();
                 const annotation = try memberAccessAnnotation(self.tree, member_access);
                 var selected: ?Types.Member = null;
+                var only_named: ?Types.Member = null;
+                var named_count: usize = 0;
                 for (members.items) |member| {
                     if (!std.mem.eql(u8, member.name, name)) continue;
+                    named_count += 1;
+                    only_named = member;
                     if (annotation.expression.arguments) |*arguments|
                         if (member.type_ref.category() == .Function and
                             !functionTypeCanTakeArguments(
@@ -4935,6 +4939,7 @@ pub const TypeChecker = struct {
                     }
                     selected = member;
                 }
+                if (selected == null and named_count == 1) selected = only_named;
                 if (selected) |member| return .{
                     .type_ref = member.type_ref,
                     .declaration = member.declaration,
