@@ -379,12 +379,48 @@ zig build reference-check -Dbenchmark-reference-solc=solc
 ```
 
 See the [compatibility corpus](test/zig/standard-json/README.md) for fixture
-details. To run the parser, JSON, and Standard JSON fuzzers, plus the yyjson
-adapter under ASan/UBSan:
+details. To run the parser, JSON, Standard JSON, and stateful incremental
+fuzzers, plus the yyjson adapter under ASan/UBSan:
 
 ```sh
 zig build fuzz --fuzz=10K -Dadapter-fuzz-runs=10000 -j2
 ```
+
+The incremental target generates valid multi-source projects and treats one
+fuzz input as a complete edit history. Every retained-session response is
+compared byte-for-byte with a clean compilation of the same revision, including
+compiler errors and later recovery:
+
+```sh
+zig build fuzz-incremental -Doptimize=ReleaseSafe --fuzz=250 -j2
+```
+
+The slower external campaign additionally compares each revision with a pinned
+`solc 0.8.36`. It starts with histories covering reexports, imported `using`
+aliases, and recursive structs, then generates further feature combinations.
+On failure it saves both the original history and a reduced reproducer under
+`build/fuzz-differential`:
+
+```sh
+zig build fuzz-reference -Doptimize=ReleaseSafe \
+  -Dbenchmark-reference-solc=/path/to/solc-0.8.36 \
+  -Dreference-fuzz-evm=/path/to/evmone \
+  -Dreference-fuzz-session-mode=all \
+  -Dreference-fuzz-runs=1000 -Dreference-fuzz-seed=1
+
+python3 test/fuzz/compiler_differential.py \
+  --candidate zig-out/bin/oksolc \
+  --reference /path/to/solc-0.8.36 \
+  --replay build/fuzz-differential/failure-...-minimized.json
+```
+
+The `all` session mode covers in-memory reuse, SQLite reuse, and process restart
+between revisions. When evmone is supplied, accepted generated contracts are
+also executed with generated calldata and checked against results derived from
+the source model.
+The scheduled fuzz workflow verifies pinned SHA-256 digests for both external
+binaries before running the campaign. Required compatibility CI remains offline
+and continues to use the reviewed frozen corpus.
 
 ## Benchmarks
 

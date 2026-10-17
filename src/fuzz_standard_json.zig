@@ -63,9 +63,19 @@ fn fuzzStandardJson(_: void, smith: *std.testing.Smith) !void {
     input_buffer[input_len] = 0;
     const input: [:0]const u8 = input_buffer[0..input_len :0];
 
-    const output = libsolc.solidity_compile(input.ptr, sourceCallback, null);
-    if (output) |bytes| libsolc.solidity_free(bytes);
-    libsolc.solidity_reset();
+    defer libsolc.solidity_reset();
+    const output = libsolc.solidity_compile(input.ptr, sourceCallback, null) orelse
+        return error.NullCompilerOutput;
+    defer libsolc.solidity_free(output);
+
+    const parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        std.testing.allocator,
+        std.mem.span(output),
+        .{},
+    );
+    defer parsed.deinit();
+    if (parsed.value != .object) return error.NonObjectCompilerOutput;
 }
 
 fn sourceCallback(

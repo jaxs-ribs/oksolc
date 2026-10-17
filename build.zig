@@ -69,6 +69,45 @@ pub fn build(b: *std.Build) !void {
         "benchmark-reference-solc",
         "System-installed solc 0.8.36 executable used for parity comparisons",
     ) orelse "solc";
+    const reference_fuzz_runs = b.option(
+        u32,
+        "reference-fuzz-runs",
+        "Number of generated edit histories compared with solc 0.8.36",
+    ) orelse 100;
+    const reference_fuzz_seed = b.option(
+        u64,
+        "reference-fuzz-seed",
+        "Deterministic seed for stateful solc differential fuzzing",
+    ) orelse 0x6a09e667f3bcc909;
+    const reference_fuzz_max_revisions = b.option(
+        u8,
+        "reference-fuzz-max-revisions",
+        "Maximum revisions in one generated differential history",
+    ) orelse 6;
+    const reference_fuzz_artifacts = b.option(
+        []const u8,
+        "reference-fuzz-artifacts",
+        "Directory for original and minimized differential reproducers",
+    ) orelse "build/fuzz-differential";
+    const reference_fuzz_evm = b.option(
+        []const u8,
+        "reference-fuzz-evm",
+        "Optional evmone executable used as an independent semantic oracle",
+    );
+    const reference_fuzz_session_mode = b.option(
+        []const u8,
+        "reference-fuzz-session-mode",
+        "External campaign mode: memory, persistent, restart, or all",
+    ) orelse "memory";
+    if (reference_fuzz_runs == 0)
+        @panic("-Dreference-fuzz-runs must be greater than zero");
+    if (reference_fuzz_max_revisions < 2)
+        @panic("-Dreference-fuzz-max-revisions must be at least two");
+    if (!std.mem.eql(u8, reference_fuzz_session_mode, "memory") and
+        !std.mem.eql(u8, reference_fuzz_session_mode, "persistent") and
+        !std.mem.eql(u8, reference_fuzz_session_mode, "restart") and
+        !std.mem.eql(u8, reference_fuzz_session_mode, "all"))
+        @panic("-Dreference-fuzz-session-mode must be memory, persistent, restart, or all");
     const compiler_build_identity_override = b.option(
         []const u8,
         "compiler-build-identity",
@@ -382,6 +421,25 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{.{
             .name = "compiler",
             .module = standard_json_fuzz_compiler_module,
+        }},
+    });
+    const incremental_fuzz_solidity_module = b.createModule(.{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = .safe,
+        .imports = &.{
+            .{ .name = "common", .module = common_module },
+            .{ .name = "compiler", .module = standard_json_fuzz_compiler_module },
+            .{ .name = "cxx_compat", .module = cxx_compat_module },
+        },
+    });
+    const incremental_fuzz_module = b.createModule(.{
+        .root_source_file = b.path("src/fuzz_incremental.zig"),
+        .target = target,
+        .optimize = .safe,
+        .imports = &.{.{
+            .name = "solidity",
+            .module = incremental_fuzz_solidity_module,
         }},
     });
     const incremental_edit_trace_module = b.createModule(.{
@@ -1084,6 +1142,10 @@ pub fn build(b: *std.Build) !void {
         "fuzz-standard-json",
         "Fuzz the public Standard JSON C ABI and dispatcher",
     );
+    const fuzz_incremental_step = b.step(
+        "fuzz-incremental",
+        "Fuzz structured edit histories against clean compilations",
+    );
     const fuzz_adapter_step = b.step(
         "fuzz-json-adapter",
         "Mutation-fuzz the yyjson C adapter with ASan and UBSan",
@@ -1325,6 +1387,28 @@ pub fn build(b: *std.Build) !void {
     fuzz_step.dependOn(&run_standard_json_fuzz_tests.step);
     fuzz_standard_json_step.dependOn(&run_standard_json_fuzz_tests.step);
 
+    const incremental_fuzz_tests = b.addTest(.{
+        .name = "incremental-fuzz",
+        .root_module = incremental_fuzz_module,
+        .filters = &.{"fuzz stateful incremental Solidity compilation"},
+    });
+    incremental_fuzz_tests.stack_size = 32 * 1024 * 1024;
+    check_step.dependOn(&incremental_fuzz_tests.step);
+    const incremental_fuzz_validation = addCompilerBuildIdentityValidation(
+        b,
+        incremental_fuzz_tests,
+        compiler_build_validation_identity,
+    );
+    dependOnValidation(check_step, incremental_fuzz_validation);
+    const run_incremental_fuzz_tests = b.addRunArtifact(incremental_fuzz_tests);
+    dependOnValidation(
+        &run_incremental_fuzz_tests.step,
+        incremental_fuzz_validation,
+    );
+    test_step.dependOn(&run_incremental_fuzz_tests.step);
+    fuzz_step.dependOn(&run_incremental_fuzz_tests.step);
+    fuzz_incremental_step.dependOn(&run_incremental_fuzz_tests.step);
+
     const compile_adapter_fuzzer = b.addSystemCommand(&.{
         "clang",
         "-std=c99",
@@ -1409,6 +1493,19 @@ pub fn build(b: *std.Build) !void {
     }
 
     addReferenceCheck(b, reference_solc);
+    addDifferentialFuzz(
+        b,
+        reference_solc,
+        reference_fuzz_runs,
+        reference_fuzz_seed,
+        reference_fuzz_max_revisions,
+        reference_fuzz_artifacts,
+        reference_fuzz_evm,
+        reference_fuzz_session_mode,
+        cli,
+        cli_identity_validation,
+        test_step,
+    );
     addBenchmarks(
         b,
         target,
@@ -1424,6 +1521,48 @@ pub fn build(b: *std.Build) !void {
         incremental_edit_trace_module,
         compiler_build_validation_identity,
     );
+}
+
+fn addDifferentialFuzz(
+    b: *std.Build,
+    reference_solc: []const u8,
+    runs: u32,
+    seed: u64,
+    max_revisions: u8,
+    artifacts: []const u8,
+    evm: ?[]const u8,
+    session_mode: []const u8,
+    cli: *std.Build.Step.Compile,
+    cli_identity_validation: ?*std.Build.Step,
+    test_step: *std.Build.Step,
+) void {
+    const tool_tests = b.addSystemCommand(&.{"python3"});
+    tool_tests.addFileArg2(b.path("test/fuzz/test_compiler_differential.py"), .{});
+    const test_tools_step = b.step(
+        "test-fuzz-tools",
+        "Test the external compiler differential generator and reducer",
+    );
+    test_tools_step.dependOn(&tool_tests.step);
+    test_step.dependOn(&tool_tests.step);
+
+    const command = b.addSystemCommand(&.{"python3"});
+    command.addFileArg2(b.path("test/fuzz/compiler_differential.py"), .{});
+    command.addArg("--candidate");
+    command.addArtifactArg2(cli, .{});
+    command.addArgs(&.{ "--reference", reference_solc });
+    command.addArgs(&.{ "--iterations", b.fmt("{d}", .{runs}) });
+    command.addArgs(&.{ "--seed", b.fmt("{d}", .{seed}) });
+    command.addArgs(&.{ "--max-revisions", b.fmt("{d}", .{max_revisions}) });
+    command.addArgs(&.{ "--artifacts", artifacts });
+    command.addArgs(&.{ "--session-mode", session_mode });
+    if (evm) |executable|
+        command.addArgs(&.{ "--evm", executable });
+    command.has_side_effects = true;
+    dependOnValidation(&command.step, cli_identity_validation);
+    b.step(
+        "fuzz-reference",
+        "Compare stateful generated histories with a local solc 0.8.36",
+    ).dependOn(&command.step);
 }
 
 fn addCompilerBuildIdentityValidation(
