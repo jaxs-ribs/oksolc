@@ -789,7 +789,7 @@ class CandidateService:
                     line = self.process.stdout.readline()
                     if not line:
                         if content_length is None:
-                            return
+                            raise EOFError("compiler service closed before response")
                         raise EOFError("compiler service closed an incomplete header")
                     if line in (b"\n", b"\r\n"):
                         break

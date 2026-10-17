@@ -8,6 +8,7 @@ from pathlib import Path
 import random
 import sys
 import tempfile
+import time
 import unittest
 
 
@@ -301,6 +302,31 @@ class ReducerTests(unittest.TestCase):
             differential.first_difference(left, right),
             ("contracts", "A.sol", "A", "evm", "bytecode"),
         )
+
+
+class CandidateServiceTests(unittest.TestCase):
+    def test_closed_worker_is_reported_without_waiting_for_timeout(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            worker = root / "worker.py"
+            worker.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "sys.stdin.buffer.read(1)\n"
+                "raise SystemExit(1)\n"
+            )
+            worker.chmod(0o755)
+            service = differential.CandidateService(worker, 5, root, "memory")
+            started = time.monotonic()
+            try:
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "compiler service closed before response",
+                ):
+                    service.compile({"language": "Solidity"})
+            finally:
+                service.close()
+            self.assertLess(time.monotonic() - started, 2)
 
 
 if __name__ == "__main__":
