@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from typing import Any, Callable, Sequence
 
 
@@ -1174,6 +1175,8 @@ class CandidateService:
         )
         self.reader = threading.Thread(target=self._read_responses, daemon=True)
         self.error_reader = threading.Thread(target=self._read_errors, daemon=True)
+        self.writer: threading.Thread | None = None
+        self.closed = False
         self.reader.start()
         self.error_reader.start()
 
@@ -1204,20 +1207,50 @@ class CandidateService:
         for line in self.process.stderr:
             self.errors.append(line)
 
-    def compile(self, request: dict[str, Any]) -> bytes:
-        body = encode_request(request)
-        if self.process.poll() is not None:
-            raise RuntimeError(self.diagnostic("compiler service exited"))
-        assert self.process.stdin is not None
+    def _write_request(
+        self, body: bytes, completed: queue.Queue[Exception | None]
+    ) -> None:
         try:
+            assert self.process.stdin is not None
             self.process.stdin.write(f"Content-Length: {len(body)}\r\n\r\n".encode())
             self.process.stdin.write(body)
             self.process.stdin.flush()
-        except BrokenPipeError as error:
-            raise RuntimeError(self.diagnostic("compiler service broke its input pipe")) from error
+        except Exception as error:
+            completed.put(error)
+        else:
+            completed.put(None)
+
+    def compile(self, request: dict[str, Any]) -> bytes:
+        deadline = time.monotonic() + self.timeout
+        body = encode_request(request)
+        if self.process.poll() is not None:
+            raise RuntimeError(self.diagnostic("compiler service exited"))
+        completed: queue.Queue[Exception | None] = queue.Queue(maxsize=1)
+        self.writer = threading.Thread(
+            target=self._write_request, args=(body, completed), daemon=True
+        )
+        self.writer.start()
         try:
-            response = self.responses.get(timeout=self.timeout)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise queue.Empty
+            sent = completed.get(timeout=remaining)
+            self.writer.join()
+            self.writer = None
+            if sent is not None:
+                raise RuntimeError(
+                    self.diagnostic("compiler service broke its input pipe")
+                ) from sent
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise queue.Empty
+            response = self.responses.get(timeout=remaining)
         except queue.Empty as error:
+            # Closing buffered stdin while its writer is blocked can itself
+            # hang. Kill first, then reap the worker and drain the I/O threads.
+            if self.process.poll() is None:
+                self.process.kill()
+            self.close()
             raise TimeoutError(self.diagnostic("compiler service timed out")) from error
         if isinstance(response, Exception):
             raise RuntimeError(self.diagnostic(str(response))) from response
@@ -1228,6 +1261,16 @@ class CandidateService:
         return f"{message}; exit={self.process.poll()}; stderr={errors}"
 
     def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        if self.writer is not None:
+            if self.writer.is_alive():
+                if self.process.poll() is None:
+                    self.process.kill()
+                self.process.wait(timeout=2)
+            self.writer.join(timeout=2)
+            self.writer = None
         if self.process.stdin is not None:
             try:
                 self.process.stdin.close()

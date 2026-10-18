@@ -5,9 +5,11 @@
 import importlib.util
 import json
 from pathlib import Path
+import queue
 import random
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -612,6 +614,71 @@ class BundleTests(unittest.TestCase):
 
 
 class CandidateServiceTests(unittest.TestCase):
+    def run_worker(self, source, request, timeout):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            worker = root / "worker.py"
+            worker.write_text("#!/usr/bin/env python3\n" + source)
+            worker.chmod(0o755)
+            service = differential.CandidateService(worker, timeout, root, "memory")
+            result = queue.Queue()
+
+            def exchange():
+                try:
+                    result.put(service.compile(request))
+                except Exception as error:
+                    result.put(error)
+                finally:
+                    service.close()
+
+            started = time.monotonic()
+            exchange_thread = threading.Thread(target=exchange, daemon=True)
+            exchange_thread.start()
+            try:
+                # A watchdog must also let this regression fail against the
+                # old blocking implementation without hanging the test suite.
+                exchange_thread.join(timeout=1.5)
+                self.assertFalse(exchange_thread.is_alive(), "request deadline hung")
+                self.assertIsNotNone(service.process.poll(), "worker was not reaped")
+                self.assertFalse(service.reader.is_alive())
+                self.assertFalse(service.error_reader.is_alive())
+                return result.get_nowait(), time.monotonic() - started
+            finally:
+                if service.process.poll() is None:
+                    service.process.kill()
+                    service.process.wait(timeout=2)
+                exchange_thread.join(timeout=2)
+                if not exchange_thread.is_alive():
+                    service.close()
+
+    def test_deadline_covers_a_large_write_to_a_nonreading_worker(self):
+        result, elapsed = self.run_worker(
+            "import signal, time\n"
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+            "time.sleep(30)\n",
+            {"padding": "x" * (1024 * 1024)},
+            0.1,
+        )
+        self.assertIsInstance(result, TimeoutError)
+        self.assertIn("timed out", str(result))
+        self.assertLess(elapsed, 1)
+
+    def test_transmission_and_response_share_one_deadline(self):
+        result, elapsed = self.run_worker(
+            "import sys, time\n"
+            "length = int(sys.stdin.buffer.readline().split(b':')[1])\n"
+            "sys.stdin.buffer.readline()\n"
+            "time.sleep(0.15)\n"
+            "sys.stdin.buffer.read(length)\n"
+            "time.sleep(0.15)\n"
+            "sys.stdout.buffer.write(b'Content-Length: 2\\r\\n\\r\\n{}')\n"
+            "sys.stdout.buffer.flush()\n",
+            {"padding": "x" * (1024 * 1024)},
+            0.25,
+        )
+        self.assertIsInstance(result, TimeoutError)
+        self.assertLess(elapsed, 1)
+
     def test_closed_worker_is_reported_without_waiting_for_timeout(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
