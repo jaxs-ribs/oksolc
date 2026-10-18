@@ -136,25 +136,61 @@ pub fn toStringAlloc(allocator: std.mem.Allocator, value: anytype) std.mem.Alloc
     return allocator.print("{any}", .{value});
 }
 
-/// Resolves only paths whose first component is `.` or `..`, relative to the
-/// directory containing `reference`.  Other paths are returned unchanged,
-/// matching the intentionally unusual upstream contract.
+/// Resolves dot-relative source-unit names without interpreting the existing
+/// reference as a host filesystem path. Earlier components retain their exact
+/// spelling, including URL-like prefixes and repeated separators.
 pub fn absolutePathAlloc(
     allocator: std.mem.Allocator,
     path: []const u8,
     reference: []const u8,
 ) std.mem.Allocator.Error![]u8 {
-    var components = std.Io.Dir.path.componentIterator(path);
-    const first = components.next() orelse return allocator.dupe(u8, path);
-    if (!std.mem.eql(u8, first.name, ".") and !std.mem.eql(u8, first.name, ".."))
+    if (!std.mem.eql(u8, path, ".") and !std.mem.eql(u8, path, "..") and
+        !std.mem.startsWith(u8, path, "./") and !std.mem.startsWith(u8, path, "../"))
         return allocator.dupe(u8, path);
 
-    const base = std.Io.Dir.path.dirname(reference) orelse
-        if (std.Io.Dir.path.isAbsolute(reference)) reference else "";
-    const resolved = try std.Io.Dir.path.resolveAlloc(allocator, &.{ base, path });
-    if (builtin.target.os.tag != .windows) return resolved;
-    defer allocator.free(resolved);
-    return sanitizePathAlloc(allocator, resolved);
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+    try result.appendSlice(allocator, reference);
+    // Root directories, including //namespace/, have no filename to remove.
+    const filename_end = std.mem.trimEnd(u8, reference, "/").len;
+    const root_only = filename_end == 0 or
+        (filename_end != reference.len and filename_end == sourceRootNameEnd(reference));
+    if (!root_only)
+        result.items.len = sourceParentEnd(result.items);
+    var components = std.mem.tokenizeScalar(u8, path, '/');
+    while (components.next()) |component| {
+        if (std.mem.eql(u8, component, ".")) continue;
+        if (std.mem.eql(u8, component, "..")) {
+            result.items.len = sourceParentEnd(result.items);
+        } else {
+            if (result.items.len != 0 and result.items[result.items.len - 1] != '/')
+                try result.append(allocator, '/');
+            try result.appendSlice(allocator, component);
+        }
+    }
+    return result.toOwnedSlice(allocator);
+}
+
+/// The POSIX spelling used by Solidity's virtual namespace is independent of
+/// the host OS. Remove one component without normalizing earlier components.
+fn sourceParentEnd(name: []const u8) usize {
+    if (name.len == 0) return 0;
+    if (name[name.len - 1] == '/') return std.mem.trimEnd(u8, name, "/").len;
+    const separator = std.mem.findScalarLast(u8, name, '/') orelse return 0;
+    const end = std.mem.trimEnd(u8, name[0..separator], "/").len;
+    if (end == 0) {
+        // A bare //name is a namespace root name, rather than / plus a file.
+        if (separator == 1) return 0;
+        return 1;
+    }
+    const root_name_end = sourceRootNameEnd(name);
+    if (root_name_end != 0 and end == root_name_end) return root_name_end + 1;
+    return end;
+}
+
+fn sourceRootNameEnd(name: []const u8) usize {
+    if (name.len < 3 or !std.mem.startsWith(u8, name, "//") or name[2] == '/') return 0;
+    return std.mem.findScalarPos(u8, name, 2, '/') orelse name.len;
 }
 
 /// Converts native path separators to the generic `/` spelling used by the
@@ -233,6 +269,48 @@ test "absolutePath resolves only explicit dot-relative paths" {
     const parent = try absolutePathAlloc(allocator, "../A.sol", "/src/nested/Main.sol");
     defer allocator.free(parent);
     try std.testing.expectEqualStrings("/src/A.sol", parent);
+}
+
+test "absolutePath preserves virtual namespaces and resolves only appended components" {
+    const cases = [_]struct { reference: []const u8, path: []const u8, expected: []const u8 }{
+        .{ .reference = "proto://dir/Main.sol", .path = "./Policy.sol", .expected = "proto://dir/Policy.sol" },
+        .{ .reference = "proto://dir/Main.sol", .path = "../Policy.sol", .expected = "proto:/Policy.sol" },
+        .{ .reference = "proto://dir/Main.sol", .path = "../../Policy.sol", .expected = "Policy.sol" },
+        .{ .reference = "proto://dir/Main.sol", .path = "./x//y/./../Policy.sol", .expected = "proto://dir/x/Policy.sol" },
+        .{ .reference = "a//b///Main.sol", .path = "./Policy.sol", .expected = "a//b/Policy.sol" },
+        .{ .reference = "a//b///Main.sol", .path = "../Policy.sol", .expected = "a/Policy.sol" },
+        .{ .reference = "a/../Main.sol", .path = "./Policy.sol", .expected = "a/../Policy.sol" },
+        .{ .reference = "a/./Main.sol", .path = "../Policy.sol", .expected = "a/Policy.sol" },
+        .{ .reference = "../../Main.sol", .path = "../../Policy.sol", .expected = "Policy.sol" },
+        .{ .reference = "Main.sol", .path = "../../../Policy.sol", .expected = "Policy.sol" },
+        .{ .reference = "/Main.sol", .path = "../../Policy.sol", .expected = "Policy.sol" },
+        .{ .reference = "///Main.sol", .path = "./Policy.sol", .expected = "/Policy.sol" },
+        .{ .reference = "///a//b///Main.sol", .path = "../Policy.sol", .expected = "///a/Policy.sol" },
+        .{ .reference = "//server/share/Main.sol", .path = "../..", .expected = "//server" },
+        .{ .reference = "//server/Main.sol", .path = "../../Policy.sol", .expected = "Policy.sol" },
+        .{ .reference = "//server", .path = "./Policy.sol", .expected = "Policy.sol" },
+        .{ .reference = "//server/", .path = "..", .expected = "//server" },
+        .{ .reference = "C:/dir/Main.sol", .path = "../Policy.sol", .expected = "C:/Policy.sol" },
+        .{ .reference = "C:\\dir\\Main.sol", .path = "./Policy.sol", .expected = "Policy.sol" },
+        .{ .reference = "a/b/", .path = "./Policy.sol", .expected = "a/b/Policy.sol" },
+        .{ .reference = "proto://dir/Main.sol", .path = "./a///", .expected = "proto://dir/a" },
+        .{ .reference = "/", .path = "./Policy.sol", .expected = "/Policy.sol" },
+        .{ .reference = "///", .path = "./Policy.sol", .expected = "///Policy.sol" },
+        .{ .reference = "proto://dir/Main.sol", .path = "/./Policy.sol", .expected = "/./Policy.sol" },
+        .{ .reference = "proto://dir/Main.sol", .path = ".\\Policy.sol", .expected = ".\\Policy.sol" },
+    };
+    for (cases) |case| {
+        const actual = try absolutePathAlloc(std.testing.allocator, case.path, case.reference);
+        defer std.testing.allocator.free(actual);
+        try std.testing.expectEqualStrings(case.expected, actual);
+    }
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, struct {
+        fn run(allocator: std.mem.Allocator) !void {
+            const actual = try absolutePathAlloc(allocator, "./x/../Policy.sol", "proto://dir/Main.sol");
+            defer allocator.free(actual);
+            try std.testing.expectEqualStrings("proto://dir/Policy.sol", actual);
+        }
+    }.run, .{});
 }
 
 test "toString owns its result" {

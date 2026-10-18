@@ -6,6 +6,8 @@ Solidity compatibility target: `0.8.36`.
 
 ### Fixed
 
+- Resolve relative imports in the virtual source namespace, preserving URL-like
+  names and existing path components instead of selecting a normalized alias.
 - Preserve request and source insertion order in original and minimized
   differential-fuzz reproducers so replay uses the same request bytes.
 - Apply one compiler-service deadline to request transmission and response

@@ -10,6 +10,43 @@ const standard_json = solidity.standard_json;
 const Profiler = solidity.libsolutil.profiler.Profiler;
 const ObjectOptimizer = solidity.libyul.object_optimizer.ObjectOptimizer;
 
+test "relative imports preserve virtual source names when normalized aliases coexist" {
+    const allocator = std.testing.allocator;
+    const input =
+        \\{"language":"Solidity","sources":{
+        \\"proto://dir/Main.sol":{"content":"// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\nimport {ALLOW} from \"./Policy.sol\";\ncontract C { function isAuthorized() external pure returns (bool) { return ALLOW; } }\n"},
+        \\"proto://dir/Policy.sol":{"content":"// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\nbool constant ALLOW = false;\n"},
+        \\"proto:/dir/Policy.sol":{"content":"// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\nbool constant ALLOW = true;\n"}
+        \\},"settings":{"viaIR":true,"optimizer":{"enabled":true,"runs":200},"metadata":{"appendCBOR":false},
+        \\"outputSelection":{"*":{"C":["evm.deployedBytecode.object","evm.methodIdentifiers"],"":["ast"]}}}}
+    ;
+    var dispatcher: libsolc.Dispatcher = .{};
+    var session = solidity.CompilerSession.init(allocator);
+    defer session.deinit();
+    for ([_]standard_json.Compiler{ dispatcher.compiler(), session.compiler() }) |compiler| {
+        var output = try compiler.compile(allocator, .{ .input = input });
+        defer output.deinit();
+        const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+        defer parsed.deinit();
+        const sources = parsed.value.object.get("sources").?.object;
+        const nodes = sources.get("proto://dir/Main.sol").?.object.get("ast").?.object.get("nodes").?.array.items;
+        var found_import = false;
+        for (nodes) |node| {
+            if (!std.mem.eql(u8, node.object.get("nodeType").?.string, "ImportDirective")) continue;
+            found_import = true;
+            try std.testing.expectEqualStrings("proto://dir/Policy.sol", node.object.get("absolutePath").?.string);
+        }
+        try std.testing.expect(found_import);
+        const evm = parsed.value.object.get("contracts").?.object.get("proto://dir/Main.sol").?.object.get("C").?.object.get("evm").?.object;
+        try std.testing.expectEqualStrings("57e6c2f4", evm.get("methodIdentifiers").?.object.get("isAuthorized()").?.string);
+        // Pinned solc 0.8.36 runtime: the intended policy returns false.
+        try std.testing.expectEqualStrings(
+            "60808060405260043610156011575f80fd5b5f3560e01c6357e6c2f4146023575f80fd5b346039575f366003190112603957805f60209252f35b5f80fd",
+            evm.get("deployedBytecode").?.object.get("object").?.string,
+        );
+    }
+}
+
 test "name resolution stops after the first failing top-level declaration" {
     const allocator = std.testing.allocator;
     const source =
