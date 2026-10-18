@@ -7,6 +7,7 @@ const builtin = @import("builtin");
 const zlinter = @import("zlinter");
 const CompilerHeader = @import("build_support/compiler_header.zig");
 const CompilerIdentity = @import("build_support/compiler_identity.zig");
+const CompilerNative = @import("build_support/compiler_native.zig");
 const package = @import("build.zig.zon");
 
 const required_zig_version: std.SemanticVersion = .{
@@ -198,31 +199,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "yyjson_adapter_c", .module = translated_yyjson_adapter.mod },
         },
     });
-    compiler_module.addIncludePath(b.path("include"));
-    compiler_module.addIncludePath(yyjson_dependency.path("src"));
-    compiler_module.addIncludePath(b.path("vendor/sqlite"));
-    compiler_module.addCSourceFile(.{
-        .file = b.path("src/libsolc/yyjson_adapter.c"),
-        .flags = &.{ "-std=c99", "-fvisibility=hidden", "-Dyyjson_api=" },
-    });
-    compiler_module.addCSourceFile(.{
-        .file = yyjson_dependency.path("src/yyjson.c"),
-        .flags = &.{ "-std=c99", "-fvisibility=hidden", "-Dyyjson_api=" },
-    });
-    compiler_module.addCSourceFile(.{
-        .file = b.path("vendor/sqlite/sqlite3.c"),
-        .flags = &.{
-            "-std=c99",
-            "-fvisibility=hidden",
-            "-DSQLITE_THREADSAFE=1",
-            "-DSQLITE_DQS=0",
-            "-DSQLITE_DEFAULT_MEMSTATUS=0",
-            "-DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1",
-            "-DSQLITE_OMIT_DEPRECATED",
-            "-DSQLITE_OMIT_LOAD_EXTENSION",
-            "-DSQLITE_TEMP_STORE=3",
-        },
-    });
+    CompilerNative.link(b, compiler_module, yyjson_dependency.path("src"), compiler_build_validation_identity.file, &.{});
 
     const libsolc_library = b.addLibrary(.{
         .name = "solc",
@@ -378,42 +355,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "yyjson_adapter_c", .module = translated_yyjson_adapter.mod },
         },
     });
-    standard_json_fuzz_compiler_module.addIncludePath(b.path("include"));
-    standard_json_fuzz_compiler_module.addIncludePath(yyjson_dependency.path("src"));
-    standard_json_fuzz_compiler_module.addIncludePath(b.path("vendor/sqlite"));
-    standard_json_fuzz_compiler_module.addCSourceFile(.{
-        .file = b.path("src/libsolc/yyjson_adapter.c"),
-        .flags = &.{
-            "-std=c99",
-            "-fvisibility=hidden",
-            "-Dyyjson_api=",
-            no_native_fuzz_c_coverage,
-        },
-    });
-    standard_json_fuzz_compiler_module.addCSourceFile(.{
-        .file = yyjson_dependency.path("src/yyjson.c"),
-        .flags = &.{
-            "-std=c99",
-            "-fvisibility=hidden",
-            "-Dyyjson_api=",
-            no_native_fuzz_c_coverage,
-        },
-    });
-    standard_json_fuzz_compiler_module.addCSourceFile(.{
-        .file = b.path("vendor/sqlite/sqlite3.c"),
-        .flags = &.{
-            "-std=c99",
-            "-fvisibility=hidden",
-            "-DSQLITE_THREADSAFE=1",
-            "-DSQLITE_DQS=0",
-            "-DSQLITE_DEFAULT_MEMSTATUS=0",
-            "-DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1",
-            "-DSQLITE_OMIT_DEPRECATED",
-            "-DSQLITE_OMIT_LOAD_EXTENSION",
-            "-DSQLITE_TEMP_STORE=3",
-            no_native_fuzz_c_coverage,
-        },
-    });
+    CompilerNative.link(b, standard_json_fuzz_compiler_module, yyjson_dependency.path("src"), compiler_build_validation_identity.file, &.{no_native_fuzz_c_coverage});
     const standard_json_fuzz_module = b.createModule(.{
         .root_source_file = b.path("src/fuzz_standard_json.zig"),
         .target = target,

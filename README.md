@@ -138,6 +138,10 @@ For development, omit `-Doptimize` for Debug mode, or use
 `-Doptimize=ReleaseSafe` for an optimized build with runtime safety checks. To
 build only the CLI, use `zig build build-cli`.
 
+The yyjson adapter, yyjson, and SQLite compile as separate build jobs shared by
+the CLI, library, and tests. They can run alongside C binding generation. Zig
+uses the available cores by default; add `-jN` to limit concurrent build jobs.
+
 C bindings use the pinned official `translate-c` package. Zig 0.17 can reuse
 configuration while compiler inputs are hashed at build time. Source edits,
 additions, and removals refresh the compiler identity. Header translation waits
