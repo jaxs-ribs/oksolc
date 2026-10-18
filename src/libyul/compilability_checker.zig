@@ -50,6 +50,17 @@ pub const CompilabilityChecker = struct {
         block: *const AST.Block,
         optimize_stack_allocation: bool,
     ) !CompilabilityChecker {
+        try object.validateNames();
+        return initWithBlockAndValidatedNames(allocator, object, block, optimize_stack_allocation);
+    }
+
+    /// Requires unchanged namespaces validated by the enclosing optimizer pass.
+    pub fn initWithBlockAndValidatedNames(
+        allocator: std.mem.Allocator,
+        object: *const Object,
+        block: *const AST.Block,
+        optimize_stack_allocation: bool,
+    ) !CompilabilityChecker {
         var result: CompilabilityChecker = .{ .allocator = allocator };
         errdefer result.deinit();
 
@@ -57,7 +68,7 @@ pub const CompilabilityChecker = struct {
         const evm_dialect = EVMDialectModule.fromDialect(dialect_value.*) orelse return result;
         var no_output_dialect = NoOutput.NoOutputEVMDialect.init(evm_dialect);
 
-        var structure = try object.summarizeStructure();
+        var structure = try object.summarizeStructureWithValidatedNames();
         defer structure.deinit();
         var analysis_info = try AsmAnalysis.analyzeStrictBlock(
             allocator,

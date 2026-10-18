@@ -185,6 +185,16 @@ pub const StackCompressor = struct {
         optimize_stack_allocation: bool,
         max_iterations: usize,
     ) !RunResult {
+        try object.validateNames();
+        return runWithValidatedNames(object, optimize_stack_allocation, max_iterations);
+    }
+
+    /// Consumes code as run() does; requires validated, unchanged namespaces.
+    pub fn runWithValidatedNames(
+        object: *Object,
+        optimize_stack_allocation: bool,
+        max_iterations: usize,
+    ) !RunResult {
         const allocator = object.allocator;
         const code = object.code() orelse return error.MissingObjectCode;
         const dialect = object.dialect() orelse return error.MissingDialect;
@@ -209,7 +219,7 @@ pub const StackCompressor = struct {
 
         if (use_optimized_codegen) {
             const evm = evm_dialect.?;
-            var structure = try object.summarizeStructure();
+            var structure = try object.summarizeStructureWithValidatedNames();
             defer structure.deinit();
             var analysis_info = try AsmAnalysis.analyzeStrictBlock(
                 allocator,
@@ -252,7 +262,7 @@ pub const StackCompressor = struct {
             }
         } else {
             for (0..max_iterations) |_| {
-                var checker = try Compilability.CompilabilityChecker.initWithBlock(
+                var checker = try Compilability.CompilabilityChecker.initWithBlockAndValidatedNames(
                     allocator,
                     object,
                     &ast_root,

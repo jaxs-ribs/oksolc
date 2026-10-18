@@ -2864,6 +2864,94 @@ test "valid Yul envelope compiles without requesting artifacts" {
     try standard_json.compareExact("{\"errors\":[]}\n", output.bytes);
 }
 
+test "deep dotted Yul namespaces keep request allocations bounded" {
+    const allocator = std.testing.allocator;
+    var source = std.Io.Writer.Allocating.init(allocator);
+    defer source.deinit();
+    const name_tail: [45]u8 = @splat('x');
+    for (0..300) |depth|
+        try source.writer.print("object \"node{d:0>3}.{s}\" {{ code {{}} ", .{ depth, &name_tail });
+    for (0..300) |_| try source.writer.writeByte('}');
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Yul",
+        .sources = .{ .@"nested.yul" = .{ .content = source.written() } },
+        .settings = .{ .outputSelection = @as(struct {}, .{}) },
+    }, .{});
+    defer allocator.free(input);
+
+    var accounting = std.testing.FailingAllocator.init(allocator, .{});
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(accounting.allocator(), .{ .input = input });
+    defer output.deinit();
+    try standard_json.compareExact("{\"errors\":[]}\n", output.bytes);
+    // Cover the complete request, including each subtree's analysis. This
+    // catches both expanded path storage and repeated subtree validation.
+    try std.testing.expect(accounting.allocated_bytes < 8 * 1024 * 1024);
+}
+
+test "Yul rejects literal and qualified name collisions in every declaration order" {
+    const allocator = std.testing.allocator;
+    const cases = [_]struct { nested: []const u8, direct: []const u8 }{
+        .{
+            .nested = "object \"lib\" { code {} object \"runtime\" { code { mstore(0, 42) return(0, 32) } } }",
+            .direct = "data \"lib.runtime\" hex\"60635f5260205ff3\"",
+        },
+        .{
+            .nested = "object \"lib\" { code {} object \"runtime\" { code {} } }",
+            .direct = "object \"lib.runtime\" { code {} }",
+        },
+        .{
+            .nested = "object \"lib\" { code {} data \"payload\" hex\"2a\" }",
+            .direct = "data \"lib.payload\" hex\"63\"",
+        },
+        .{
+            .nested = "object \"outer\" { code {} object \"lib\" { code {} data \"payload\" hex\"2a\" } }",
+            .direct = "data \"outer.lib.payload\" hex\"63\"",
+        },
+        .{
+            .nested = "object \"lib\" { code {} object \"part.runtime\" { code {} } }",
+            .direct = "object \"lib.part\" { code {} object \"runtime\" { code {} } }",
+        },
+        .{
+            .nested = "object \"lib.\" { code {} data \"payload\" hex\"2a\" }",
+            .direct = "data \"lib..payload\" hex\"63\"",
+        },
+    };
+    for (cases) |case| {
+        for ([_]bool{ false, true }) |direct_first| {
+            for ([_]bool{ false, true }) |optimize| {
+                const source = try allocator.print("object \"Root\" {{ code {{}} {s} {s} }}", .{
+                    if (direct_first) case.direct else case.nested,
+                    if (direct_first) case.nested else case.direct,
+                });
+                defer allocator.free(source);
+                const input = try std.json.Stringify.valueAlloc(allocator, .{
+                    .language = "Yul",
+                    .sources = .{ .@"C.yul" = .{ .content = source } },
+                    .settings = .{
+                        .optimizer = .{ .enabled = optimize },
+                        .outputSelection = .{ .@"*" = .{ .@"*" = &.{"evm.bytecode.object"} } },
+                    },
+                }, .{});
+                defer allocator.free(input);
+                var dispatcher: libsolc.Dispatcher = .{};
+                var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+                defer output.deinit();
+                const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+                defer parsed.deinit();
+                try std.testing.expect(parsed.value.object.get("contracts") == null);
+                const diagnostics = parsed.value.object.get("errors").?.array.items;
+                try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+                try std.testing.expectEqualStrings("ParserError", diagnostics[0].object.get("type").?.string);
+                try std.testing.expectEqualStrings(
+                    "Object and data names must not collide with qualified paths.",
+                    diagnostics[0].object.get("message").?.string,
+                );
+            }
+        }
+    }
+}
+
 test "Yul Standard JSON artifacts match solc 0.8.36 exactly" {
     var dispatcher: libsolc.Dispatcher = .{};
     var output = try dispatcher.compiler().compile(std.testing.allocator, .{

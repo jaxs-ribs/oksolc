@@ -264,6 +264,7 @@ pub const ObjectOptimizer = struct {
         if (!object.sub_id.empty()) return error.TopLevelObjectRequired;
         if (settings.typed_solidity and !SolidityDebugNormalizer.hasSourceMappings(object))
             return error.MissingSourceMappings;
+        try object.validateNames();
         try self.optimizeRecursive(object, settings, true);
     }
 
@@ -381,7 +382,7 @@ pub const ObjectOptimizer = struct {
         }
 
         _ = self.optimization_run_count.fetchAdd(1, .monotonic);
-        try OptimiserSuite.runProfiled(
+        try OptimiserSuite.runProfiledWithValidatedNames(
             meter,
             object,
             settings.optimize_stack_allocation,
@@ -624,12 +625,13 @@ fn shardIndex(cache_key: CacheKey) usize {
 
 /// Consumes the replacement even on failure; publish only after its analysis
 /// succeeds against the receiving object's current subobject structure.
+/// optimize() checked namespaces before recursion; cached code cannot change them.
 fn replaceAnalyzedCode(object: *ObjectModule.Object, replacement_input: AST.AST, dialect: AST.Dialect) !void {
     var replacement = replacement_input;
     errdefer replacement.deinit();
     const evm_dialect = EVMDialectModule.fromDialect(dialect) orelse
         return error.CachedEVMDialectRequired;
-    var structure = try object.summarizeStructure();
+    var structure = try object.summarizeStructureWithValidatedNames();
     defer structure.deinit();
     var analysis = try AsmAnalysis.analyzeStrictBlock(
         object.allocator,

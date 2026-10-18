@@ -314,8 +314,13 @@ pub const YulStack = struct {
     }
 
     fn analyzeObjectTree(self: *YulStack, object: *Object) !bool {
+        try object.validateNames();
+        return self.analyzeObjectTreeWithValidatedNames(object);
+    }
+
+    fn analyzeObjectTreeWithValidatedNames(self: *YulStack, object: *Object) !bool {
         const evm_dialect = try EVMDialect.strictAssemblyForEVMObjects(self.evm_version);
-        var success = try AsmAnalysis.analyzeObject(
+        var success = try AsmAnalysis.analyzeObjectWithValidatedNames(
             self.allocator,
             object,
             &self.error_reporter,
@@ -323,7 +328,7 @@ pub const YulStack = struct {
             AsmAnalysis.instructionValidatorForEVMDialect(evm_dialect),
         );
         for (object.sub_objects.items) |*node| switch (node.*) {
-            .object => |child| if (!try self.analyzeObjectTree(child)) {
+            .object => |child| if (!try self.analyzeObjectTreeWithValidatedNames(child)) {
                 success = false;
             },
             .data => {},
@@ -630,7 +635,17 @@ fn analyzeObjectTreeWithReporter(
     reporter: *Diagnostics.ErrorReporter,
     dialect: *const EVMDialect.EVMDialect,
 ) !bool {
-    var success = try AsmAnalysis.analyzeObject(
+    try object.validateNames();
+    return analyzeObjectTreeWithValidatedNamesAndReporter(allocator, object, reporter, dialect);
+}
+
+fn analyzeObjectTreeWithValidatedNamesAndReporter(
+    allocator: std.mem.Allocator,
+    object: *Object,
+    reporter: *Diagnostics.ErrorReporter,
+    dialect: *const EVMDialect.EVMDialect,
+) !bool {
+    var success = try AsmAnalysis.analyzeObjectWithValidatedNames(
         allocator,
         object,
         reporter,
@@ -638,7 +653,7 @@ fn analyzeObjectTreeWithReporter(
         AsmAnalysis.instructionValidatorForEVMDialect(dialect),
     );
     for (object.sub_objects.items) |*node| switch (node.*) {
-        .object => |child| if (!try analyzeObjectTreeWithReporter(
+        .object => |child| if (!try analyzeObjectTreeWithValidatedNamesAndReporter(
             allocator,
             child,
             reporter,

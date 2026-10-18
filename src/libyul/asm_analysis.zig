@@ -92,7 +92,7 @@ pub fn instructionValidatorForEVMDialect(
     };
 }
 
-pub const AnalyzeError = std.mem.Allocator.Error || error{
+pub const AnalyzeError = ObjectModule.NamespaceError || error{
     FatalDiagnostic,
     InvalidAst,
     InvalidLiteral,
@@ -719,8 +719,21 @@ pub fn analyzeObject(
     resolver: Resolver,
     instruction_validator: InstructionValidator,
 ) AnalyzeError!bool {
+    try object.validateNames();
+    return analyzeObjectWithValidatedNames(allocator, object, error_reporter, resolver, instruction_validator);
+}
+
+/// Requires namespace validation of the whole tree since its last structural
+/// change, allowing recursive analysis to check each declaration only once.
+pub fn analyzeObjectWithValidatedNames(
+    allocator: std.mem.Allocator,
+    object: *ObjectModule.Object,
+    error_reporter: *Diagnostics.ErrorReporter,
+    resolver: Resolver,
+    instruction_validator: InstructionValidator,
+) AnalyzeError!bool {
     const code = object.code() orelse return error.MissingObjectCode;
-    var structure = try object.summarizeStructure();
+    var structure = try object.summarizeStructureWithValidatedNames();
     defer structure.deinit();
     if (object.analysis_info) |*previous| previous.deinit();
     object.analysis_info = AsmAnalysisInfo.init(allocator);

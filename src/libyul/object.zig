@@ -30,6 +30,7 @@ pub const ObjectError = AsmPrinter.PrintError || std.mem.Allocator.Error || erro
 };
 
 pub const ObjectJsonError = AsmJsonConverterModule.JsonError || error{MissingCode};
+pub const NamespaceError = std.mem.Allocator.Error || error{AmbiguousObjectName};
 
 pub const SourceNameEntry = struct {
     index: u32,
@@ -287,6 +288,82 @@ pub const Structure = struct {
     }
 };
 
+/// One trie for the whole tree. Edges borrow literal name components, so each
+/// component is stored once instead of copying paths at every ancestor.
+const NamespaceValidator = struct {
+    const Edge = struct { parent: usize, name: []const u8 };
+    const EdgeContext = struct {
+        pub fn hash(_: EdgeContext, edge: Edge) u64 {
+            return std.hash.Wyhash.hash(@intCast(edge.parent), edge.name);
+        }
+
+        pub fn eql(_: EdgeContext, left: Edge, right: Edge) bool {
+            return left.parent == right.parent and std.mem.eql(u8, left.name, right.name);
+        }
+    };
+
+    allocator: std.mem.Allocator,
+    edges: std.HashMapUnmanaged(Edge, usize, EdgeContext, std.hash_map.default_max_load_percentage) = .empty,
+    declarations: std.ArrayList(?usize) = .empty,
+    next_declaration: usize = 0,
+
+    fn deinit(self: *NamespaceValidator) void {
+        self.edges.deinit(self.allocator);
+        self.declarations.deinit(self.allocator);
+    }
+
+    fn validate(self: *NamespaceValidator, object: *const Object) NamespaceError!void {
+        if (object.sub_objects.items.len == 0) return;
+        try self.declarations.append(self.allocator, null);
+        try self.visit(object, 0);
+    }
+
+    fn visit(self: *NamespaceValidator, object: *const Object, prefix: usize) NamespaceError!void {
+        if (object.sub_objects.items.len == 0) return;
+        const first_descendant = self.next_declaration;
+        for (object.sub_objects.items) |*node| {
+            const name = node.name();
+            if (name.len == 0) return error.AmbiguousObjectName;
+            const path = try self.putPath(prefix, name);
+            if (self.declarations.items[path] != null) return error.AmbiguousObjectName;
+            self.declarations.items[path] = self.next_declaration;
+            self.next_declaration += 1;
+            if (node.* == .object) try self.visit(node.object, path);
+        }
+        // An object's own name is an alias in its local namespace, but not in
+        // its parent's namespace. Ignore declarations outside this subtree.
+        if (object.name.len != 0) {
+            if (self.findPath(prefix, object.name)) |path| {
+                if (self.declarations.items[path]) |declaration| {
+                    if (declaration >= first_descendant) return error.AmbiguousObjectName;
+                }
+            }
+        }
+    }
+
+    fn putPath(self: *NamespaceValidator, prefix: usize, name: []const u8) std.mem.Allocator.Error!usize {
+        var path = prefix;
+        var components = std.mem.splitScalar(u8, name, '.');
+        while (components.next()) |component| {
+            const entry = try self.edges.getOrPut(self.allocator, .{ .parent = path, .name = component });
+            if (!entry.found_existing) {
+                entry.value_ptr.* = self.declarations.items.len;
+                try self.declarations.append(self.allocator, null);
+            }
+            path = entry.value_ptr.*;
+        }
+        return path;
+    }
+
+    fn findPath(self: *const NamespaceValidator, prefix: usize, name: []const u8) ?usize {
+        var path = prefix;
+        var components = std.mem.splitScalar(u8, name, '.');
+        while (components.next()) |component|
+            path = self.edges.get(.{ .parent = path, .name = component }) orelse return null;
+        return path;
+    }
+};
+
 pub const Object = struct {
     allocator: std.mem.Allocator,
     name: []const u8,
@@ -506,7 +583,22 @@ pub const Object = struct {
         return result;
     }
 
-    pub fn summarizeStructure(self: *const Object) std.mem.Allocator.Error!Structure {
+    /// Check the entire namespace once, independently of declaration order.
+    /// Scratch storage is bounded by the literal name components in the tree.
+    pub fn validateNames(self: *const Object) NamespaceError!void {
+        var validator: NamespaceValidator = .{ .allocator = self.allocator };
+        defer validator.deinit();
+        try validator.validate(self);
+    }
+
+    pub fn summarizeStructure(self: *const Object) NamespaceError!Structure {
+        try self.validateNames();
+        return self.summarizeStructureWithValidatedNames();
+    }
+
+    /// Requires validateNames() on this tree since its last namespace change.
+    /// Tree-wide consumers can reuse that check while analyzing each subtree.
+    pub fn summarizeStructureWithValidatedNames(self: *const Object) std.mem.Allocator.Error!Structure {
         var structure = try Structure.init(self.allocator, self.name);
         errdefer structure.deinit();
         if (self.name.len != 0 and std.mem.findScalar(u8, self.name, '.') == null) {
@@ -519,7 +611,7 @@ pub const Object = struct {
             switch (node.*) {
                 .object => |child| {
                     try structure.object_paths.put(self.allocator, child_name);
-                    var child_structure = try child.summarizeStructure();
+                    var child_structure = try child.summarizeStructureWithValidatedNames();
                     defer child_structure.deinit();
                     for (child_structure.object_paths.values.items) |path| {
                         if (std.mem.eql(u8, child.name, path)) continue;
@@ -676,6 +768,63 @@ test "object structure and subassembly paths preserve object/data distinctions" 
         SubAssemblyID.init(7),
         SubAssemblyID.init(9),
     }, path);
+}
+
+test "object namespaces reject dotted collisions before structure construction" {
+    const allocator = std.testing.allocator;
+    for ([_]bool{ false, true }) |data_first| {
+        const root = try Object.create(allocator, "Root");
+        defer root.destroy();
+        const child = try Object.create(allocator, "lib");
+        const runtime = try Object.create(allocator, "runtime");
+        try child.addSubObject(.{ .object = runtime });
+        if (data_first) try root.addSubObject(.{ .data = try Data.init(allocator, "lib.runtime", "payload") });
+        try root.addSubObject(.{ .object = child });
+        if (!data_first) try root.addSubObject(.{ .data = try Data.init(allocator, "lib.runtime", "payload") });
+        try std.testing.expectError(error.AmbiguousObjectName, root.validateNames());
+        try std.testing.expectError(error.AmbiguousObjectName, root.summarizeStructure());
+    }
+}
+
+test "object namespace validation preserves noncolliding dotted data and allocation errors" {
+    const allocator = std.testing.allocator;
+    const root = try Object.create(allocator, "Root");
+    defer root.destroy();
+    const child = try Object.create(allocator, "lib");
+    try child.addSubObject(.{ .data = try Data.init(allocator, "payload", "bytes") });
+    try root.addSubObject(.{ .object = child });
+    try root.addSubObject(.{ .data = try Data.init(allocator, ".metadata", "bytes") });
+    try root.addSubObject(.{ .data = try Data.init(allocator, "other.payload", "bytes") });
+    try root.validateNames();
+    var deterministic = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), struct {
+        fn run(failing: std.mem.Allocator, object: *const Object) !void {
+            var validator: NamespaceValidator = .{ .allocator = failing };
+            defer validator.deinit();
+            try validator.validate(object);
+        }
+    }.run, .{root});
+}
+
+test "object namespace validation keeps containing-object aliases local" {
+    const allocator = std.testing.allocator;
+    for ([_]bool{ false, true }) |data_first| {
+        const root = try Object.create(allocator, "Root");
+        defer root.destroy();
+        const child = try Object.create(allocator, "lib");
+        try child.addSubObject(.{ .data = try Data.init(allocator, "payload", "bytes") });
+        if (data_first) try root.addSubObject(.{ .data = try Data.init(allocator, "lib.lib", "bytes") });
+        try root.addSubObject(.{ .object = child });
+        if (!data_first) try root.addSubObject(.{ .data = try Data.init(allocator, "lib.lib", "bytes") });
+        try root.validateNames();
+    }
+
+    const root = try Object.create(allocator, "lib.runtime");
+    defer root.destroy();
+    const child = try Object.create(allocator, "lib");
+    try child.addSubObject(.{ .data = try Data.init(allocator, "runtime", "bytes") });
+    try root.addSubObject(.{ .object = child });
+    try std.testing.expectError(error.AmbiguousObjectName, root.validateNames());
 }
 
 test "source-name maps replace duplicate indices and serialize in index order" {

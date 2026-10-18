@@ -4,12 +4,24 @@
 
 Solidity compatibility target: `0.8.36`.
 
+### Security
+
+- Resolve relative imports in the virtual source namespace, preserving URL-like
+  names and existing path components instead of selecting a normalized alias
+  (`GHSA-wvq5-vxvm-x7xp`).
+- Read project remappings through verified directory and regular-file handles,
+  rejecting symlinks and non-regular files to prevent disclosure through
+  `remappings.txt`, and retaining the pinned project root during watch updates
+  (`GHSA-qhgr-hfq3-p3rr`).
+- Reject ambiguous Yul object and data paths with structured diagnostics in every
+  declaration order and build mode, preventing dotted names from replacing nested
+  runtime code (`GHSA-9q3c-q3gp-jg4h`). This includes ambiguous declaration orders
+  accepted by solc 0.8.36; see the [compatibility exceptions](README.md#status-and-compatibility).
+  Namespace checks share path components and reuse tree validation throughout
+  analysis and optimization, keeping scratch storage proportional to the input.
+
 ### Fixed
 
-- Read project remappings through verified directory and regular-file handles,
-  rejecting symlinks and retaining the pinned project root during watch updates.
-- Resolve relative imports in the virtual source namespace, preserving URL-like
-  names and existing path components instead of selecting a normalized alias.
 - Preserve request and source insertion order in original and minimized
   differential-fuzz reproducers so replay uses the same request bytes.
 - Apply one compiler-service deadline to request transmission and response

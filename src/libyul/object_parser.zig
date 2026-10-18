@@ -68,6 +68,15 @@ pub const ObjectParser = struct {
         else
             try self.parseObject(null);
         errdefer object.destroy();
+        if (!self.base.error_reporter.hasErrors())
+            object.validateNames() catch |err| switch (err) {
+                error.AmbiguousObjectName => try self.base.fatalParserError(
+                    .{ .value = 8794 },
+                    self.base.currentLocation(),
+                    "Object and data names must not collide with qualified paths.",
+                ),
+                error.OutOfMemory => return error.OutOfMemory,
+            };
         if (!reuse_scanner) try self.base.expectToken(.EOS, true);
         return object;
     }
