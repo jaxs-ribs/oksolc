@@ -480,6 +480,86 @@ test "storage array push rejects incompatible arguments during member lookup" {
     try std.testing.expectEqualStrings("9582", diagnostics[0].object.get("errorCode").?.string);
 }
 
+test "native and attached array members share overload resolution" {
+    const allocator = std.testing.allocator;
+    const cases = [_]struct {
+        member: []const u8,
+        call: []const u8,
+        error_code: ?[]const u8,
+    }{
+        .{
+            .member = "function push(uint8[] storage, bytes32) internal pure {}",
+            .call = "values.push(true);",
+            .error_code = "9582",
+        },
+        .{
+            .member = "function push(uint8[] storage, bytes32) internal pure {}",
+            .call = "values.push(bytes32(0));",
+            .error_code = null,
+        },
+        .{
+            .member = "function push(uint8[] storage, bytes32) internal pure {}",
+            .call = "values.push(1);",
+            .error_code = null,
+        },
+        .{
+            .member = "function push(uint8[] storage, uint8) internal pure {}",
+            .call = "values.push(1);",
+            .error_code = "6675",
+        },
+        .{
+            .member = "function pop(uint8[] storage, bytes32) internal pure {}",
+            .call = "values.pop(true);",
+            .error_code = "9582",
+        },
+        .{
+            .member = "function pop(uint8[] storage, bytes32) internal pure {}",
+            .call = "values.pop(bytes32(0));",
+            .error_code = null,
+        },
+        .{
+            .member = "function pop(uint8[] storage) internal pure {}",
+            .call = "values.pop();",
+            .error_code = "6675",
+        },
+        .{
+            .member = "",
+            .call = "values.pop(true);",
+            .error_code = "6160",
+        },
+    };
+    for (cases) |case| {
+        const source = try allocator.print(
+            "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\n" ++
+                "library L {{ {s} }}\n" ++
+                "contract C {{ using L for uint8[]; uint8[] values; " ++
+                "function f() external {{ {s} }} }}\n",
+            .{ case.member, case.call },
+        );
+        defer allocator.free(source);
+        const input = try std.json.Stringify.valueAlloc(allocator, .{
+            .language = "Solidity",
+            .sources = .{ .@"C.sol" = .{ .content = source } },
+            .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+        }, .{});
+        defer allocator.free(input);
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+        defer output.deinit();
+        const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+        defer parsed.deinit();
+        var error_count: usize = 0;
+        if (parsed.value.object.get("errors")) |errors|
+            for (errors.array.items) |diagnostic| {
+                if (!std.mem.eql(u8, "error", diagnostic.object.get("severity").?.string)) continue;
+                error_count += 1;
+                try std.testing.expect(case.error_code != null);
+                try std.testing.expectEqualStrings(case.error_code.?, diagnostic.object.get("errorCode").?.string);
+            };
+        try std.testing.expectEqual(@as(usize, @intFromBool(case.error_code != null)), error_count);
+    }
+}
+
 test "recursive struct diagnostics prefer a complete inner cycle" {
     const allocator = std.testing.allocator;
     const source =

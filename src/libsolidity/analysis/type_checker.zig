@@ -4211,6 +4211,7 @@ pub const TypeChecker = struct {
         var unmatched_contract_member: ?ResolvedMember = null;
         var native_member_count: usize = 0;
         var attached_member_count: usize = 0;
+        var array_overloads_collected = false;
 
         switch (owner_type.payload) {
             .Struct => |structure| {
@@ -4240,6 +4241,7 @@ pub const TypeChecker = struct {
                 value.member_name,
                 annotation.expression.arguments,
                 (try owner_annotation.is_pure.get()).*,
+                &array_overloads_collected,
             ),
             .FixedBytes => {
                 if (std.mem.eql(u8, value.member_name, "length")) resolved = .{
@@ -4292,7 +4294,7 @@ pub const TypeChecker = struct {
             ),
             else => {},
         }
-        if (resolved == null)
+        if (resolved == null and !array_overloads_collected)
             resolved = try self.resolveAttachedMember(
                 node,
                 owner_type,
@@ -4572,6 +4574,7 @@ pub const TypeChecker = struct {
         name: []const u8,
         arguments: ?@import("../ast/ast_enums.zig").FuncCallArguments,
         owner_pure: bool,
+        overloads_collected: *bool,
     ) CheckError!?ResolvedMember {
         if (array.isString()) return null;
         if (std.mem.eql(u8, name, "length"))
@@ -4580,74 +4583,42 @@ pub const TypeChecker = struct {
                 .is_pure = owner_pure,
             };
         if (array.reference.location != .Storage or array.length != null) return null;
-        const self_pointer = try self.type_provider.withLocation(
+        if (!std.mem.eql(u8, name, "push") and !std.mem.eql(u8, name, "pop")) return null;
+
+        // Select from the complete member set: a sole declaration retains its
+        // argument diagnostic, while native/attached overloads filter together.
+        // Do not retry only the attached subset after an unsuccessful lookup.
+        overloads_collected.* = true;
+        var members = try TypeBehavior.membersAlloc(
+            self.type_provider,
+            self.allocator,
             owner_type,
-            .Storage,
-            true,
+            self.current_contract orelse self.current_source_unit,
         );
-        if (std.mem.eql(u8, name, "pop")) {
-            const unbound = try self.type_provider.function(
-                &.{self_pointer},
-                &.{},
-                &.{""},
-                &.{},
-                .ArrayPop,
-                .NonPayable,
-                null,
-                .{},
-            );
-            return .{
-                .type_ref = try self.type_provider.withBoundFirstArgument(unbound),
-                .is_pure = false,
+        defer members.deinit();
+        const candidate_count = members.borrowed().countByName(name);
+        var resolved: ?ResolvedMember = null;
+        for (members.items) |member| {
+            if (!std.mem.eql(u8, member.name, name)) continue;
+            if (candidate_count != 1)
+                if (arguments) |*call_arguments|
+                    if (!functionTypeCanTakeArguments(member.type_ref, call_arguments, owner_type))
+                        continue;
+            if (resolved != null) {
+                const message = try self.allocator.print(
+                    "Member \"{s}\" not unique after argument-dependent lookup in {s}.",
+                    .{ name, try self.typeNameTemporary(owner_type) },
+                );
+                defer self.allocator.free(message);
+                try self.reporter.fatal(errorId(6675), .TypeError, node.location, null, message);
+            }
+            resolved = .{
+                .type_ref = member.type_ref,
+                .declaration = member.declaration,
+                .is_pure = member.declaration != null and owner_pure,
             };
         }
-        if (!std.mem.eql(u8, name, "push")) return null;
-        const call_arguments = arguments orelse {
-            const message = try self.allocator.print(
-                "Member \"push\" not unique after argument-dependent lookup in {s}.",
-                .{try self.typeNameTemporary(owner_type)},
-            );
-            defer self.allocator.free(message);
-            try self.reporter.fatal(errorId(6675), .TypeError, node.location, null, message);
-            unreachable;
-        };
-        const argument_count = call_arguments.types.items.len;
-        if (argument_count == 0) {
-            const returns = [_]*const Types.Type{array.base_type};
-            const return_names = [_][]const u8{""};
-            const unbound = try self.type_provider.function(
-                &.{self_pointer},
-                &returns,
-                &.{""},
-                &return_names,
-                .ArrayPush,
-                .NonPayable,
-                null,
-                .{},
-            );
-            return .{
-                .type_ref = try self.type_provider.withBoundFirstArgument(unbound),
-                .is_pure = false,
-            };
-        }
-        const parameters = [_]*const Types.Type{ self_pointer, array.base_type };
-        const parameter_names = [_][]const u8{ "", "" };
-        const unbound = try self.type_provider.function(
-            &parameters,
-            &.{},
-            &parameter_names,
-            &.{},
-            .ArrayPush,
-            .NonPayable,
-            null,
-            .{},
-        );
-        const bound = try self.type_provider.withBoundFirstArgument(unbound);
-        if (!functionTypeCanTakeArguments(bound, &call_arguments, owner_type)) return null;
-        return .{
-            .type_ref = bound,
-            .is_pure = false,
-        };
+        return resolved;
     }
 
     fn resolveAddressMember(
