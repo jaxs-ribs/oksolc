@@ -503,7 +503,7 @@ test "recursive struct diagnostics prefer a complete inner cycle" {
     try std.testing.expectEqualStrings("2046", diagnostics[0].object.get("errorCode").?.string);
     const location = diagnostics[0].object.get("sourceLocation").?.object;
     try std.testing.expectEqual(
-        @as(i64, @intCast(std.mem.indexOf(u8, source, "struct B").?)),
+        @as(i64, @intCast(std.mem.find(u8, source, "struct B").?)),
         location.get("start").?.integer,
     );
 }
@@ -534,7 +534,7 @@ test "recursive struct immediate validation reports the completed structure" {
     try std.testing.expectEqualStrings("2046", diagnostics[0].object.get("errorCode").?.string);
     const location = diagnostics[0].object.get("sourceLocation").?.object;
     try std.testing.expectEqual(
-        @as(i64, @intCast(std.mem.indexOf(u8, source, "struct S4").?)),
+        @as(i64, @intCast(std.mem.find(u8, source, "struct S4").?)),
         location.get("start").?.integer,
     );
 }
@@ -1028,8 +1028,7 @@ test "storage and transient-storage layouts match solc 0.8.36 exactly" {
 test "storage layout byte counts wrap at 256 bits" {
     const allocator = std.testing.allocator;
     const length = "57896044618658097711785492504343953926634992332820282019728792003956564819968";
-    const source = try std.fmt.allocPrint(
-        allocator,
+    const source = try allocator.print(
         "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\n" ++
             "contract C {{ struct Data {{ uint256[{s}] values; }} Data data; }}\n",
         .{length},
@@ -1049,7 +1048,7 @@ test "storage layout byte counts wrap at 256 bits" {
     const types = parsed.value.object.get("contracts").?.object
         .get("C.sol").?.object.get("C").?.object
         .get("storageLayout").?.object.get("types").?.object;
-    const key = try std.fmt.allocPrint(allocator, "t_array(t_uint256){s}_storage", .{length});
+    const key = try allocator.print("t_array(t_uint256){s}_storage", .{length});
     defer allocator.free(key);
     const array_info = types.get(key).?.object;
     try std.testing.expectEqualStrings(

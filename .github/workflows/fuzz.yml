@@ -108,9 +108,11 @@ jobs:
           chmod 0755 "$reference"
           mkdir -p "$evmone_root"
           tar -xzf "$evmone_archive" -C "$evmone_root"
-          printf 'SOLC_REFERENCE=%s\n' "$reference" >> "$GITHUB_ENV"
-          printf 'EVMONE_REFERENCE=%s/bin/evmone\n' "$evmone_root" >> "$GITHUB_ENV"
-          printf 'LD_LIBRARY_PATH=%s/lib:%s\n' "$evmone_root" "${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          {
+            printf 'SOLC_REFERENCE=%s\n' "$reference"
+            printf 'EVMONE_REFERENCE=%s/bin/evmone\n' "$evmone_root"
+            printf 'LD_LIBRARY_PATH=%s/lib:%s\n' "$evmone_root" "${LD_LIBRARY_PATH:-}"
+          } >> "$GITHUB_ENV"
 
       - name: Run pinned solc differential histories
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
