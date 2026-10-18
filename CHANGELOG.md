@@ -6,6 +6,8 @@ Solidity compatibility target: `0.8.36`.
 
 ### Fixed
 
+- Read project remappings through verified directory and regular-file handles,
+  rejecting symlinks and retaining the pinned project root during watch updates.
 - Resolve relative imports in the virtual source namespace, preserving URL-like
   names and existing path components instead of selecting a normalized alias.
 - Preserve request and source insertion order in original and minimized

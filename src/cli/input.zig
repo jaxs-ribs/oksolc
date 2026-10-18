@@ -13,12 +13,42 @@ pub const Options = struct {
 };
 
 pub fn readRemappingsAlloc(allocator: std.mem.Allocator, io: std.Io, project_root: []const u8) !?[]u8 {
-    const path = try std.Io.Dir.path.join(allocator, &.{ project_root, "remappings.txt" });
-    defer allocator.free(path);
-    return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(1024 * 1024)) catch |err| switch (err) {
-        error.FileNotFound => null,
+    var directory = try openRemappingsRoot(io, project_root);
+    defer directory.close(io);
+    return readRemappingsAtAlloc(allocator, io, directory);
+}
+
+/// Borrows the project's pinned directory capability, including across watch
+/// updates. Only an absent remappings.txt is optional; unsafe nodes fail closed.
+pub fn readRemappingsAtAlloc(allocator: std.mem.Allocator, io: std.Io, directory: std.Io.Dir) !?[]u8 {
+    const path_stat = directory.statFile(io, "remappings.txt", .{ .follow_symlinks = false }) catch |err| switch (err) {
+        error.FileNotFound => return null,
         else => return err,
     };
+    if (path_stat.kind != .file) return error.RemappingsNotRegularFile;
+    var file = try @import("project_sources.zig").openSourceFileNonblocking(directory, io, "remappings.txt");
+    defer file.close(io);
+    const stat = try file.stat(io);
+    if (stat.kind != .file or stat.inode != path_stat.inode) return error.RemappingsNotRegularFile;
+    if (stat.size > 1024 * 1024) return error.StreamTooLong;
+    var buffer: [16 * 1024]u8 = undefined;
+    var reader = file.reader(io, &buffer);
+    return try reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
+}
+
+fn openRemappingsRoot(io: std.Io, path: []const u8) !std.Io.Dir {
+    const root = std.Io.Dir.path.parsePath(path).root;
+    var directory = try std.Io.Dir.cwd().openDir(io, if (root.len == 0) "." else root, .{
+        .follow_symlinks = false,
+    });
+    errdefer directory.close(io);
+    var components = std.mem.tokenizeAny(u8, path[root.len..], if (@import("builtin").target.os.tag == .windows) "/\\" else "/");
+    while (components.next()) |component| {
+        const next = try directory.openDir(io, component, .{ .follow_symlinks = false });
+        directory.close(io);
+        directory = next;
+    }
+    return directory;
 }
 
 pub const RemappingLines = struct {
@@ -250,6 +280,65 @@ test "source remappings preserve context order and invalid entries for compiler 
     try std.testing.expectEqualStrings("pkg/=lib/pkg/", remappings[0].string);
     try std.testing.expectEqualStrings("src/:pkg/=vendor/pkg/", remappings[1].string);
     try std.testing.expectEqualStrings("invalid", remappings[2].string);
+}
+
+test "remappings reads allow only absent or bounded regular files" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    const root = try temporary.dir.realPathFileAlloc(io, ".", allocator);
+    defer allocator.free(root);
+    try std.testing.expectEqual(@as(?[]u8, null), try readRemappingsAlloc(allocator, io, root));
+    try temporary.dir.writeFile(io, .{ .sub_path = "remappings.txt", .data = "pkg/=lib/pkg/\n" });
+    try std.testing.checkAllAllocationFailures(allocator, struct {
+        fn run(alloc: std.mem.Allocator, project: []const u8) !void {
+            const contents = (try readRemappingsAlloc(alloc, std.testing.io, project)).?;
+            defer alloc.free(contents);
+            try std.testing.expectEqualStrings("pkg/=lib/pkg/\n", contents);
+        }
+    }.run, .{root});
+    const oversized = try allocator.alloc(u8, 1024 * 1024 + 1);
+    defer allocator.free(oversized);
+    @memset(oversized, 'x');
+    try temporary.dir.writeFile(io, .{ .sub_path = "remappings.txt", .data = oversized });
+    try std.testing.expectError(error.StreamTooLong, readRemappingsAlloc(allocator, io, root));
+    try temporary.dir.deleteFile(io, "remappings.txt");
+    try temporary.dir.createDir(io, "remappings.txt", .default_dir);
+    try std.testing.expectError(error.RemappingsNotRegularFile, readRemappingsAlloc(allocator, io, root));
+    const missing_root = try std.Io.Dir.path.join(allocator, &.{ root, "absent-project" });
+    defer allocator.free(missing_root);
+    try std.testing.expectError(error.FileNotFound, readRemappingsAlloc(allocator, io, missing_root));
+}
+
+test "remappings reads reject final and ancestor symlinks without disclosing contents" {
+    if (@import("builtin").target.os.tag == .windows) return error.SkipZigTest;
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.createDir(io, "project", .default_dir);
+    try temporary.dir.writeFile(io, .{ .sub_path = "secret.env", .data = "SECRET=outside-project\n" });
+    const root = try temporary.dir.realPathFileAlloc(io, "project", allocator);
+    defer allocator.free(root);
+    for ([_][]const u8{ "../secret.env", "../absent.env" }) |target| {
+        try temporary.dir.symLink(io, target, "project/remappings.txt", .{});
+        try std.testing.expectError(error.RemappingsNotRegularFile, readRemappingsAlloc(allocator, io, root));
+        try temporary.dir.deleteFile(io, "project/remappings.txt");
+    }
+    try temporary.dir.writeFile(io, .{ .sub_path = "project/remappings.txt", .data = "pkg/=lib/\n" });
+    try temporary.dir.symLink(io, "project", "linked", .{ .is_directory = true });
+    const parent = try temporary.dir.realPathFileAlloc(io, ".", allocator);
+    defer allocator.free(parent);
+    const linked = try std.Io.Dir.path.join(allocator, &.{ parent, "linked" });
+    defer allocator.free(linked);
+    if (readRemappingsAlloc(allocator, io, linked)) |contents| {
+        if (contents) |bytes| allocator.free(bytes);
+        return error.TestUnexpectedResult;
+    } else |err| switch (err) {
+        error.NotDir, error.SymLinkLoop, error.AccessDenied => {},
+        else => return err,
+    }
 }
 
 test "project source names are stable for absolute paths and retain allocation ownership" {
