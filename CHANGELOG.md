@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.1-dev - Unreleased
+
+Solidity compatibility target: `0.8.36`.
+
+### Fixed
+
+- Preserve request and source insertion order in original and minimized
+  differential-fuzz reproducers so replay uses the same request bytes.
+- Apply one compiler-service deadline to request transmission and response
+  receipt, and terminate timed-out workers before closing buffered stdin.
+- Resolve native array `push` and `pop` overloads together with attached
+  functions, matching solc's selection, ambiguity, and argument diagnostics.
+
 ## 0.2.0 - 2026-10-17
 
 Solidity compatibility target: `0.8.36`.
