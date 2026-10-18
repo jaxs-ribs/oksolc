@@ -49,10 +49,10 @@ compatibility target. See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ```console
 $ oksolc version
-oksolc 0.1.6 (Solidity 0.8.36)
+oksolc 0.2.0 (Solidity 0.8.36)
 $ oksolc --version
 oksolc, a solidity compiler commandline interface
-Version: 0.8.36+oksolc.0.1.6
+Version: 0.8.36+oksolc.0.2.0
 ```
 
 `oksolc version --json` returns `version` (the product version),
@@ -69,7 +69,7 @@ Contract metadata and CBOR keep the pinned reference compiler identity to
 preserve output and bytecode compatibility. Use the product version for upgrade
 comparisons; SemVer precedence ignores the build metadata after `+`.
 
-## Zig API migration for 0.2.0-dev
+## Zig API migration for 0.2.0
 
 Direct users of `solidity.incremental.SemanticRevision` must retain and destroy
 the marker returned by `initializeDependencyMasks`. The marker owns its scratch

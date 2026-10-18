@@ -1,8 +1,16 @@
 # Changelog
 
-## 0.2.0-dev
+## 0.2.0 - 2026-10-17
 
 Solidity compatibility target: `0.8.36`.
+
+### Added
+
+- Add stateful incremental fuzzing that compares retained compiler sessions
+  byte-for-byte with clean compilation across multi-source edit histories.
+- Add an external differential campaign against pinned solc 0.8.36, covering
+  in-memory, SQLite, and restarted sessions, corpus mutations, failure
+  reduction, and optional semantic execution with evmone.
 
 ### Changed
 
@@ -14,7 +22,7 @@ Solidity compatibility target: `0.8.36`.
   returns an owned `incremental.DependencyMaskMarker`. Replace
   `revision.markDependencyUsed(graph, importer, referenced)` with
   `marker.mark(importer, referenced)` and call `marker.deinit()` after collection.
-  See the [Zig API migration example](README.md#zig-api-migration-for-020-dev).
+  See the [Zig API migration example](README.md#zig-api-migration-for-020).
 
 ### Performance
 
@@ -23,6 +31,9 @@ Solidity compatibility target: `0.8.36`.
   Defer setup for cheap shuffles and hash slot identities in large tables.
 - Reuse exact assembly common-subexpression chunks across optimization rounds
   with bounded retained storage.
+- Compile the yyjson adapter, yyjson, and SQLite as separate build jobs shared
+  by the CLI, library, and tests, allowing C compilation to overlap binding
+  generation while respecting Zig's build concurrency limit.
 
 ### Fixed
 
@@ -36,6 +47,18 @@ Solidity compatibility target: `0.8.36`.
   allocator.
 - Preserve dependency-mask initialization retry state and continue compilation
   when optional optimizer-cache storage runs out of memory.
+- Rebind reused source export snapshots after incremental edits, preserving
+  imported declarations and `using` aliases across retained sessions.
+- Match solc diagnostics for recursive structures, invalid literal and
+  fixed-point conversions, invalid UTF-8 conversions, incompatible array-push
+  overloads, and abstract `super` lookup.
+- Preserve specific call diagnostics for single native or attached candidates,
+  while treating combined overload sets and data-location availability like
+  solc.
+- Wrap oversized storage-layout byte counts instead of overflowing, and return
+  diagnostics for Yul AST assertion failures instead of terminating compilation.
+- Stabilize Yul optimizer allocation-failure recovery and tolerate absent
+  references for unused variables.
 
 ## 0.1.6 - 2026-10-12
 
