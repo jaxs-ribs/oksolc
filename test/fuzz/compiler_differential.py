@@ -1713,6 +1713,7 @@ def write_bundle(
     execution_oracle_version: str | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    # Preserve request key order for byte-exact replay and cache identity.
     path.write_text(
         json.dumps(
             {
@@ -1727,7 +1728,6 @@ def write_bundle(
                 "history": history,
             },
             indent=2,
-            sort_keys=True,
         )
         + "\n"
     )

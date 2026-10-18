@@ -567,6 +567,50 @@ class ReducerTests(unittest.TestCase):
         )
 
 
+class BundleTests(unittest.TestCase):
+    def test_original_and_reduced_bundles_preserve_request_bytes(self):
+        first = {
+            "language": "Solidity",
+            "sources": {
+                "Z.sol": {"content": differential.PREAMBLE + "contract Z {}"},
+                "A.sol": {"content": differential.PREAMBLE + "contract A {}"},
+            },
+            "settings": {
+                "viaIR": True,
+                "optimizer": {"enabled": True, "runs": 200},
+            },
+        }
+        restored = dict(reversed(list(first.items())))
+        restored["sources"] = dict(reversed(list(first["sources"].items())))
+        self.assertEqual(first, restored)
+        self.assertNotEqual(
+            differential.encode_request(first), differential.encode_request(restored)
+        )
+        history = [first, {"language": "Yul"}, restored]
+        first_bytes = differential.encode_request(first)
+        restored_bytes = differential.encode_request(restored)
+        reduced = differential.ddmin_history(
+            history,
+            lambda candidate: len(candidate) >= 2
+            and differential.encode_request(candidate[0]) == first_bytes
+            and differential.encode_request(candidate[-1]) == restored_bytes,
+        )
+        self.assertEqual(len(reduced), 2)
+        failure = differential.Failure("output-mismatch", 1, (), "reordered restore")
+        with tempfile.TemporaryDirectory() as temporary:
+            for name, revisions in (("original", history), ("minimized", reduced)):
+                with self.subTest(bundle=name):
+                    path = Path(temporary) / f"{name}.json"
+                    differential.write_bundle(
+                        path, revisions, failure, "candidate", "reference", 1, 0
+                    )
+                    loaded = json.loads(path.read_text())
+                    self.assertEqual(
+                        [differential.encode_request(r) for r in loaded["history"]],
+                        [differential.encode_request(r) for r in revisions],
+                    )
+
+
 class CandidateServiceTests(unittest.TestCase):
     def test_closed_worker_is_reported_without_waiting_for_timeout(self):
         with tempfile.TemporaryDirectory() as temporary:
