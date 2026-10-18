@@ -127,11 +127,8 @@ pub const StorageLayout = struct {
         // recursion avoids retaining a pointer across hash-map growth.
         try self.types.object.put(self.allocator, key, .{ .object = .empty });
 
-        const byte_count = std.math.mul(
-            u256,
-            @as(u256, try TypeBehavior.storageBytes(type_ref)),
-            try TypeBehavior.storageSize(type_ref),
-        ) catch return error.Overflow;
+        const byte_count = @as(u256, try TypeBehavior.storageBytes(type_ref)) *%
+            try TypeBehavior.storageSize(type_ref);
         var info: Json = .{ .object = .empty };
 
         switch (type_ref.payload) {

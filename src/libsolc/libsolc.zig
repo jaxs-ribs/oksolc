@@ -44,6 +44,9 @@ pub const responses = struct {
     pub const source_callback_unsupported =
         \\{"errors":[{"component":"general","formattedMessage":"Source callback is not available in this request.","message":"Source callback is not available in this request.","severity":"error","type":"IOError"}]}
     ++ "\n";
+    pub const yul_ast_assertion =
+        \\{"errors":[{"component":"general","formattedMessage":"Uncaught exception:\n/solidity/libyul/AsmJsonConverter.cpp(56): Throw in function Json solidity::yul::AsmJsonConverter::operator()(const Literal &) const\nDynamic exception type: boost::wrapexcept<solidity::yul::YulAssertion>\nstd::exception::what: Yul assertion failed\n[solidity::util::tag_comment*] = Yul assertion failed\n","message":"Uncaught exception:\n/solidity/libyul/AsmJsonConverter.cpp(56): Throw in function Json solidity::yul::AsmJsonConverter::operator()(const Literal &) const\nDynamic exception type: boost::wrapexcept<solidity::yul::YulAssertion>\nstd::exception::what: Yul assertion failed\n[solidity::util::tag_comment*] = Yul assertion failed\n","severity":"error","type":"InternalCompilerError"}]}
+    ++ "\n";
 };
 
 /// C callback shape retained for consumers of `libsolc.h`.
@@ -469,6 +472,7 @@ pub const Dispatcher = struct {
                 &revision,
             ) catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
+                error.YulAstAssertion => return ownedOutput(allocator, responses.yul_ast_assertion),
                 else => return error.InternalFailure,
             };
             revision.commitCompleted();

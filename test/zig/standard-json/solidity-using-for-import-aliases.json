@@ -1,0 +1,28 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "A.sol": {
+      "content": "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\nfunction authorized(uint256) pure returns (bool) { return true; }\nfunction rejected(uint256) pure returns (bool) { return false; }\n"
+    },
+    "B.sol": {
+      "content": "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\nimport {authorized as rejected, rejected as authorized} from \"A.sol\";\n"
+    },
+    "C.sol": {
+      "content": "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\nimport \"B.sol\" as M;\nusing {M.authorized, M.rejected} for uint256;\ncontract C {\n    function isAuthorized() external pure returns (bool) { return uint256(0).authorized(); }\n    function isRejected() external pure returns (bool) { return uint256(0).rejected(); }\n}\n"
+    },
+    "Direct.sol": {
+      "content": "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\nimport {authorized as rejected, rejected as authorized} from \"A.sol\";\ncontract Direct {\n    using {authorized, rejected} for uint256;\n    function isAuthorized() external pure returns (bool) { return uint256(0).authorized(); }\n    function isRejected() external pure returns (bool) { return uint256(0).rejected(); }\n}\n"
+    },
+    "Aliases.sol": {
+      "content": "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\nimport {rejected as deny, rejected} from \"A.sol\";\nusing {deny, rejected} for uint256;\ncontract Aliases {\n    using {deny} for uint256;\n    function checkAlias() external pure returns (bool) { return uint256(0).deny(); }\n    function checkOriginal() external pure returns (bool) { return uint256(0).rejected(); }\n}\n"
+    }
+  },
+  "settings": {
+    "viaIR": true,
+    "optimizer": { "enabled": true, "runs": 200 },
+    "metadata": { "appendCBOR": false },
+    "outputSelection": {
+      "*": { "*": ["evm.bytecode.object", "evm.deployedBytecode.object", "evm.methodIdentifiers"] }
+    }
+  }
+}

@@ -17,6 +17,7 @@ pub const JsonError = std.mem.Allocator.Error || Utilities.LiteralError || error
     InvalidAst,
     InvalidYulStringHandle,
     UnknownBuiltin,
+    YulAstAssertion,
 };
 
 /// Arena-owned dynamic JSON. The arena itself is heap-stable because the
@@ -107,7 +108,7 @@ pub const AsmJsonConverter = struct {
     }
 
     pub fn convertLiteral(self: *AsmJsonConverter, node: *const AST.Literal) JsonError!JSON.Json {
-        if (!Utilities.validLiteral(node)) return error.InvalidAst;
+        if (!Utilities.validLiteral(node)) return error.YulAstAssertion;
         var result = try self.createAstNode(node.debug_data, "YulLiteral");
         const formatted = try Utilities.formatLiteralAlloc(self.allocator, node, true);
         switch (node.kind) {

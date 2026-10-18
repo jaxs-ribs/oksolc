@@ -3157,7 +3157,7 @@ fn appendAttachedFunction(
     try builder.add(name, bound, declaration);
 }
 
-fn functionTypeWhenAttached(
+pub fn functionTypeWhenAttached(
     provider: *TypeProviderModule.TypeProvider,
     declaration: *const AST.Node,
 ) BehaviorError!*const Types.Type {

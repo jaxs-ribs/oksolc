@@ -39,9 +39,11 @@ jobs:
   fuzz:
     name: Fuzz
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       FUZZ_ITERATIONS: ${{ github.event_name == 'schedule' && '100K' || github.event_name == 'pull_request' && '1K' || '10K' }}
+      STATEFUL_FUZZ_ITERATIONS: ${{ github.event_name == 'schedule' && '250' || github.event_name == 'pull_request' && '10' || '50' }}
+      REFERENCE_FUZZ_HISTORIES: ${{ github.event_name == 'schedule' && '250' || '25' }}
       ADAPTER_FUZZ_RUNS: ${{ github.event_name == 'schedule' && '100000' || github.event_name == 'pull_request' && '1000' || '10000' }}
       ADAPTER_FUZZ_SEED: ${{ github.run_id }}
     steps:
@@ -63,7 +65,8 @@ jobs:
             "ZIG_LOCAL_CACHE_DIR=$CI_CACHE_ROOT/local" \
             "ZIG_GLOBAL_CACHE_DIR=$CI_CACHE_ROOT/global" \
             "XDG_CACHE_HOME=$CI_CACHE_ROOT/xdg-cache" \
-            "XDG_CONFIG_HOME=$CI_CACHE_ROOT/xdg-config" >> "$GITHUB_ENV"
+            "XDG_CONFIG_HOME=$CI_CACHE_ROOT/xdg-config" \
+            "REFERENCE_FUZZ_ARTIFACTS=$RUNNER_TEMP/oksolc-reference-fuzz" >> "$GITHUB_ENV"
 
       - name: Cache Zig builds
         if: github.event_name != 'pull_request'
@@ -77,7 +80,43 @@ jobs:
             zig-fuzz-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.zigversion', 'build.zig.zon') }}-
 
       - name: Run bounded native and sanitizer fuzzing
-        run: zig build fuzz -Doptimize=ReleaseSafe -Dadapter-fuzz-runs="${ADAPTER_FUZZ_RUNS}" -Dadapter-fuzz-seed="${ADAPTER_FUZZ_SEED}" --fuzz="${FUZZ_ITERATIONS}" -j2 --summary all
+        run: zig build fuzz-parser fuzz-json fuzz-standard-json fuzz-json-adapter -Doptimize=ReleaseSafe -Dadapter-fuzz-runs="${ADAPTER_FUZZ_RUNS}" -Dadapter-fuzz-seed="${ADAPTER_FUZZ_SEED}" --fuzz="${FUZZ_ITERATIONS}" -j2 --summary all
+
+      - name: Run stateful incremental differential fuzzing
+        run: zig build fuzz-incremental -Doptimize=ReleaseSafe --fuzz="${STATEFUL_FUZZ_ITERATIONS}" -j2 --summary all
+
+      - name: Test external differential tooling
+        run: zig build test-fuzz-tools --summary all
+
+      - name: Download pinned solc and evmone references
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          EVMONE_SHA256: ce1ee67f55f3c856aec00d8b0d0b878c47f10ccb6c7cbc74bf8e4829969983b6
+          EVMONE_URL: https://github.com/ipsilon/evmone/releases/download/v0.22.0/evmone-0.22.0-linux-x86_64.tar.gz
+          SOLC_SHA256: c8d35afdddc3cd2743ee88b8f25e0fecd16e2bdd5f2120f37e52cd9cc45ae0e6
+          SOLC_URL: https://github.com/argotorg/solidity/releases/download/v0.8.36/solc-static-linux
+        run: |
+          reference="$RUNNER_TEMP/solc-static-linux-v0.8.36"
+          evmone_archive="$RUNNER_TEMP/evmone-0.22.0-linux-x86_64.tar.gz"
+          evmone_root="$RUNNER_TEMP/evmone-0.22.0"
+          curl --fail --location --silent --show-error "$SOLC_URL" --output "$reference" &
+          solc_download=$!
+          curl --fail --location --silent --show-error "$EVMONE_URL" --output "$evmone_archive"
+          wait "$solc_download"
+          printf '%s  %s\n' "$SOLC_SHA256" "$reference" | sha256sum --check --strict
+          printf '%s  %s\n' "$EVMONE_SHA256" "$evmone_archive" | sha256sum --check --strict
+          chmod 0755 "$reference"
+          mkdir -p "$evmone_root"
+          tar -xzf "$evmone_archive" -C "$evmone_root"
+          {
+            printf 'SOLC_REFERENCE=%s\n' "$reference"
+            printf 'EVMONE_REFERENCE=%s/bin/evmone\n' "$evmone_root"
+            printf 'LD_LIBRARY_PATH=%s/lib:%s\n' "$evmone_root" "${LD_LIBRARY_PATH:-}"
+          } >> "$GITHUB_ENV"
+
+      - name: Run pinned solc differential histories
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: zig build fuzz-reference -Doptimize=ReleaseSafe -Dbenchmark-reference-solc="$SOLC_REFERENCE" -Dreference-fuzz-runs="$REFERENCE_FUZZ_HISTORIES" -Dreference-fuzz-seed="$ADAPTER_FUZZ_SEED" -Dreference-fuzz-artifacts="$REFERENCE_FUZZ_ARTIFACTS" -Dreference-fuzz-evm="$EVMONE_REFERENCE" -Dreference-fuzz-session-mode=all -j2 --summary all
 
       # Delete only after the fuzz command and sanitizer teardown both succeed.
       - name: Remove successful C fuzz checkpoint
@@ -91,5 +130,6 @@ jobs:
           path: |
             ${{ env.ZIG_LOCAL_CACHE_DIR }}/f/crash
             ${{ env.ZIG_LOCAL_CACHE_DIR }}/f/json-adapter-current-input
+            ${{ env.REFERENCE_FUZZ_ARTIFACTS }}
           if-no-files-found: ignore
           retention-days: 30

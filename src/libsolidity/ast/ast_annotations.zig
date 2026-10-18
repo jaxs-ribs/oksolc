@@ -569,6 +569,25 @@ pub fn rebindImportSource(
     try table.rebindImportSource(node, source_unit);
 }
 
+/// Replaces an export snapshot in the current revision without mutating its
+/// parent's source annotation or discarding the source's other annotations.
+pub fn rebindSourceExports(
+    tree: *AST.Tree,
+    node: *AST.Node,
+    exports: []const ExportedSymbol,
+) (std.mem.Allocator.Error || error{InvalidAst})!void {
+    const inherited = annotationConst(node) orelse return error.InvalidAst;
+    const source = switch (inherited.*) {
+        .source_unit => |value| value,
+        else => return error.InvalidAst,
+    };
+    std.debug.assert(node.semantic_context == tree.semantic_context);
+    const table = annotationTableForContext(tree.semantic_context) orelse return error.InvalidAst;
+    const local = try table.ensure(node);
+    local.* = .{ .source_unit = source };
+    local.source_unit.exported_symbols = .{ .value = exports };
+}
+
 /// Compatibility ordering for diagnostics and legacy semantic algorithms.
 /// Detached test nodes retain their stored adapter ID.
 pub fn compatibilityId(node: *const AST.Node) i64 {
@@ -681,7 +700,7 @@ test "annotation overlays reuse clean sources and mask dirty sources" {
     try std.testing.expect(annotation(dirty) == dirty_parent);
 }
 
-test "clean import rebinding is isolated to the child annotation table" {
+test "clean import and export rebinding is isolated to the child annotation table" {
     var importer_tree = try AST.Tree.initWithSourceId(
         std.testing.allocator,
         AST.SourceId.init(1),
@@ -693,6 +712,7 @@ test "clean import rebinding is isolated to the child annotation table" {
         .declaration = .{},
         .path = "Target.sol",
     } });
+    const root = try importer_tree.createNode(.{}, .{ .source_unit = .{} });
     var old_target_tree = try AST.Tree.initWithSourceId(
         std.testing.allocator,
         AST.SourceId.init(2),
@@ -716,6 +736,12 @@ test "clean import rebinding is isolated to the child annotation table" {
     const parent_annotation = try ensure(&importer_tree, import);
     try parent_annotation.import.absolute_path.assign("Target.sol");
     parent_annotation.import.source_unit = old_target;
+    const old_exports = [_]ExportedSymbol{.{ .name = "Target", .declarations = &.{old_target} }};
+    const new_exports = [_]ExportedSymbol{.{ .name = "Target", .declarations = &.{new_target} }};
+    const parent_source = try ensure(&importer_tree, root);
+    try parent_source.source_unit.path.assign("Importer.sol");
+    try parent_source.source_unit.use_abi_coder_v2.assign(true);
+    try parent_source.source_unit.exported_symbols.assign(&old_exports);
 
     const overlay = try AnnotationTable.createOverlay(
         std.testing.allocator,
@@ -725,6 +751,13 @@ test "clean import rebinding is isolated to the child annotation table" {
     );
     try overlay.bindTree(&importer_tree);
     try rebindImportSource(&importer_tree, import, new_target);
+    try rebindSourceExports(&importer_tree, root, &new_exports);
+    const child_source = annotation(root).?;
+    try std.testing.expect(child_source != parent_source);
+    try std.testing.expectEqualStrings("Importer.sol", (try child_source.source_unit.path.get()).*);
+    try std.testing.expect((try child_source.source_unit.use_abi_coder_v2.get()).*);
+    try std.testing.expect((try child_source.source_unit.exported_symbols.get()).*[0].declarations[0] == new_target);
+    try std.testing.expect((try parent_source.source_unit.exported_symbols.get()).*[0].declarations[0] == old_target);
     const child_annotation = annotation(import).?;
     try std.testing.expect(child_annotation != parent_annotation);
     try std.testing.expect(child_annotation.import.source_unit == new_target);
@@ -736,6 +769,7 @@ test "clean import rebinding is isolated to the child annotation table" {
 
     parent.bindTreeAssumeCapacity(&importer_tree);
     try std.testing.expect(annotation(import).?.import.source_unit == old_target);
+    try std.testing.expect((try annotation(root).?.source_unit.exported_symbols.get()).*[0].declarations[0] == old_target);
 }
 
 test "revision tables rebind immutable syntax without overwriting prior annotations" {

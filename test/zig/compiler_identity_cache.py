@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0
 # Copyright (C) 2026 OKcontract Pte. Ltd.
 
-"""Check compiled source/header values, configure reuse, and concurrent edits."""
+"""Check compiled Zig/C/header values, configure reuse, and concurrent edits."""
 
 import json
 import os
@@ -18,6 +18,7 @@ BUILD = r'''
 const std = @import("std");
 const Identity = @import("build_support/compiler_identity.zig");
 const CompilerHeader = @import("build_support/compiler_header.zig");
+const CompilerNative = @import("build_support/compiler_native.zig");
 
 pub fn build(b: *std.Build) !void {
     const race = b.option(bool, "race", "Pause configuration for a concurrent source edit") orelse false;
@@ -47,11 +48,25 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("probe.zig"),
         .target = b.graph.host,
         .optimize = .debug,
+        .link_libc = true,
         .imports = &.{.{ .name = "c", .module = translated.mod }},
     });
     module.addAnonymousImport("identity", .{ .root_source_file = identity.file });
+    CompilerNative.link(b, module, b.path("src/yyjson"), identity.file, &.{});
+    const native_adapter = module.link_objects.items[0].other_step;
+    const mutate_native = b.addSystemCommand(&.{"python3"});
+    mutate_native.addFileArg2(b.path("mutate.py"), .{});
+    mutate_native.addArgs(&.{ "native-mutation", "src/libsolc/yyjson_adapter.c" });
+    mutate_native.setCwd(b.path("."));
+    mutate_native.has_side_effects = true;
+    mutate_native.step.dependOn(&native_adapter.step);
+    // Also reject a C object built before the identity snapshot. Without the
+    // ordering edge, force C revision A, edit to B, then hash B.
+    if (!dependsOn(&native_adapter.step, snapshot))
+        for (snapshot.dependencies.items) |step| step.dependOn(&mutate_native.step);
     const probe = b.addExecutable(.{ .name = "identity-probe", .root_module = module });
     probe.step.dependOn(&mutate_header.step);
+    probe.step.dependOn(&mutate_native.step);
     const validation = identity.validate(b, probe).?;
     const mutate = b.addSystemCommand(&.{"python3"});
     mutate.addFileArg2(b.path("mutate.py"), .{});
@@ -102,9 +117,10 @@ fn dependsOn(step: *const std.Build.Step, required: *const std.Build.Step) bool 
 
 PROBE = r'''
 const std = @import("std");
+extern fn native_revision() c_int;
 pub fn main(init: std.process.Init) !void {
-    const output = try init.gpa.print("{s}\n{s}\n{d}\n", .{
-        @embedFile("identity"), @import("src/nested/input.zig").value, @import("c").REVISION,
+    const output = try init.gpa.print("{s}\n{s}\n{d}\n{d}\n", .{
+        @embedFile("identity"), @import("src/nested/input.zig").value, @import("c").REVISION, native_revision(),
     });
     defer init.gpa.free(output);
     try std.Io.File.stdout().writeStreamingAll(init.io, output);
@@ -124,6 +140,16 @@ def input_text(value):
     return "pub const value = " + json.dumps(value) + ";\n"
 
 
+def native_text(multiplier):
+    return (
+        '#include "revision.h"\n'
+        'extern int yyjson_value(void);\n'
+        'extern int sqlite_value(void);\n'
+        'int native_revision(void) { return REVISION * '
+        + str(multiplier) + ' + yyjson_value() + sqlite_value(); }\n'
+    )
+
+
 def main():
     source = Path(__file__).resolve().parents[2]
     zig = sys.argv[1] if len(sys.argv) > 1 else "zig"
@@ -132,10 +158,11 @@ def main():
     translate_c_hash = sys.argv[4] if len(sys.argv) > 4 else translate_c.name
     with tempfile.TemporaryDirectory(prefix="oksolc-configure-cache-") as temporary:
         root = Path(temporary)
-        for directory in ("src/nested", "src/cli/browser", "include", "vendor/sqlite", "build_support"):
+        for directory in ("src/nested", "src/cli/browser", "src/libsolc", "src/yyjson", "include", "vendor/sqlite", "build_support"):
             (root / directory).mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source / "build_support/compiler_identity.zig", root / "build_support/compiler_identity.zig")
         shutil.copyfile(source / "build_support/compiler_header.zig", root / "build_support/compiler_header.zig")
+        shutil.copyfile(source / "build_support/compiler_native.zig", root / "build_support/compiler_native.zig")
         (root / "build.zig").write_text(BUILD)
         (root / "probe.zig").write_text(PROBE)
         (root / "mutate.py").write_text(MUTATE)
@@ -147,15 +174,19 @@ def main():
         )
         (root / "src/nested/input.zig").write_text(input_text("first"))
         (root / "include/revision.h").write_text("#define REVISION 1\n")
+        native_multiplier = 1
+        (root / "src/libsolc/yyjson_adapter.c").write_text(native_text(native_multiplier))
+        (root / "src/yyjson/yyjson.c").write_text("int yyjson_value(void) { return 100; }\n")
+        (root / "vendor/sqlite/sqlite3.c").write_text("int sqlite_value(void) { return 1000; }\n")
         (root / "src/cli/browser/app.ts").write_text("first")
         command = [zig, "build", "--system", str(packages), "--fork", str(translate_c), "--cache-poison=disallowed", f"-j{min(os.cpu_count() or 1, 6)}", "--summary", "failures"]
         executable = root / "zig-out/bin/identity-probe"
 
         def installed():
             identity = (root / "zig-out/identity").read_text()
-            embedded, value, revision = subprocess.check_output([str(executable)], text=True).splitlines()
+            embedded, value, revision, native = subprocess.check_output([str(executable)], text=True).splitlines()
             assert embedded == identity
-            return identity, int((root / "configure-count").read_text()), executable.stat().st_mtime_ns, value, int(revision)
+            return identity, int((root / "configure-count").read_text()), executable.stat().st_mtime_ns, value, int(revision), int(native)
 
         def build(extra=(), success=True):
             result = subprocess.run(command + list(extra), cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
@@ -166,6 +197,7 @@ def main():
                 expected = json.loads((root / "src/nested/input.zig").read_text().split(" = ", 1)[1].removesuffix(";\n"))
                 assert result[3] == expected, "compiled source value must match the identified source revision"
                 assert result[4] == int((root / "include/revision.h").read_text().split()[-1]), "translated header value must match the identified header revision"
+                assert result[5] == result[4] * native_multiplier + 1100, "native objects must match the identified C source and header revisions"
                 return result
             assert result.returncode, "build accepted a concurrent compiler input edit: " + repr(installed())
             assert "CompilerInputsChangedDuringBuild" in result.stdout, result.stdout
@@ -212,6 +244,15 @@ def main():
         assert translated[0] != header[0] and translated[1] == 1 and translated[4] == 3
         assert build() == translated, "retry must reuse consistent translated bindings"
 
+        # Independent C compilation must also follow the identity snapshot.
+        (root / "native-mutation").write_text(native_text(2))
+        build(success=False)
+        assert installed() == translated, "rejected native compilation must not replace the installed artifact"
+        native_multiplier = 2
+        native = build()
+        assert native[0] != translated[0] and native[1] == 1 and native[5] == 1106
+        assert build() == native, "retry must reuse consistent native objects"
+
         # Edit after configuration starts, before Zig records its dependencies.
         process = subprocess.Popen(command + ["-Drace=true"], cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         try:
@@ -231,7 +272,7 @@ def main():
                 process.kill()
                 process.communicate()
         raced = installed()
-        assert raced[0] != translated[0] and raced[1] == 2 and raced[3] == "concurrent configuration edit" and raced[4] == 3
+        assert raced[0] != native[0] and raced[1] == 2 and raced[3] == "concurrent configuration edit" and raced[4] == 3
         assert build(["-Drace=true"]) == raced
 
         # A later edit must fail validation, then recover on an unchanged retry.
@@ -241,7 +282,7 @@ def main():
         recovered = build(["-Drace=true"])
         assert recovered[0] != raced[0] and recovered[1] == 2, "retry must recover without reconfiguration"
         assert build(["-Drace=true"]) == recovered
-    print("Compiler identity: compiled source/header values, configure reuse, concurrent translation/configuration edits, validation failure and retry recovery passed")
+    print("Compiler identity: compiled Zig/C/header values, configure reuse, concurrent translation/native/configuration edits, validation failure and retry recovery passed")
 
 
 if __name__ == "__main__":

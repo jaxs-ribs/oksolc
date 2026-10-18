@@ -20,6 +20,7 @@ const Diagnostics = @import("../../liblangutil/diagnostics.zig");
 const EVMVersion = @import("../../liblangutil/evm_version.zig").EVMVersion;
 const TokenModule = @import("../../liblangutil/token.zig");
 const SetOnce = @import("../../libsolutil/set_once.zig");
+const UTF8 = @import("../../libsolutil/utf8.zig");
 const YulAST = @import("../../libyul/ast.zig");
 const YulAsmAnalysis = @import("../../libyul/asm_analysis.zig");
 
@@ -647,13 +648,20 @@ pub const TypeChecker = struct {
             defer self.allocator.free(actual_name);
             const expected_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, expected);
             defer self.allocator.free(expected_name);
+            const reason = try implicitConversionReasonAlloc(
+                self.allocator,
+                actual,
+                expected,
+                expected_name,
+            );
+            defer if (reason) |reason_text| self.allocator.free(reason_text);
             const message = try self.allocator.print(
                 "Invalid type for argument in modifier invocation. Invalid implicit conversion from {s} to {s} requested.{s}{s}",
                 .{
                     actual_name,
                     expected_name,
-                    if (implicitConversionReason(actual, expected) != null) " " else "",
-                    implicitConversionReason(actual, expected) orelse "",
+                    if (reason != null) " " else "",
+                    reason orelse "",
                 },
             );
             defer self.allocator.free(message);
@@ -880,7 +888,13 @@ pub const TypeChecker = struct {
                     self_type,
                 );
                 defer self.allocator.free(first_name);
-                const reason = implicitConversionReason(normalized_attached, normalized_self);
+                const reason = try implicitConversionReasonAlloc(
+                    self.allocator,
+                    normalized_attached,
+                    normalized_self,
+                    first_name,
+                );
+                defer if (reason) |reason_text| self.allocator.free(reason_text);
                 const message = try self.allocator.print(
                     "The function \"{s}\" cannot be attached to the type \"{s}\" because the type cannot be implicitly converted to the first argument of the function (\"{s}\"){s}{s}",
                     .{
@@ -1845,7 +1859,13 @@ pub const TypeChecker = struct {
                     continue;
                 }
             }
-            const reason = implicitConversionReason(actual, expected);
+            const reason = try implicitConversionReasonAlloc(
+                self.allocator,
+                actual,
+                expected,
+                expected_name,
+            );
+            defer if (reason) |reason_text| self.allocator.free(reason_text);
             const message = try self.allocator.print(
                 "{s}.{s}{s}",
                 .{
@@ -1902,7 +1922,7 @@ pub const TypeChecker = struct {
         defer self.allocator.free(actual_name);
         const expected_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, expected);
         defer self.allocator.free(expected_name);
-        const message = if (first_return_variable)
+        const base_message = if (first_return_variable)
             try self.allocator.print(
                 "Return argument type {s} is not implicitly convertible to expected type (type of first return variable) {s}.",
                 .{ actual_name, expected_name },
@@ -1912,6 +1932,18 @@ pub const TypeChecker = struct {
                 "Return argument type {s} is not implicitly convertible to expected type {s}.",
                 .{ actual_name, expected_name },
             );
+        defer self.allocator.free(base_message);
+        const reason = try implicitConversionReasonAlloc(
+            self.allocator,
+            actual,
+            expected,
+            expected_name,
+        );
+        defer if (reason) |reason_text| self.allocator.free(reason_text);
+        const message = try self.allocator.print(
+            "{s}{s}{s}",
+            .{ base_message, if (reason != null) " " else "", reason orelse "" },
+        );
         defer self.allocator.free(message);
         try self.reporter.typeError(id, expression.location, message);
     }
@@ -3053,10 +3085,26 @@ pub const TypeChecker = struct {
                 defer self.allocator.free(message);
                 try self.reporter.typeError(errorId(5030), node.location, message);
             } else {
-                const message = try self.allocator.print(
-                    "Explicit type conversion not allowed from \"{s}\" to \"{s}\".",
-                    .{ argument_name, result_name },
-                );
+                const reason = if (argument_type.category() == .StringLiteral)
+                    try implicitConversionReasonAlloc(
+                        self.allocator,
+                        argument_type,
+                        result_type,
+                        result_name,
+                    )
+                else
+                    null;
+                defer if (reason) |detail| self.allocator.free(detail);
+                const message = if (reason) |detail|
+                    try self.allocator.print(
+                        "Explicit type conversion not allowed from \"{s}\" to \"{s}\". {s}",
+                        .{ argument_name, result_name, detail },
+                    )
+                else
+                    try self.allocator.print(
+                        "Explicit type conversion not allowed from \"{s}\" to \"{s}\".",
+                        .{ argument_name, result_name },
+                    );
                 defer self.allocator.free(message);
                 try self.reporter.typeError(errorId(9640), node.location, message);
             }
@@ -3284,13 +3332,20 @@ pub const TypeChecker = struct {
             defer self.allocator.free(actual_name);
             const expected_name = try TypeBehavior.humanReadableNameAlloc(self.allocator, expected);
             defer self.allocator.free(expected_name);
+            const reason = try implicitConversionReasonAlloc(
+                self.allocator,
+                actual,
+                expected,
+                expected_name,
+            );
+            defer if (reason) |reason_text| self.allocator.free(reason_text);
             const message = try self.allocator.print(
                 "Invalid type for argument in function call. Invalid implicit conversion from {s} to {s} requested.{s}{s}",
                 .{
                     actual_name,
                     expected_name,
-                    if (implicitConversionReason(actual, expected) != null) " " else "",
-                    implicitConversionReason(actual, expected) orelse "",
+                    if (reason != null) " " else "",
+                    reason orelse "",
                 },
             );
             defer self.allocator.free(message);
@@ -3663,7 +3718,13 @@ pub const TypeChecker = struct {
                 expected,
             );
             defer self.allocator.free(expected_name);
-            const reason = implicitConversionReason(actual, expected);
+            const reason = try implicitConversionReasonAlloc(
+                self.allocator,
+                actual,
+                expected,
+                expected_name,
+            );
+            defer if (reason) |reason_text| self.allocator.free(reason_text);
             const message = try self.allocator.print(
                 "Cannot implicitly convert component at position {d} from \"{s}\" to \"{s}\"{s}{s}",
                 .{
@@ -4147,6 +4208,9 @@ pub const TypeChecker = struct {
         const owner_type = owner_annotation.type_ref orelse return error.InvalidAst;
         const annotation = try memberAccessAnnotation(self.tree, node);
         var resolved: ?ResolvedMember = null;
+        var unmatched_contract_member: ?ResolvedMember = null;
+        var native_member_count: usize = 0;
+        var attached_member_count: usize = 0;
 
         switch (owner_type.payload) {
             .Struct => |structure| {
@@ -4192,12 +4256,27 @@ pub const TypeChecker = struct {
                 value.expression,
                 value.member_name,
             ),
-            .Contract => |contract_type| resolved = try self.resolveContractMember(
-                node,
-                @constCast(contract_type.declaration),
-                false,
-                true,
-            ),
+            .Contract => |contract_type| {
+                resolved = try self.resolveContractMember(
+                    node,
+                    @constCast(contract_type.declaration),
+                    false,
+                    true,
+                    &native_member_count,
+                );
+                if (resolved) |member|
+                    if (annotation.expression.arguments) |*arguments|
+                        if (member.type_ref.asFunction() != null and
+                            !functionTypeCanTakeArguments(
+                                member.type_ref,
+                                arguments,
+                                null,
+                            ))
+                        {
+                            unmatched_contract_member = member;
+                            resolved = null;
+                        };
+            },
             .TypeType => |type_type| resolved = try self.resolveTypeMember(
                 node,
                 type_type.actual_type,
@@ -4220,7 +4299,11 @@ pub const TypeChecker = struct {
                 value.member_name,
                 annotation.expression.arguments,
                 (try owner_annotation.is_pure.get()).*,
+                native_member_count,
+                &attached_member_count,
             );
+        if (resolved == null and native_member_count + attached_member_count == 1)
+            resolved = unmatched_contract_member;
         if (resolved == null) {
             if (owner_type.category() == .Contract and
                 (std.mem.eql(u8, value.member_name, "balance") or
@@ -4307,21 +4390,39 @@ pub const TypeChecker = struct {
                     try self.reporter.fatal(errorId(6005), .TypeError, node.location, null, message);
                 }
             }
-            if (owner_type.asReference() != null and owner_type.category() != .ArraySlice) {
+            if (owner_type.asReference() != null and
+                owner_type.asReference().?.location != .Storage and
+                owner_type.category() != .ArraySlice)
+            {
                 const storage_type = try self.type_provider.withLocationIfReference(
                     .Storage,
                     owner_type,
                     true,
                 );
-                var storage_members = try TypeBehavior.nativeMembersAlloc(
+                var storage_members = try TypeBehavior.membersAlloc(
                     self.type_provider,
                     self.allocator,
                     storage_type,
-                    self.current_contract,
+                    self.current_contract orelse self.current_source_unit,
                 );
                 defer storage_members.deinit();
+                var available_members = try TypeBehavior.membersAlloc(
+                    self.type_provider,
+                    self.allocator,
+                    owner_type,
+                    self.current_contract orelse self.current_source_unit,
+                );
+                defer available_members.deinit();
                 for (storage_members.items) |storage_member|
                     if (std.mem.eql(u8, storage_member.name, value.member_name)) {
+                        const available_at_original_location = for (available_members.items) |available_member| {
+                            if (std.mem.eql(
+                                u8,
+                                available_member.name,
+                                value.member_name,
+                            )) break true;
+                        } else false;
+                        if (available_at_original_location) continue;
                         const owner_name = try TypeBehavior.humanReadableNameAlloc(
                             self.allocator,
                             owner_type,
@@ -4501,7 +4602,7 @@ pub const TypeChecker = struct {
             };
         }
         if (!std.mem.eql(u8, name, "push")) return null;
-        const argument_count = if (arguments) |value| value.types.items.len else {
+        const call_arguments = arguments orelse {
             const message = try self.allocator.print(
                 "Member \"push\" not unique after argument-dependent lookup in {s}.",
                 .{try self.typeNameTemporary(owner_type)},
@@ -4510,6 +4611,7 @@ pub const TypeChecker = struct {
             try self.reporter.fatal(errorId(6675), .TypeError, node.location, null, message);
             unreachable;
         };
+        const argument_count = call_arguments.types.items.len;
         if (argument_count == 0) {
             const returns = [_]*const Types.Type{array.base_type};
             const return_names = [_][]const u8{""};
@@ -4540,8 +4642,10 @@ pub const TypeChecker = struct {
             null,
             .{},
         );
+        const bound = try self.type_provider.withBoundFirstArgument(unbound);
+        if (!functionTypeCanTakeArguments(bound, &call_arguments, owner_type)) return null;
         return .{
-            .type_ref = try self.type_provider.withBoundFirstArgument(unbound),
+            .type_ref = bound,
             .is_pure = false,
         };
     }
@@ -4713,6 +4817,7 @@ pub const TypeChecker = struct {
         contract: *AST.Node,
         super_lookup: bool,
         external: bool,
+        candidate_count_out: ?*usize,
     ) CheckError!?ResolvedMember {
         const name = member_access.payload.member_access.member_name;
         const member_annotation = try memberAccessAnnotation(self.tree, member_access);
@@ -4728,6 +4833,7 @@ pub const TypeChecker = struct {
                 if (!std.mem.eql(u8, declarationName(candidate), name)) continue;
                 const visible = switch (candidate.payload) {
                     .function_definition => |function| function.kind == .Function and
+                        (!super_lookup or function.implemented()) and
                         if (external)
                             ASTImplementation.isPublic(candidate)
                         else
@@ -4759,7 +4865,9 @@ pub const TypeChecker = struct {
                 if (!duplicate) try candidates.append(self.allocator, candidate);
             }
         }
+        if (candidate_count_out) |count| count.* = candidates.items.len;
         if (member_annotation.expression.arguments) |*arguments| {
+            const unfiltered_count = candidates.items.len;
             var write_index: usize = 0;
             for (candidates.items) |candidate| {
                 const type_ref = try self.contractMemberType(candidate, external);
@@ -4768,7 +4876,11 @@ pub const TypeChecker = struct {
                     write_index += 1;
                 }
             }
-            candidates.shrinkRetainingCapacity(write_index);
+            // Preserve one declaration for call validation to diagnose its
+            // argument count or conversion. An unmatched overload set still
+            // follows the missing-member path.
+            if (write_index != 0 or unfiltered_count != 1)
+                candidates.shrinkRetainingCapacity(write_index);
         }
         if (candidates.items.len == 0) return null;
         if (candidates.items.len != 1) {
@@ -4842,6 +4954,7 @@ pub const TypeChecker = struct {
                         @constCast(contract_type.declaration),
                         true,
                         false,
+                        null,
                     );
                 const meta_type = try self.type_provider.typeType(actual_type);
                 var members = try TypeBehavior.nativeMembersAlloc(
@@ -4853,8 +4966,12 @@ pub const TypeChecker = struct {
                 defer members.deinit();
                 const annotation = try memberAccessAnnotation(self.tree, member_access);
                 var selected: ?Types.Member = null;
+                var only_named: ?Types.Member = null;
+                var named_count: usize = 0;
                 for (members.items) |member| {
                     if (!std.mem.eql(u8, member.name, name)) continue;
+                    named_count += 1;
+                    only_named = member;
                     if (annotation.expression.arguments) |*arguments|
                         if (member.type_ref.category() == .Function and
                             !functionTypeCanTakeArguments(
@@ -4879,6 +4996,7 @@ pub const TypeChecker = struct {
                     }
                     selected = member;
                 }
+                if (selected == null and named_count == 1) selected = only_named;
                 if (selected) |member| return .{
                     .type_ref = member.type_ref,
                     .declaration = member.declaration,
@@ -5135,6 +5253,8 @@ pub const TypeChecker = struct {
         name: []const u8,
         arguments: ?@import("../ast/ast_enums.zig").FuncCallArguments,
         owner_pure: bool,
+        other_candidate_count: usize,
+        candidate_count_out: *usize,
     ) CheckError!?ResolvedMember {
         var directives: std.ArrayList(*AST.Node) = .empty;
         defer directives.deinit(self.allocator);
@@ -5170,8 +5290,10 @@ pub const TypeChecker = struct {
                         self.tree,
                         entry.function_or_library,
                     );
+                    // Import aliases determine the attached member name.
+                    const path = entry.function_or_library.payload.identifier_path.path;
                     if (declaration.nodeKind() != .function_definition or
-                        !std.mem.eql(u8, declarationName(declaration), name)) continue;
+                        !std.mem.eql(u8, path[path.len - 1], name)) continue;
                     if (!containsMutableNode(declarations.items, declaration))
                         try declarations.append(self.allocator, declaration);
                 }
@@ -5210,16 +5332,27 @@ pub const TypeChecker = struct {
             // Directive applicability ignores location, but binding and call
             // compatibility must use the actual receiver (not a storage copy).
             if (!TypeBehavior.isImplicitlyConvertibleTo(owner_type, self_type)) continue;
-            if (arguments) |*call_arguments|
-                if (!functionTypeCanTakeArguments(
-                    type_ref,
-                    call_arguments,
-                    owner_type,
-                )) continue;
             try matches.append(self.allocator, .{
                 .declaration = declaration,
                 .type_ref = type_ref,
             });
+        }
+        candidate_count_out.* = matches.items.len;
+        if (arguments) |*call_arguments| {
+            const total_candidate_count = other_candidate_count + matches.items.len;
+            var write_index: usize = 0;
+            for (matches.items) |match| {
+                if (functionTypeCanTakeArguments(
+                    match.type_ref,
+                    call_arguments,
+                    owner_type,
+                )) {
+                    matches.items[write_index] = match;
+                    write_index += 1;
+                }
+            }
+            if (write_index != 0 or total_candidate_count != 1)
+                matches.shrinkRetainingCapacity(write_index);
         }
         if (matches.items.len == 0) return null;
         if (matches.items.len != 1) {
@@ -5270,37 +5403,8 @@ pub const TypeChecker = struct {
         self: *TypeChecker,
         declaration: *AST.Node,
     ) CheckError!*const Types.Type {
-        const function = declaration.payload.function_definition;
-        const parameters = try self.parameterTypesAndNames(function.callable.parameters);
-        defer self.allocator.free(parameters.types);
-        defer self.allocator.free(parameters.names);
-        if (parameters.types.len == 0) return error.InvalidAst;
-        const returns = if (function.callable.return_parameters) |return_parameters|
-            try self.parameterTypesAndNames(return_parameters)
-        else
-            ParameterTypesAndNames{ .types = &.{}, .names = &.{} };
-        defer if (function.callable.return_parameters != null) {
-            self.allocator.free(returns.types);
-            self.allocator.free(returns.names);
-        };
-        const scope = ASTImplementation.scope(declaration);
-        const library_function = scope != null and
-            scope.?.nodeKind() == .contract_definition and
-            scope.?.payload.contract_definition.contract_kind == .Library;
-        const visibility = ASTImplementation.effectiveVisibility(declaration) orelse
-            return error.InvalidAst;
-        return self.type_provider.function(
-            parameters.types,
-            returns.types,
-            parameters.names,
-            returns.names,
-            if (library_function and (visibility == .Public or visibility == .External))
-                .DelegateCall
-            else
-                .Internal,
-            function.state_mutability,
-            declaration,
-            .{ .has_bound_first_argument = true },
+        return self.type_provider.withBoundFirstArgument(
+            try TypeBehavior.functionTypeWhenAttached(self.type_provider, declaration),
         );
     }
 
@@ -5356,17 +5460,18 @@ pub const TypeChecker = struct {
                 } else {
                     try self.checkExpression(value.index.?, depth + 1);
                     _ = try self.expectTypeAlready(value.index.?, self.type_provider.uint256());
-                    if (array.length) |length|
-                        if (try rationalValueU256(self.allocator, (try expressionAnnotation(
-                            self.tree,
-                            value.index.?,
-                        )).type_ref)) |index_value|
-                            if (index_value >= length)
-                                try self.reporter.typeError(
-                                    errorId(3383),
-                                    node.location,
-                                    "Out of bounds array access.",
-                                );
+                    if (!self.reporter.hasErrors())
+                        if (array.length) |length|
+                            if (try rationalValueU256(self.allocator, (try expressionAnnotation(
+                                self.tree,
+                                value.index.?,
+                            )).type_ref)) |index_value|
+                                if (index_value >= length)
+                                    try self.reporter.typeError(
+                                        errorId(3383),
+                                        node.location,
+                                        "Out of bounds array access.",
+                                    );
                 }
                 result_type = array.base_type;
                 is_lvalue = array.reference.location != .CallData;
@@ -5669,7 +5774,13 @@ pub const TypeChecker = struct {
                         mobile.?,
                     );
                     defer self.allocator.free(mobile_name);
-                    const reason = implicitConversionReason(actual, expected);
+                    const reason = try implicitConversionReasonAlloc(
+                        self.allocator,
+                        actual,
+                        expected,
+                        expected_name,
+                    );
+                    defer if (reason) |reason_text| self.allocator.free(reason_text);
                     const message = try self.allocator.print(
                         "{s}. Try converting to type {s} or use an explicit conversion.{s}{s}",
                         .{
@@ -5685,7 +5796,13 @@ pub const TypeChecker = struct {
                 return false;
             }
         }
-        const reason = implicitConversionReason(actual, expected);
+        const reason = try implicitConversionReasonAlloc(
+            self.allocator,
+            actual,
+            expected,
+            expected_name,
+        );
+        defer if (reason) |reason_text| self.allocator.free(reason_text);
         const message = try self.allocator.print(
             "{s}.{s}{s}",
             .{
@@ -5870,18 +5987,55 @@ fn isHashFunctionKind(kind: Types.FunctionKind) bool {
     };
 }
 
-fn implicitConversionReason(
+fn implicitConversionReasonAlloc(
+    allocator: std.mem.Allocator,
     actual: *const Types.Type,
     expected: *const Types.Type,
-) ?[]const u8 {
+    expected_name: []const u8,
+) std.mem.Allocator.Error!?[]u8 {
+    if (actual.category() == .RationalNumber) {
+        const rational = actual.payload.RationalNumber;
+        if (rational.denominator.compareUnsigned(1) == .eq) {
+            if (expected.asInteger()) |integer| {
+                if (rational.numerator.isNegative() and !integer.isSigned())
+                    return try allocator.dupe(u8, "Cannot implicitly convert signed literal to unsigned type.");
+                return try allocator.print(
+                    "Literal is too large to fit in {s}.",
+                    .{expected_name},
+                );
+            }
+        }
+    }
+    if (actual.category() == .StringLiteral) {
+        if (expected.asFixedBytes()) |fixed_bytes|
+            if (actual.payload.StringLiteral.value.len > fixed_bytes.bytes)
+                return try allocator.dupe(u8, "Literal is larger than the type.");
+        if (expected.asArray()) |array| {
+            if (array.kind == .String) {
+                var invalid_position: usize = undefined;
+                if (!UTF8.validateUTF8(
+                    actual.payload.StringLiteral.value,
+                    &invalid_position,
+                ))
+                    return try allocator.print(
+                        "Contains invalid UTF-8 sequence at position {d}.",
+                        .{invalid_position},
+                    );
+            }
+        }
+    }
+    if (actual.asFixedPoint()) |source|
+        if (expected.asFixedPoint()) |target|
+            if (target.fractional_digits < source.fractional_digits)
+                return try allocator.dupe(u8, "Too many fractional digits.");
     const source = actual.asFunction() orelse return null;
     const target = expected.asFunction() orelse return null;
     if (source.options.has_bound_first_argument != target.options.has_bound_first_argument)
-        return "Attached functions cannot be converted into unattached functions.";
+        return try allocator.dupe(u8, "Attached functions cannot be converted into unattached functions.");
     if (source.kind != target.kind)
-        return "Special functions cannot be converted to function types.";
+        return try allocator.dupe(u8, "Special functions cannot be converted to function types.");
     if (source.kind == .Declaration and source.declaration != target.declaration)
-        return "Function declaration types referring to different functions cannot be converted to each other.";
+        return try allocator.dupe(u8, "Function declaration types referring to different functions cannot be converted to each other.");
     return null;
 }
 
