@@ -560,6 +560,47 @@ test "native and attached array members share overload resolution" {
     }
 }
 
+test "array member lookup preserves zero-parameter attachment diagnostics regardless of directive order" {
+    const allocator = std.testing.allocator;
+    const directive = "using {g} for uint[];";
+    for ([_][]const u8{ "values.push();", "values.pop();" }) |call| {
+        for ([_]bool{ false, true }) |directive_first| {
+            const source = try allocator.print(
+                "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\n" ++
+                    "function g() pure {{}}\n" ++
+                    "contract C {{ uint[] values; {s} " ++
+                    "function f() external {{ {s} }} {s} }}\n",
+                .{
+                    if (directive_first) directive else "",
+                    call,
+                    if (directive_first) "" else directive,
+                },
+            );
+            defer allocator.free(source);
+            const input = try std.json.Stringify.valueAlloc(allocator, .{
+                .language = "Solidity",
+                .sources = .{ .@"C.sol" = .{ .content = source } },
+                .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+            }, .{});
+            defer allocator.free(input);
+            var dispatcher: libsolc.Dispatcher = .{};
+            var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+            defer output.deinit();
+            const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+            defer parsed.deinit();
+            const diagnostics = parsed.value.object.get("errors").?.array.items;
+            try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+            try std.testing.expectEqualStrings("error", diagnostics[0].object.get("severity").?.string);
+            try std.testing.expectEqualStrings("TypeError", diagnostics[0].object.get("type").?.string);
+            try std.testing.expectEqualStrings("4731", diagnostics[0].object.get("errorCode").?.string);
+            try std.testing.expectEqualStrings(
+                "The function \"g\" does not have any parameters, and therefore cannot be attached to the type \"uint256[]\".",
+                diagnostics[0].object.get("message").?.string,
+            );
+        }
+    }
+}
+
 test "recursive struct diagnostics prefer a complete inner cycle" {
     const allocator = std.testing.allocator;
     const source =

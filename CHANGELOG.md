@@ -12,6 +12,8 @@ Solidity compatibility target: `0.8.36`.
   receipt, and terminate timed-out workers before closing buffered stdin.
 - Resolve native array `push` and `pop` overloads together with attached
   functions, matching solc's selection, ambiguity, and argument diagnostics.
+- Preserve diagnostic 4731 for zero-parameter attachments declared after array
+  calls instead of returning an internal compiler failure.
 
 ## 0.2.0 - 2026-10-17
 
