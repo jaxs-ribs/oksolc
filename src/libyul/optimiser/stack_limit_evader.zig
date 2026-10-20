@@ -111,6 +111,15 @@ pub const StackLimitEvader = struct {
         context: *OptimiserStepContext,
         object: *Object,
     ) !AST.Block {
+        try object.validateNames();
+        return runObjectWithValidatedNames(context, object);
+    }
+
+    /// Consumes code as runObject() does; requires validated namespaces.
+    pub fn runObjectWithValidatedNames(
+        context: *OptimiserStepContext,
+        object: *Object,
+    ) !AST.Block {
         const evm_dialect = try requireObjectDialect(context.dialect);
         std.debug.assert(context.dispenser.allocator.ptr == object.allocator.ptr and
             context.dispenser.allocator.vtable == object.allocator.vtable);
@@ -133,6 +142,7 @@ pub const StackLimitEvader = struct {
         if (!std.meta.eql(context.dispenser.allocator, compressed.owner.allocator) or
             !std.meta.eql(object.allocator, compressed.owner.allocator))
             return error.IncompatibleAllocator;
+        if (object != compressed.owner) try object.validateNames();
         const report: ?*const StackLayout.StackTooDeepByFunction = if (compressed.stack_report) |*prepared|
             if (compressed.owner == object and std.meta.eql(prepared.dialect, context.dialect))
                 &prepared.errors
@@ -161,7 +171,7 @@ pub const StackLimitEvader = struct {
             return ast_root;
         }
         if (evm_dialect.evmVersion().canOverchargeGasForCall()) {
-            var structure = try object.summarizeStructure();
+            var structure = try object.summarizeStructureWithValidatedNames();
             defer structure.deinit();
             var analysis_info = try AsmAnalysis.analyzeStrictBlock(
                 context.dispenser.allocator,
@@ -189,7 +199,7 @@ pub const StackLimitEvader = struct {
             );
             try runWithStackTooDeep(context, &ast_root, &stack_errors);
         } else {
-            var checker = try Compilability.CompilabilityChecker.initWithBlock(
+            var checker = try Compilability.CompilabilityChecker.initWithBlockAndValidatedNames(
                 context.dispenser.allocator,
                 object,
                 &ast_root,

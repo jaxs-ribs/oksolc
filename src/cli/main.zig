@@ -919,7 +919,10 @@ const SourceService = struct {
         defer directory.close(self.io);
         var names = try ProjectSources.collectRootsAlloc(self.allocator, self.io, &.{.{ .directory = directory, .prefix = self.prefix }});
         defer names.deinit();
-        var remappings = try CompileInput.readRemappingsAlloc(self.allocator, self.io, self.project_root);
+        const remappings_root = for (self.loader.roots.items) |root| {
+            if (std.mem.eql(u8, root.canonical_path, self.project_root)) break root.directory;
+        } else return error.SourceRootChanged;
+        var remappings = try CompileInput.readRemappingsAtAlloc(self.allocator, self.io, remappings_root);
         defer if (remappings) |text| self.allocator.free(text);
         self.loader.reset();
         if (self.names) |previous| {

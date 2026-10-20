@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 
 
 class Service:
@@ -46,6 +47,15 @@ class Service:
             return
         raise AssertionError(('unexpected compilation', unexpected, self.errors))
 
+    def wait_error(self, message):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if any(message in line for line in self.errors):
+                return
+            assert self.process.poll() is None, self.errors
+            time.sleep(0.01)
+        raise AssertionError(('missing service error', message, self.errors))
+
     def close(self):
         self.process.terminate()
         self.process.wait(timeout=10)
@@ -69,6 +79,7 @@ def run(binary):
         unused.write_text('not Solidity')
         entry.write_text(preamble + 'import "pkg/Used.sol"; contract Entry { function value() external pure returns (uint) { assert(Used.value() > 0); return Used.value(); } }')
         remappings = root / 'remappings.txt'
+        outside_secret = root.parent / (root.name + '-secret.env')
         service = Service(binary, root)
         try:
             assert any(e['severity'] == 'error' for e in service.next()[1]['errors'])
@@ -125,8 +136,27 @@ def run(binary):
             assert any(e['severity'] == 'error' for e in service.next()[1]['errors'])
             entry.write_text(preamble + 'contract Entry {}')
             assert not any(e['severity'] == 'error' for e in service.next()[1].get('errors', []))
+            # A repository can replace an initially regular remappings file
+            # while the service retains its already opened project root.
+            secret = 'OKSOLC_DUMMY_SECRET=outside-project-sentinel'
+            outside_secret.write_text(secret + '\n')
+            remappings.unlink()
+            remappings.symlink_to(outside_secret)
+            service.wait_error(b'RemappingsNotRegularFile')
+            service.quiet()
+            direct = subprocess.run([binary, 'compile', 'src/Entry.sol'], cwd=root,
+                                    capture_output=True, timeout=10)
+            assert direct.returncode != 0, direct.stdout
+            assert secret.encode() not in direct.stdout + direct.stderr + b''.join(service.errors)
+            remappings.unlink()
+            remappings.write_text('pkg/=lib/\n')
+            entry.write_text(preamble + 'contract Recovered {}')
+            recovered = service.next()[1]
+            assert 'Recovered' in recovered['contracts']['src/Entry.sol']
+            assert secret not in json.dumps(recovered)
         finally:
             service.close()
+            outside_secret.unlink(missing_ok=True)
         (root / 'contracts').mkdir()
         (root / 'contracts/Custom.sol').write_text(preamble + 'contract Custom {}')
         (root / 'oksolc.toml').write_text('source-path = "contracts"\n')
@@ -139,7 +169,28 @@ def run(binary):
         for args in [('--source-path', '../lib'), ('--stdio', '--source-path', 'src')]:
             result = subprocess.run([binary, 'serve', '--no-cache', *args], cwd=root, capture_output=True, timeout=10)
             assert result.returncode != 0
-    print('source serve: roots, imports, live remappings, additions/deletions, failures/recovery, configuration and clean-byte equivalence passed')
+    with tempfile.TemporaryDirectory(prefix='oksolc-source-root-replacement-') as temporary:
+        parent = Path(temporary)
+        project = parent / 'project'
+        (project / 'src').mkdir(parents=True)
+        (project / '.git').mkdir()
+        (project / 'src/C.sol').write_text(preamble + 'contract C {}')
+        service = Service(binary, project)
+        try:
+            assert 'C' in service.next()[1]['contracts']['src/C.sol']
+            project.rename(parent / 'original-project')
+            (project / 'src').mkdir(parents=True)
+            (project / '.git').mkdir()
+            (project / 'src/C.sol').write_text(preamble + 'contract Replacement {}')
+            outside = parent / 'secret.env'
+            outside.write_text('DUMMY_SECRET=replaced-root-sentinel\n')
+            (project / 'remappings.txt').symlink_to(outside)
+            service.wait_error(b'SourceRootChanged')
+            service.quiet()
+            assert b'replaced-root-sentinel' not in b''.join(service.errors)
+        finally:
+            service.close()
+    print('source serve: roots, imports, live remappings, symlink rejection, additions/deletions, failures/recovery, configuration and clean-byte equivalence passed')
 
 
 if __name__ == '__main__':

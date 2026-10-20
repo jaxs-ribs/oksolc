@@ -367,6 +367,31 @@ pub const OptimiserSuite = struct {
         externally_used_identifiers: ?*const NameCollector.NameSet,
         profiler: ?*Profiler,
     ) anyerror!void {
+        try object.validateNames();
+        return runProfiledWithValidatedNames(
+            meter,
+            object,
+            optimize_stack_allocation,
+            optimisation_sequence,
+            optimisation_cleanup_sequence,
+            expected_executions_per_deployment,
+            externally_used_identifiers,
+            profiler,
+        );
+    }
+
+    /// Requires tree-wide namespace validation. Optimizer passes only change
+    /// code, so recursive callers can share the check across all subobjects.
+    pub fn runProfiledWithValidatedNames(
+        meter: ?*const EVMMetrics.GasMeter,
+        object: *Object,
+        optimize_stack_allocation: bool,
+        optimisation_sequence: []const u8,
+        optimisation_cleanup_sequence: []const u8,
+        expected_executions_per_deployment: ?usize,
+        externally_used_identifiers: ?*const NameCollector.NameSet,
+        profiler: ?*Profiler,
+    ) anyerror!void {
         const allocator = object.allocator;
         const code = object.code() orelse return error.MissingObjectCode;
         const analysis_info = if (object.analysis_info) |*info| info else return error.MissingAnalysisInfo;
@@ -433,7 +458,7 @@ pub const OptimiserSuite = struct {
             defer probe.deinit();
             object.replaceCode(AST.AST.init(allocator, dialect, ast_root), null);
             ast_root = .{};
-            var compressed = try StackCompressor.run(
+            var compressed = try StackCompressor.runWithValidatedNames(
                 object,
                 optimize_stack_allocation,
                 stack_compressor_max_iterations,
@@ -462,7 +487,7 @@ pub const OptimiserSuite = struct {
                     defer probe.deinit();
                     object.replaceCode(AST.AST.init(allocator, dialect, ast_root), null);
                     ast_root = .{};
-                    break :compressed try StackCompressor.run(
+                    break :compressed try StackCompressor.runWithValidatedNames(
                         object,
                         optimize_stack_allocation,
                         stack_compressor_max_iterations,
@@ -479,7 +504,7 @@ pub const OptimiserSuite = struct {
                 defer probe.deinit();
                 object.replaceCode(AST.AST.init(allocator, dialect, ast_root), null);
                 ast_root = .{};
-                ast_root = try StackLimitEvader.runObject(&context, object);
+                ast_root = try StackLimitEvader.runObjectWithValidatedNames(&context, object);
             }
         }
 
@@ -501,7 +526,7 @@ pub const OptimiserSuite = struct {
         {
             var probe = ProfilerModule.OptionalProbe.init(profiler, "AsmAnalysis");
             defer probe.deinit();
-            var structure = try object.summarizeStructure();
+            var structure = try object.summarizeStructureWithValidatedNames();
             defer structure.deinit();
             object.analysis_info = try AsmAnalysis.analyzeStrictBlock(
                 allocator,

@@ -647,5 +647,6 @@ test "stack limit evader spill rewrites move expressions and clean up every allo
             defer info.deinit();
         }
     };
-    try std.testing.checkAllAllocationFailures(allocator, Check.run, .{ &source, &dialect });
+    var deterministic = std.testing.FailingAllocator.init(allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(deterministic.allocator(), Check.run, .{ &source, &dialect });
 }

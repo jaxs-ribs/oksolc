@@ -36,6 +36,7 @@ pub const DeclarationTypeChecker = struct {
     inside_function_type: bool = false,
     recursive_struct_seen: bool = false,
     current_structs_seen: std.AutoHashMap(*const AST.Node, void),
+    structs_to_validate: std.ArrayList(*const AST.Node) = .empty,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -56,13 +57,29 @@ pub const DeclarationTypeChecker = struct {
 
     pub fn deinit(self: *DeclarationTypeChecker) void {
         self.current_structs_seen.deinit();
+        self.structs_to_validate.deinit(self.allocator);
         self.* = undefined;
     }
 
     pub fn check(self: *DeclarationTypeChecker, root: *AST.Node) CheckError!bool {
         const watcher = self.reporter.errorWatcher();
+        defer self.structs_to_validate.clearRetainingCapacity();
         try self.checkNode(root, 0);
         if (self.current_structs_seen.count() != 0) return error.InvalidAst;
+        // A referenced struct may finish before its caller's member types.
+        // Validate only after the entire reachable group has been annotated.
+        var active = std.AutoHashMap(*const AST.Node, void).init(self.allocator);
+        defer active.deinit();
+        for (self.structs_to_validate.items) |structure| {
+            if (try self.directStructCycle(structure, &active, 0, false)) |cycle|
+                try self.reporter.fatal(
+                    errorId(2046),
+                    .TypeError,
+                    cycle.location,
+                    null,
+                    "Recursive struct definition.",
+                );
+        }
         return watcher.ok();
     }
 
@@ -174,6 +191,7 @@ pub const DeclarationTypeChecker = struct {
         var has_recursive_child = false;
         try self.current_structs_seen.put(node, {});
         defer _ = self.current_structs_seen.remove(node);
+        try self.structs_to_validate.append(self.allocator, node);
 
         for (node.payload.struct_definition.members) |member| {
             self.recursive_struct_seen = false;
@@ -185,26 +203,32 @@ pub const DeclarationTypeChecker = struct {
         if (annotation.recursive == null) annotation.recursive = has_recursive_child;
         self.recursive_struct_seen = previous_recursive_seen or annotation.recursive.?;
 
-        var active = std.AutoHashMap(*const AST.Node, void).init(self.allocator);
-        defer active.deinit();
-        if (try self.hasDirectStructCycle(node, &active, 0))
-            try self.reporter.fatal(
-                errorId(2046),
-                .TypeError,
-                node.location,
-                null,
-                "Recursive struct definition.",
-            );
+        // Preserve upstream's fatal point when the reachable member graph is complete.
+        // Incomplete forward references remain queued for validation in check().
+        if (annotation.recursive.?) {
+            var active = std.AutoHashMap(*const AST.Node, void).init(self.allocator);
+            defer active.deinit();
+            if ((try self.directStructCycle(node, &active, 0, true)) != null)
+                try self.reporter.fatal(
+                    errorId(2046),
+                    .TypeError,
+                    node.location,
+                    null,
+                    "Recursive struct definition.",
+                );
+        }
+
         if (self.current_structs_seen.count() == 1)
             self.recursive_struct_seen = false;
     }
 
-    fn hasDirectStructCycle(
+    fn directStructCycle(
         self: *DeclarationTypeChecker,
         structure: *const AST.Node,
         active: *std.AutoHashMap(*const AST.Node, void),
         depth: usize,
-    ) CheckError!bool {
+        allow_incomplete: bool,
+    ) CheckError!?*const AST.Node {
         if (depth >= 256)
             try self.reporter.fatal(
                 errorId(5651),
@@ -213,7 +237,7 @@ pub const DeclarationTypeChecker = struct {
                 null,
                 "Struct definition exhausts cyclic dependency validator.",
             );
-        if (active.contains(structure)) return true;
+        if (active.contains(structure)) return structure;
         try active.put(structure, {});
         defer _ = active.remove(structure);
 
@@ -221,20 +245,24 @@ pub const DeclarationTypeChecker = struct {
             var member_type = (try variableAnnotation(
                 self.tree,
                 member,
-            )).type_ref orelse return error.InvalidAst;
+            )).type_ref orelse {
+                if (allow_incomplete) continue;
+                return error.InvalidAst;
+            };
             while (member_type.category() == .Array) {
                 const array = member_type.payload.Array;
                 if (array.isDynamicallySized()) break;
                 member_type = array.base_type;
             }
-            if (member_type.category() == .Struct and
-                try self.hasDirectStructCycle(
+            if (member_type.category() == .Struct)
+                if (try self.directStructCycle(
                     member_type.payload.Struct.declaration,
                     active,
                     depth + 1,
-                )) return true;
+                    allow_incomplete,
+                )) |cycle| return cycle;
         }
-        return false;
+        return null;
     }
 
     fn endUserDefinedValueType(

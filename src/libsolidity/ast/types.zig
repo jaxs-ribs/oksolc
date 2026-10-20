@@ -3144,6 +3144,10 @@ fn appendAttachedFunction(
     declaration: *const AST.Node,
     name: []const u8,
 ) BehaviorError!void {
+    // A later using-for directive may not have been validated yet. Leave
+    // receiverless functions to that validation instead of binding them.
+    const parameters = declaration.payload.function_definition.callable.parameters;
+    if (parameters.payload.parameter_list.parameters.len == 0) return;
     const function_type = try functionTypeWhenAttached(provider, declaration);
     const bound = try provider.withBoundFirstArgument(function_type);
     const expected_self = bound.asFunction().?.selfType() orelse return error.InvalidType;
@@ -3157,7 +3161,7 @@ fn appendAttachedFunction(
     try builder.add(name, bound, declaration);
 }
 
-fn functionTypeWhenAttached(
+pub fn functionTypeWhenAttached(
     provider: *TypeProviderModule.TypeProvider,
     declaration: *const AST.Node,
 ) BehaviorError!*const Types.Type {

@@ -10,6 +10,716 @@ const standard_json = solidity.standard_json;
 const Profiler = solidity.libsolutil.profiler.Profiler;
 const ObjectOptimizer = solidity.libyul.object_optimizer.ObjectOptimizer;
 
+test "relative imports preserve virtual source names when normalized aliases coexist" {
+    const allocator = std.testing.allocator;
+    const input =
+        \\{"language":"Solidity","sources":{
+        \\"proto://dir/Main.sol":{"content":"// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\nimport {ALLOW} from \"./Policy.sol\";\ncontract C { function isAuthorized() external pure returns (bool) { return ALLOW; } }\n"},
+        \\"proto://dir/Policy.sol":{"content":"// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\nbool constant ALLOW = false;\n"},
+        \\"proto:/dir/Policy.sol":{"content":"// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\nbool constant ALLOW = true;\n"}
+        \\},"settings":{"viaIR":true,"optimizer":{"enabled":true,"runs":200},"metadata":{"appendCBOR":false},
+        \\"outputSelection":{"*":{"C":["evm.deployedBytecode.object","evm.methodIdentifiers"],"":["ast"]}}}}
+    ;
+    var dispatcher: libsolc.Dispatcher = .{};
+    var session = solidity.CompilerSession.init(allocator);
+    defer session.deinit();
+    for ([_]standard_json.Compiler{ dispatcher.compiler(), session.compiler() }) |compiler| {
+        var output = try compiler.compile(allocator, .{ .input = input });
+        defer output.deinit();
+        const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+        defer parsed.deinit();
+        const sources = parsed.value.object.get("sources").?.object;
+        const nodes = sources.get("proto://dir/Main.sol").?.object.get("ast").?.object.get("nodes").?.array.items;
+        var found_import = false;
+        for (nodes) |node| {
+            if (!std.mem.eql(u8, node.object.get("nodeType").?.string, "ImportDirective")) continue;
+            found_import = true;
+            try std.testing.expectEqualStrings("proto://dir/Policy.sol", node.object.get("absolutePath").?.string);
+        }
+        try std.testing.expect(found_import);
+        const evm = parsed.value.object.get("contracts").?.object.get("proto://dir/Main.sol").?.object.get("C").?.object.get("evm").?.object;
+        try std.testing.expectEqualStrings("57e6c2f4", evm.get("methodIdentifiers").?.object.get("isAuthorized()").?.string);
+        // Pinned solc 0.8.36 runtime: the intended policy returns false.
+        try std.testing.expectEqualStrings(
+            "60808060405260043610156011575f80fd5b5f3560e01c6357e6c2f4146023575f80fd5b346039575f366003190112603957805f60209252f35b5f80fd",
+            evm.get("deployedBytecode").?.object.get("object").?.string,
+        );
+    }
+}
+
+test "name resolution stops after the first failing top-level declaration" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\contract First {
+        \\    function f() external { missingFirst(); }
+        \\}
+        \\contract Second {
+        \\    function f() external { missingSecond(); }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+    try std.testing.expectEqualStrings("7576", diagnostics[0].object.get("errorCode").?.string);
+}
+
+test "single members retain argument diagnostics" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\interface Target {
+        \\    function array(uint256[] calldata values) external;
+        \\    function scalar(uint256 value) external;
+        \\}
+        \\library L {
+        \\    struct Data { uint256 value; }
+        \\    function p(Data memory, uint32) internal pure {}
+        \\}
+        \\contract C {
+        \\    using L for L.Data;
+        \\    function conversion(Target target, uint256[3] memory values) external {
+        \\        target.array(values);
+        \\    }
+        \\    function arity(Target target) external {
+        \\        target.scalar();
+        \\    }
+        \\    function attached(L.Data memory data, uint256 value) external pure {
+        \\        data.p(value);
+        \\    }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{
+            .viaIR = true,
+            .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } },
+        },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    var conversion_count: usize = 0;
+    var found_arity = false;
+    for (diagnostics) |diagnostic| {
+        const code = diagnostic.object.get("errorCode") orelse continue;
+        if (code != .string) continue;
+        conversion_count += @intFromBool(std.mem.eql(u8, code.string, "9553"));
+        found_arity = found_arity or std.mem.eql(u8, code.string, "6160");
+    }
+    try std.testing.expectEqual(@as(usize, 2), conversion_count);
+    try std.testing.expect(found_arity);
+}
+
+test "matching attached members override unmatched contract members" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\interface Target {
+        \\    function invoke(uint256 left, uint256 right) external returns (uint256);
+        \\}
+        \\library L {
+        \\    function invoke(Target self, uint256 value) internal pure returns (uint256) {
+        \\        return uint160(address(self)) + value;
+        \\    }
+        \\}
+        \\contract C {
+        \\    using L for Target;
+        \\    function f(Target target, uint256 value) external pure returns (uint256) {
+        \\        return target.invoke(value);
+        \\    }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    try std.testing.expect(parsed.value.object.get("contracts") != null);
+    if (parsed.value.object.get("errors")) |errors|
+        for (errors.array.items) |diagnostic|
+            try std.testing.expect(!std.mem.eql(
+                u8,
+                diagnostic.object.get("severity").?.string,
+                "error",
+            ));
+}
+
+test "native and attached mismatches do not retain either candidate" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\interface Target { function f(address value) external; }
+        \\library L {
+        \\    function f(Target self, uint32 value) internal pure { self; value; }
+        \\}
+        \\contract C {
+        \\    using L for Target;
+        \\    function g(Target target) external pure { target.f(); }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+    try std.testing.expectEqualStrings("9582", diagnostics[0].object.get("errorCode").?.string);
+}
+
+test "single library type members retain argument diagnostics" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\library L {
+        \\    function f(uint32 value) external pure returns (uint32) { return value; }
+        \\}
+        \\contract C {
+        \\    function f(uint256 value) external returns (uint32) { return L.f(value); }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+    try std.testing.expectEqualStrings("9553", diagnostics[0].object.get("errorCode").?.string);
+}
+
+test "storage-only attached members retain their diagnostic" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\library L {
+        \\    function mem(bytes storage self) internal pure returns (uint256) {
+        \\        return self.length;
+        \\    }
+        \\}
+        \\contract C {
+        \\    using L for bytes;
+        \\    function f(bytes memory value) external pure returns (uint256) {
+        \\        return value.mem();
+        \\    }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+    try std.testing.expectEqualStrings("4994", diagnostics[0].object.get("errorCode").?.string);
+}
+
+test "memory-compatible attached members suppress storage-only diagnostics" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\library L {
+        \\    function f(bytes memory self, uint256 value) internal pure { self; value; }
+        \\    function f(bytes memory self, address value) internal pure { self; value; }
+        \\}
+        \\contract C {
+        \\    using L for bytes;
+        \\    function g(bytes memory value) external pure { value.f(true); }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+    try std.testing.expectEqualStrings("9582", diagnostics[0].object.get("errorCode").?.string);
+}
+
+test "externally callable library calldata receivers attach to memory values" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\library L {
+        \\    function publicCall(bytes calldata self) public pure returns (uint256) { return self.length; }
+        \\    function externalCall(bytes calldata self) external pure returns (uint256) { return self.length; }
+        \\}
+        \\contract C {
+        \\    using L for bytes;
+        \\    function f(bytes memory value) external pure returns (uint256, uint256) {
+        \\        return (value.publicCall(), value.externalCall());
+        \\    }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    try std.testing.expect(parsed.value.object.get("contracts") != null);
+    if (parsed.value.object.get("errors")) |errors|
+        for (errors.array.items) |diagnostic|
+            try std.testing.expect(!std.mem.eql(
+                u8,
+                diagnostic.object.get("severity").?.string,
+                "error",
+            ));
+}
+
+test "super lookup ignores unimplemented base declarations" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\contract X {
+        \\    function f(bool x) public virtual returns (uint256) { return x ? 1 : 2147483648; }
+        \\    function f(uint64 x) public virtual returns (uint256) { return x; }
+        \\}
+        \\abstract contract Y { function f(uint256 x) public virtual returns (uint256); }
+        \\contract Z is X, Y {
+        \\    function f(uint256 x) public override(X, Y) returns (uint256) { return super.f(x); }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    try std.testing.expectEqual(@as(usize, 2), diagnostics.len);
+    try std.testing.expectEqualStrings("2353", diagnostics[0].object.get("errorCode").?.string);
+    try std.testing.expectEqualStrings("9582", diagnostics[1].object.get("errorCode").?.string);
+}
+
+test "literal conversion diagnostics retain reasons" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\contract C {
+        \\    uint8 too_large = 256;
+        \\    uint8 negative = -1;
+        \\    bytes1 too_long = hex"030102";
+        \\    bytes1 explicit_too_long = bytes1("root");
+        \\    string invalid_utf8 = hex"ff";
+        \\    string explicit_invalid_utf8 = string(hex"ff");
+        \\    function takesUint8(uint8) internal {}
+        \\    function call() internal { takesUint8(256); }
+        \\    function returnsUint8() internal pure returns (uint8) { return 256; }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Type int_const 256 is not implicitly convertible to expected type uint8. Literal is too large to fit in uint8.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Type int_const -1 is not implicitly convertible to expected type uint8. Cannot implicitly convert signed literal to unsigned type.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Invalid implicit conversion from int_const 256 to uint8 requested. Literal is too large to fit in uint8.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Return argument type int_const 256 is not implicitly convertible to expected type (type of first return variable) uint8. Literal is too large to fit in uint8.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Type literal_string hex\\\"030102\\\" is not implicitly convertible to expected type bytes1. Literal is larger than the type.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Explicit type conversion not allowed from \\\"literal_string \\\"root\\\"\\\" to \\\"bytes1\\\". Literal is larger than the type.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Type literal_string hex\\\"ff\\\" is not implicitly convertible to expected type string storage ref. Contains invalid UTF-8 sequence at position 0.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Explicit type conversion not allowed from \\\"literal_string hex\\\"ff\\\"\\\" to \\\"string memory\\\". Contains invalid UTF-8 sequence at position 0.",
+    ) != null);
+}
+
+test "fixed-point conversion diagnostics retain reasons" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\contract C {
+        \\    fixed128x18 value;
+        \\    fixed128x10 converted = value;
+        \\    function f(fixed128x18 input) internal pure returns (fixed128x10) {
+        \\        return input;
+        \\    }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Type fixed128x18 is not implicitly convertible to expected type fixed128x10. Too many fractional digits.",
+    ) != null);
+    try std.testing.expect(std.mem.find(
+        u8,
+        output.bytes,
+        "Return argument type fixed128x18 is not implicitly convertible to expected type (type of first return variable) fixed128x10. Too many fractional digits.",
+    ) != null);
+}
+
+test "fixed-array bounds diagnostics stop after earlier errors" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\contract C {
+        \\    function f() external pure returns (uint256) {
+        \\        uint256[1] memory values = new uint256[](2);
+        \\        return values[2];
+        \\    }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{
+            .viaIR = true,
+            .outputSelection = .{ .@"*" = .{ .@"*" = &.{"evm.bytecode.object"} } },
+        },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+    try std.testing.expectEqualStrings("9574", diagnostics[0].object.get("errorCode").?.string);
+}
+
+test "storage array push rejects incompatible arguments during member lookup" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\contract C {
+        \\    uint8[] values;
+        \\    function f() external { values.push(256); }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+    try std.testing.expectEqualStrings("9582", diagnostics[0].object.get("errorCode").?.string);
+}
+
+test "native and attached array members share overload resolution" {
+    const allocator = std.testing.allocator;
+    const cases = [_]struct {
+        member: []const u8,
+        call: []const u8,
+        error_code: ?[]const u8,
+    }{
+        .{
+            .member = "function push(uint8[] storage, bytes32) internal pure {}",
+            .call = "values.push(true);",
+            .error_code = "9582",
+        },
+        .{
+            .member = "function push(uint8[] storage, bytes32) internal pure {}",
+            .call = "values.push(bytes32(0));",
+            .error_code = null,
+        },
+        .{
+            .member = "function push(uint8[] storage, bytes32) internal pure {}",
+            .call = "values.push(1);",
+            .error_code = null,
+        },
+        .{
+            .member = "function push(uint8[] storage, uint8) internal pure {}",
+            .call = "values.push(1);",
+            .error_code = "6675",
+        },
+        .{
+            .member = "function pop(uint8[] storage, bytes32) internal pure {}",
+            .call = "values.pop(true);",
+            .error_code = "9582",
+        },
+        .{
+            .member = "function pop(uint8[] storage, bytes32) internal pure {}",
+            .call = "values.pop(bytes32(0));",
+            .error_code = null,
+        },
+        .{
+            .member = "function pop(uint8[] storage) internal pure {}",
+            .call = "values.pop();",
+            .error_code = "6675",
+        },
+        .{
+            .member = "",
+            .call = "values.pop(true);",
+            .error_code = "6160",
+        },
+    };
+    for (cases) |case| {
+        const source = try allocator.print(
+            "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\n" ++
+                "library L {{ {s} }}\n" ++
+                "contract C {{ using L for uint8[]; uint8[] values; " ++
+                "function f() external {{ {s} }} }}\n",
+            .{ case.member, case.call },
+        );
+        defer allocator.free(source);
+        const input = try std.json.Stringify.valueAlloc(allocator, .{
+            .language = "Solidity",
+            .sources = .{ .@"C.sol" = .{ .content = source } },
+            .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+        }, .{});
+        defer allocator.free(input);
+        var dispatcher: libsolc.Dispatcher = .{};
+        var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+        defer output.deinit();
+        const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+        defer parsed.deinit();
+        var error_count: usize = 0;
+        if (parsed.value.object.get("errors")) |errors|
+            for (errors.array.items) |diagnostic| {
+                if (!std.mem.eql(u8, "error", diagnostic.object.get("severity").?.string)) continue;
+                error_count += 1;
+                try std.testing.expect(case.error_code != null);
+                try std.testing.expectEqualStrings(case.error_code.?, diagnostic.object.get("errorCode").?.string);
+            };
+        try std.testing.expectEqual(@as(usize, @intFromBool(case.error_code != null)), error_count);
+    }
+}
+
+test "array member lookup preserves zero-parameter attachment diagnostics regardless of directive order" {
+    const allocator = std.testing.allocator;
+    const directive = "using {g} for uint[];";
+    for ([_][]const u8{ "values.push();", "values.pop();" }) |call| {
+        for ([_]bool{ false, true }) |directive_first| {
+            const source = try allocator.print(
+                "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\n" ++
+                    "function g() pure {{}}\n" ++
+                    "contract C {{ uint[] values; {s} " ++
+                    "function f() external {{ {s} }} {s} }}\n",
+                .{
+                    if (directive_first) directive else "",
+                    call,
+                    if (directive_first) "" else directive,
+                },
+            );
+            defer allocator.free(source);
+            const input = try std.json.Stringify.valueAlloc(allocator, .{
+                .language = "Solidity",
+                .sources = .{ .@"C.sol" = .{ .content = source } },
+                .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+            }, .{});
+            defer allocator.free(input);
+            var dispatcher: libsolc.Dispatcher = .{};
+            var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+            defer output.deinit();
+            const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+            defer parsed.deinit();
+            const diagnostics = parsed.value.object.get("errors").?.array.items;
+            try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+            try std.testing.expectEqualStrings("error", diagnostics[0].object.get("severity").?.string);
+            try std.testing.expectEqualStrings("TypeError", diagnostics[0].object.get("type").?.string);
+            try std.testing.expectEqualStrings("4731", diagnostics[0].object.get("errorCode").?.string);
+            try std.testing.expectEqualStrings(
+                "The function \"g\" does not have any parameters, and therefore cannot be attached to the type \"uint256[]\".",
+                diagnostics[0].object.get("message").?.string,
+            );
+        }
+    }
+}
+
+test "recursive struct diagnostics prefer a complete inner cycle" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\contract C { struct A { B[1] children; } struct B { B parent; } }
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+    try std.testing.expectEqualStrings("2046", diagnostics[0].object.get("errorCode").?.string);
+    const location = diagnostics[0].object.get("sourceLocation").?.object;
+    try std.testing.expectEqual(
+        @as(i64, @intCast(std.mem.find(u8, source, "struct B").?)),
+        location.get("start").?.integer,
+    );
+}
+
+test "recursive struct immediate validation reports the completed structure" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\contract C {
+        \\    struct S1 { S1[1] a; S4[] next; }
+        \\    struct S4 { S1[1] back; S4 self; }
+        \\}
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+    try std.testing.expectEqualStrings("2046", diagnostics[0].object.get("errorCode").?.string);
+    const location = diagnostics[0].object.get("sourceLocation").?.object;
+    try std.testing.expectEqual(
+        @as(i64, @intCast(std.mem.find(u8, source, "struct S4").?)),
+        location.get("start").?.integer,
+    );
+}
+
+test "complete inner struct cycles stop enclosing array diagnostics" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\// SPDX-License-Identifier: UNLICENSED
+        \\pragma solidity 0.8.36;
+        \\contract C { struct A { B[0] children; } struct B { B parent; } }
+    ;
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"abi"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const diagnostics = parsed.value.object.get("errors").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+    try std.testing.expectEqualStrings("2046", diagnostics[0].object.get("errorCode").?.string);
+}
+
 test "optimizer cache semantic edits preserve full solc output through diamonds and cycles" {
     inline for (.{ "diamond", "cycle" }) |shape| {
         var session = solidity.CompilerSession.init(std.testing.allocator);
@@ -40,6 +750,93 @@ test "optimizer cache semantic edits preserve full solc output through diamonds 
                 try std.testing.expectEqual(@as(usize, 3), session.statistics().frontend.analyzed_semantic_sources);
             }
         }
+    }
+}
+
+test "incremental reexports refresh overloads and bodies through import cycles" {
+    const allocator = std.testing.allocator;
+    for ([_]bool{ false, true }) |selective| {
+        for ([_]bool{ false, true }) |signature_edit| {
+            var session = solidity.CompilerSession.init(allocator);
+            defer session.deinit();
+            for (0..3) |revision| {
+                const source_a = switch (revision) {
+                    0 => "function f(uint256) pure returns (uint256) { return 1; } function f(address) pure returns (uint256) { return 2; }",
+                    1 => if (signature_edit)
+                        "function f(bytes32) pure returns (uint256) { return 20; } function f(address) pure returns (uint256) { return 10; }"
+                    else
+                        "function f(uint256) pure returns (uint256) { return 20; } function f(address) pure returns (uint256) { return 10; }",
+                    else => "function f(uint256) pure returns (uint256) { return 3; } function f(address) pure returns (uint256) { return 4; }",
+                };
+                const consumer = try allocator.print(
+                    "import * as M from './B.sol'; import * as N from './E.sol'; contract D {{ function g() external pure returns (uint256) {{ return {s}(uint256(1)); }} }}",
+                    .{if (revision == 0) "N.f" else if (selective) "M.exportF" else "M.f"},
+                );
+                defer allocator.free(consumer);
+                const input = try std.json.Stringify.valueAlloc(allocator, .{
+                    .language = "Solidity",
+                    .sources = .{
+                        .@"A.sol" = .{ .content = source_a },
+                        .@"B.sol" = .{ .content = if (selective)
+                            "import {f as exportF} from './A.sol'; import './C.sol';"
+                        else
+                            "import './A.sol'; import './C.sol';" },
+                        .@"C.sol" = .{ .content = "import './B.sol';" },
+                        .@"D.sol" = .{ .content = consumer },
+                        .@"E.sol" = .{ .content = "function f(uint256) pure returns (uint256) { return 30; } function f(address) pure returns (uint256) { return 40; }" },
+                    },
+                    .settings = .{
+                        .viaIR = true,
+                        .optimizer = .{ .enabled = true, .runs = 200 },
+                        .metadata = .{ .appendCBOR = false },
+                        .outputSelection = .{ .@"*" = .{
+                            .@"*" = &.{ "abi", "evm.bytecode.object", "evm.deployedBytecode.object" },
+                        } },
+                    },
+                }, .{});
+                defer allocator.free(input);
+                var dispatcher: libsolc.Dispatcher = .{};
+                var clean = try dispatcher.compiler().compile(allocator, .{ .input = input });
+                defer clean.deinit();
+                var actual = try session.compile(allocator, .{ .input = input });
+                defer actual.deinit();
+                try standard_json.compareExact(clean.bytes, actual.bytes);
+                const parsed = try std.json.parseFromSlice(std.json.Value, allocator, actual.bytes, .{});
+                defer parsed.deinit();
+                const rejected = signature_edit and revision == 1;
+                try std.testing.expectEqual(rejected, parsed.value.object.get("contracts") == null);
+                var found_error = false;
+                if (parsed.value.object.get("errors")) |diagnostics| {
+                    for (diagnostics.array.items) |diagnostic| {
+                        if (!std.mem.eql(u8, diagnostic.object.get("severity").?.string, "error")) continue;
+                        found_error = true;
+                        try std.testing.expectEqualStrings("9582", diagnostic.object.get("errorCode").?.string);
+                    }
+                }
+                try std.testing.expectEqual(rejected, found_error);
+            }
+        }
+    }
+}
+
+test "recursive structs validate after member annotation and preserve session recovery" {
+    var session = solidity.CompilerSession.init(std.testing.allocator);
+    defer session.deinit();
+    inline for (.{
+        "solidity-recursive-structs",
+        "solidity-recursive-struct-error",
+        "solidity-recursive-struct-nested-error",
+        "solidity-scalar-builtins-bytecode",
+    }) |name| {
+        const input = @embedFile("standard-json/" ++ name ++ ".json");
+        const expected = @embedFile("standard-json/expected/" ++ name ++ ".json");
+        var dispatcher: libsolc.Dispatcher = .{};
+        var clean = try dispatcher.compiler().compile(std.testing.allocator, .{ .input = input });
+        defer clean.deinit();
+        try standard_json.compareExact(expected, clean.bytes);
+        var actual = try session.compile(std.testing.allocator, .{ .input = input });
+        defer actual.deinit();
+        try standard_json.compareExact(expected, actual.bytes);
     }
 }
 
@@ -87,6 +884,18 @@ test "using-for reference receivers preserve calldata memory and storage locatio
             output.bytes,
         );
     }
+}
+
+test "using-for members preserve imported aliases in via-IR bytecode" {
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(std.testing.allocator, .{
+        .input = @embedFile("standard-json/solidity-using-for-import-aliases.json"),
+    });
+    defer output.deinit();
+    try standard_json.compareExact(
+        @embedFile("standard-json/expected/solidity-using-for-import-aliases.json"),
+        output.bytes,
+    );
 }
 
 test "using-for library lookup ignores zero-parameter helpers and preserves explicit diagnostics" {
@@ -372,6 +1181,38 @@ test "storage and transient-storage layouts match solc 0.8.36 exactly" {
         output.bytes,
     );
     try std.testing.expectEqual(solidity.execution.Backend.zig, output.execution.backend);
+}
+
+test "storage layout byte counts wrap at 256 bits" {
+    const allocator = std.testing.allocator;
+    const length = "57896044618658097711785492504343953926634992332820282019728792003956564819968";
+    const source = try allocator.print(
+        "// SPDX-License-Identifier: UNLICENSED\npragma solidity 0.8.36;\n" ++
+            "contract C {{ struct Data {{ uint256[{s}] values; }} Data data; }}\n",
+        .{length},
+    );
+    defer allocator.free(source);
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Solidity",
+        .sources = .{ .@"C.sol" = .{ .content = source } },
+        .settings = .{ .outputSelection = .{ .@"*" = .{ .@"*" = &.{"storageLayout"} } } },
+    }, .{});
+    defer allocator.free(input);
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+    defer output.deinit();
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+    defer parsed.deinit();
+    const types = parsed.value.object.get("contracts").?.object
+        .get("C.sol").?.object.get("C").?.object
+        .get("storageLayout").?.object.get("types").?.object;
+    const key = try allocator.print("t_array(t_uint256){s}_storage", .{length});
+    defer allocator.free(key);
+    const array_info = types.get(key).?.object;
+    try std.testing.expectEqualStrings(
+        "0",
+        array_info.get("numberOfBytes").?.string,
+    );
 }
 
 test "viaIR false analyzed AST output matches solc 0.8.36 exactly" {
@@ -1891,6 +2732,17 @@ test "Solidity inline assembly embeds the exact parsed Yul AST" {
     try std.testing.expectEqual(solidity.execution.Backend.zig, output.execution.backend);
 }
 
+test "oversized parsed Yul literals return the upstream internal diagnostic" {
+    const input =
+        \\{"language":"Solidity","settings":{"outputSelection":{"C.sol":{"":["ast"]}},"stopAfter":"parsing"},"sources":{"C.sol":{"content":"contract C { function f() public { assembly { pop(115792089237316195423570985008687907853269984665640564039457584007913129639936) } } }"}}}
+    ;
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(std.testing.allocator, .{ .input = input });
+    defer output.deinit();
+
+    try standard_json.compareExact(libsolc.responses.yul_ast_assertion, output.bytes);
+}
+
 test "Solidity inline assembly parser diagnostics match solc exactly" {
     var dispatcher: libsolc.Dispatcher = .{};
     var output = try dispatcher.compiler().compile(std.testing.allocator, .{
@@ -2010,6 +2862,94 @@ test "valid Yul envelope compiles without requesting artifacts" {
     defer output.deinit();
 
     try standard_json.compareExact("{\"errors\":[]}\n", output.bytes);
+}
+
+test "deep dotted Yul namespaces keep request allocations bounded" {
+    const allocator = std.testing.allocator;
+    var source = std.Io.Writer.Allocating.init(allocator);
+    defer source.deinit();
+    const name_tail: [45]u8 = @splat('x');
+    for (0..300) |depth|
+        try source.writer.print("object \"node{d:0>3}.{s}\" {{ code {{}} ", .{ depth, &name_tail });
+    for (0..300) |_| try source.writer.writeByte('}');
+    const input = try std.json.Stringify.valueAlloc(allocator, .{
+        .language = "Yul",
+        .sources = .{ .@"nested.yul" = .{ .content = source.written() } },
+        .settings = .{ .outputSelection = @as(struct {}, .{}) },
+    }, .{});
+    defer allocator.free(input);
+
+    var accounting = std.testing.FailingAllocator.init(allocator, .{});
+    var dispatcher: libsolc.Dispatcher = .{};
+    var output = try dispatcher.compiler().compile(accounting.allocator(), .{ .input = input });
+    defer output.deinit();
+    try standard_json.compareExact("{\"errors\":[]}\n", output.bytes);
+    // Cover the complete request, including each subtree's analysis. This
+    // catches both expanded path storage and repeated subtree validation.
+    try std.testing.expect(accounting.allocated_bytes < 8 * 1024 * 1024);
+}
+
+test "Yul rejects literal and qualified name collisions in every declaration order" {
+    const allocator = std.testing.allocator;
+    const cases = [_]struct { nested: []const u8, direct: []const u8 }{
+        .{
+            .nested = "object \"lib\" { code {} object \"runtime\" { code { mstore(0, 42) return(0, 32) } } }",
+            .direct = "data \"lib.runtime\" hex\"60635f5260205ff3\"",
+        },
+        .{
+            .nested = "object \"lib\" { code {} object \"runtime\" { code {} } }",
+            .direct = "object \"lib.runtime\" { code {} }",
+        },
+        .{
+            .nested = "object \"lib\" { code {} data \"payload\" hex\"2a\" }",
+            .direct = "data \"lib.payload\" hex\"63\"",
+        },
+        .{
+            .nested = "object \"outer\" { code {} object \"lib\" { code {} data \"payload\" hex\"2a\" } }",
+            .direct = "data \"outer.lib.payload\" hex\"63\"",
+        },
+        .{
+            .nested = "object \"lib\" { code {} object \"part.runtime\" { code {} } }",
+            .direct = "object \"lib.part\" { code {} object \"runtime\" { code {} } }",
+        },
+        .{
+            .nested = "object \"lib.\" { code {} data \"payload\" hex\"2a\" }",
+            .direct = "data \"lib..payload\" hex\"63\"",
+        },
+    };
+    for (cases) |case| {
+        for ([_]bool{ false, true }) |direct_first| {
+            for ([_]bool{ false, true }) |optimize| {
+                const source = try allocator.print("object \"Root\" {{ code {{}} {s} {s} }}", .{
+                    if (direct_first) case.direct else case.nested,
+                    if (direct_first) case.nested else case.direct,
+                });
+                defer allocator.free(source);
+                const input = try std.json.Stringify.valueAlloc(allocator, .{
+                    .language = "Yul",
+                    .sources = .{ .@"C.yul" = .{ .content = source } },
+                    .settings = .{
+                        .optimizer = .{ .enabled = optimize },
+                        .outputSelection = .{ .@"*" = .{ .@"*" = &.{"evm.bytecode.object"} } },
+                    },
+                }, .{});
+                defer allocator.free(input);
+                var dispatcher: libsolc.Dispatcher = .{};
+                var output = try dispatcher.compiler().compile(allocator, .{ .input = input });
+                defer output.deinit();
+                const parsed = try std.json.parseFromSlice(std.json.Value, allocator, output.bytes, .{});
+                defer parsed.deinit();
+                try std.testing.expect(parsed.value.object.get("contracts") == null);
+                const diagnostics = parsed.value.object.get("errors").?.array.items;
+                try std.testing.expectEqual(@as(usize, 1), diagnostics.len);
+                try std.testing.expectEqualStrings("ParserError", diagnostics[0].object.get("type").?.string);
+                try std.testing.expectEqualStrings(
+                    "Object and data names must not collide with qualified paths.",
+                    diagnostics[0].object.get("message").?.string,
+                );
+            }
+        }
+    }
 }
 
 test "Yul Standard JSON artifacts match solc 0.8.36 exactly" {

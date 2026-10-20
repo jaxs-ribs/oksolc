@@ -784,7 +784,7 @@ test "stored Yul AST restores lazy builtins and owns bytes through allocation fa
             defer snapshot.destroy(failing);
         }
     };
-    try std.testing.checkAllAllocationFailures(allocator, Helper.check, .{ &root, consumer_dialect.dialect() });
+    try std.testing.checkAllAllocationFailures(std.heap.page_allocator, Helper.check, .{ &root, consumer_dialect.dialect() });
 }
 
 test "Yul AST object cache identity excludes metadata and retains assembly inputs" {

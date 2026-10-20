@@ -38,6 +38,8 @@ Intentional exceptions:
 - Empty dispatch omits unused helpers from unoptimized IR.
 - Hexadecimal subassembly prefixes require a following hex digit.
 - Yul `memoryguard` retains the exclusive `2^32 - 1` size limit.
+- Yul rejects literal names that collide with qualified object or data paths
+  in every declaration order, including orders accepted by solc 0.8.36.
 
 The `compile` command enables the optimizer with 200 runs. Use `standard-json`
 when exact control of compiler settings or output selection is required.
@@ -49,10 +51,10 @@ compatibility target. See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ```console
 $ oksolc version
-oksolc 0.1.6 (Solidity 0.8.36)
+oksolc 0.2.1 (Solidity 0.8.36)
 $ oksolc --version
 oksolc, a solidity compiler commandline interface
-Version: 0.8.36+oksolc.0.1.6
+Version: 0.8.36+oksolc.0.2.1
 ```
 
 `oksolc version --json` returns `version` (the product version),
@@ -69,7 +71,7 @@ Contract metadata and CBOR keep the pinned reference compiler identity to
 preserve output and bytecode compatibility. Use the product version for upgrade
 comparisons; SemVer precedence ignores the build metadata after `+`.
 
-## Zig API migration for 0.2.0-dev
+## Zig API migration for 0.2.0
 
 Direct users of `solidity.incremental.SemanticRevision` must retain and destroy
 the marker returned by `initializeDependencyMasks`. The marker owns its scratch
@@ -146,6 +148,10 @@ zig build -Doptimize=ReleaseFast --prefix "$HOME/.local"
 For development, omit `-Doptimize` for Debug mode, or use
 `-Doptimize=ReleaseSafe` for an optimized build with runtime safety checks. To
 build only the CLI, use `zig build build-cli`.
+
+The yyjson adapter, yyjson, and SQLite compile as separate build jobs shared by
+the CLI, library, and tests. They can run alongside C binding generation. Zig
+uses the available cores by default; add `-jN` to limit concurrent build jobs.
 
 C bindings use the pinned official `translate-c` package. Zig 0.17 can reuse
 configuration while compiler inputs are hashed at build time. Source edits,
@@ -388,12 +394,79 @@ zig build reference-check -Dbenchmark-reference-solc=solc
 ```
 
 See the [compatibility corpus](test/zig/standard-json/README.md) for fixture
-details. To run the parser, JSON, and Standard JSON fuzzers, plus the yyjson
-adapter under ASan/UBSan:
+details. To run the parser, JSON, Standard JSON, and stateful incremental
+fuzzers, plus the yyjson adapter under ASan/UBSan:
 
 ```sh
 zig build fuzz --fuzz=10K -Dadapter-fuzz-runs=10000 -j2
 ```
+
+The incremental target generates valid multi-source projects and treats one
+fuzz input as a complete edit history. Every retained-session response is
+compared byte-for-byte with a clean compilation of the same revision, including
+compiler errors and later recovery:
+
+```sh
+zig build fuzz-incremental -Doptimize=ReleaseSafe --fuzz=250 -j2
+```
+
+The slower external campaign additionally compares each revision with a pinned
+`solc 0.8.36`. It starts with histories covering reexports, imported `using`
+aliases, recursive structs, inherited and library bodies, base storage packing,
+modifiers, imported custom errors, and abstract/concrete `super` dispatch.
+Signature failures in those histories are followed by valid revisions to
+verify recovery. It then sequences the
+reviewed Standard JSON fixture corpus through retained sessions before
+generating further feature combinations. The corpus transitions cover
+unrelated projects, languages, settings, valid outputs, and diagnostic-only
+responses, returning to an earlier
+project with a differently encoded request to bypass the exact-response cache.
+Reference-compatible fixtures are also checked directly against `solc`, then
+given one to three cumulative mutations per revision at numeric boundaries and
+across signed, unsigned, fixed-byte, address, and data-location types,
+visibility, mutability, array shapes, operators, optimizer on/off settings, and
+EVM versions. Further histories concentrate mutations on fixed-array storage
+sizes, custom storage base slots, fixed-byte casts, and invalid UTF-8 hex
+literals, plus fixed-point widths and decimal precision. Deterministic
+histories also cross mixed-error diagnostic state,
+storage-layout overflow boundaries, conversion failures, and Homestead
+classic-stack lowering before recovering. Textual IR spelling, the
+unsupported legacy pipeline, and intentional corrections to upstream solc bugs
+are explicit exclusions from byte-exact reference comparison; they remain in
+the clean-versus-retained transition campaign. If the reference compiler
+returns an `InternalCompilerError` for a generated revision, the campaign uses
+a clean oksolc process as that revision's oracle and continues checking retained
+state instead of treating the upstream crash as expected output.
+On failure it saves both the original history and a reduced reproducer under
+`build/fuzz-differential`. Direct long runs can use `--max-failures` to keep
+collecting distinct failures while skipping duplicate diagnostic signatures:
+
+```sh
+zig build fuzz-reference -Doptimize=ReleaseSafe \
+  -Dbenchmark-reference-solc=/path/to/solc-0.8.36 \
+  -Dreference-fuzz-evm=/path/to/evmone \
+  -Dreference-fuzz-session-mode=all \
+  -Dreference-fuzz-runs=1000 -Dreference-fuzz-seed=1
+
+python3 test/fuzz/compiler_differential.py \
+  --candidate zig-out/bin/oksolc \
+  --reference /path/to/solc-0.8.36 \
+  --iterations 1000 --max-failures 20 --session-mode all \
+  --corpus test/zig/standard-json
+
+python3 test/fuzz/compiler_differential.py \
+  --candidate zig-out/bin/oksolc \
+  --reference /path/to/solc-0.8.36 \
+  --replay build/fuzz-differential/failure-...-minimized.json
+```
+
+The `all` session mode covers in-memory reuse, SQLite reuse, and process restart
+between revisions. When evmone is supplied, accepted generated contracts are
+also executed with generated calldata and checked against results derived from
+the source model.
+The scheduled fuzz workflow verifies pinned SHA-256 digests for both external
+binaries before running the campaign. Required compatibility CI remains offline
+and continues to use the reviewed frozen corpus.
 
 ## Benchmarks
 

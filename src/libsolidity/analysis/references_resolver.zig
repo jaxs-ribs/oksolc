@@ -811,14 +811,11 @@ pub fn resolveSource(
     source_unit: *AST.Node,
 ) ResolveError!bool {
     if (source_unit.nodeKind() != .source_unit) return error.InvalidAst;
-    var success = true;
     for (source_unit.payload.source_unit.nodes) |node| {
         try resolver.setScope(source_unit);
-        if (!(try resolveNode(tree, resolver, node, true))) {
-            success = false;
-        }
+        if (!(try resolveNode(tree, resolver, node, true))) return false;
     }
-    return success;
+    return true;
 }
 
 fn resolveNode(

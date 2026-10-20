@@ -282,9 +282,11 @@ pub const NameAndTypeResolver = struct {
             }
         }
 
-        if (!reuse_annotations) {
-            const source_annotation = try sourceUnitAnnotation(tree, source_unit);
-            const entries = target.declarations();
+        const source_annotation = try sourceUnitAnnotation(tree, source_unit);
+        const entries = target.declarations();
+        // A clean reexporter can outlive the syntax revision of its importee.
+        // Its export snapshot must still refer to the rebuilt scope's nodes.
+        if (!reuse_annotations or !exportedSymbolsMatch(entries, (try source_annotation.exported_symbols.get()).*)) {
             const exported = try tree.allocator().alloc(ASTAnnotations.ExportedSymbol, entries.len);
             for (entries, 0..) |entry, index| {
                 exported[index] = .{
@@ -292,7 +294,10 @@ pub const NameAndTypeResolver = struct {
                     .declarations = try ownNodeSlice(tree, entry.declarations.items),
                 };
             }
-            try source_annotation.exported_symbols.assign(exported);
+            if (reuse_annotations)
+                try ASTAnnotations.rebindSourceExports(tree, source_unit, exported)
+            else
+                try source_annotation.exported_symbols.assign(exported);
         }
         return !error_found;
     }
@@ -572,6 +577,15 @@ pub const NameAndTypeResolver = struct {
             try ownNodeSlice(tree, merged);
     }
 };
+
+fn exportedSymbolsMatch(entries: []const ContainerModule.NameEntry, exported: []const ASTAnnotations.ExportedSymbol) bool {
+    if (entries.len != exported.len) return false;
+    for (entries, exported) |entry, symbol| {
+        if (!std.mem.eql(u8, entry.name, symbol.name) or
+            !std.mem.eql(*const AST.Node, entry.declarations.items, symbol.declarations)) return false;
+    }
+    return true;
+}
 
 const Phase = enum { enter, leave };
 const Frame = struct { node: *AST.Node, phase: Phase };
